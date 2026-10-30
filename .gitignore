@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+
+# 환경변수 — 비밀키는 절대 커밋하지 않는다 (면접 질문: 왜?)
+.env
+.env.*
+!.env.example
+
+# 티스토리 로그인 세션 (쿠키 포함 — 유출 시 계정 탈취 가능)
+scripts/blog/.auth/
+
+*.log
+.DS_Store

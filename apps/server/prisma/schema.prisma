@@ -1,0 +1,74 @@
+// W1: 스키마만 확정한다. 클라이언트 연결은 W2(지식 연결)부터:
+//   pnpm --filter @sw/server add -D prisma && pnpm --filter @sw/server add @prisma/client
+//   docker compose up db
+//   pnpm --filter @sw/server exec prisma db push
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id            String         @id @default(cuid())
+  name          String
+  // 위젯 설치 스니펫의 data-tenant 키. 노출되는 식별자이므로 비밀키가 아니다 —
+  // 요청 위조 방지는 W2의 도메인 화이트리스트(CORS)와 함께 설계한다.
+  apiKey        String         @unique
+  createdAt     DateTime       @default(now())
+  conversations Conversation[]
+  credits       CreditLedger[]
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  createdAt DateTime  @default(now())
+  messages  Message[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  role           String // 'user' | 'assistant' | 'system'
+  content        String
+  createdAt      DateTime     @default(now())
+
+  // 대화 화면은 항상 "대화별 시간순" 조회 → 복합 인덱스. (왜 단일 인덱스 2개가 아닌가 — 면접 소재)
+  @@index([conversationId, createdAt])
+}
+
+// 크레딧 과금(W4). idempotencyKey의 UNIQUE 제약이 멱등 처리의 핵심:
+// 같은 결제/차감 요청이 네트워크 재시도로 두 번 도착해도,
+// 두 번째 INSERT는 제약 위반으로 실패하므로 잔액이 두 번 움직일 수 없다.
+model CreditLedger {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  delta          Int // 충전 +, 차감 -
+  reason         String
+  idempotencyKey String   @unique
+  // [권고/W4 전 결정] 전역 unique는 테넌트가 달라도 같은 키면 충돌한다.
+  // 클라이언트가 키를 만드는 구조라면 @@unique([tenantId, idempotencyKey])가 안전하다. (ADR 후보)
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+// 이벤트 로그(W4): A/B 변형 비교·퍼널 분석의 원천 데이터.
+// 로그 스키마를 수집보다 먼저 설계한다 — 나중에 바꾸면 과거 데이터와 비교할 수 없기 때문.
+model Event {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  type      String // 'widget_open' | 'message_sent' | 'answer_done' | 'handoff' | ...
+  variant   String? // A/B 변형 키 (예: greeting=a|b)
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+}

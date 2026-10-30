@@ -1,0 +1,21 @@
+{
+  "name": "@sw/blog-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "new": "tsx src/new-draft.ts",
+    "post": "tsx src/publish.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "echo \"@sw/blog-tools: 수동 발행 도구 — 테스트 대상 아님\""
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "marked": "^15.0.0",
+    "playwright": "^1.50.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}

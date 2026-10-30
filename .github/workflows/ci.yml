@@ -1,0 +1,35 @@
+# CI 게이트: 타입체크·린트·테스트·빌드가 전부 통과해야 머지할 수 있다.
+#
+# 주의: 이 파일만으로는 "게이트"가 아니다. 워크플로우는 결과를 보고할 뿐이고,
+# 실제 강제는 GitHub 저장소 Settings → Branches → Branch protection rule에서
+# "Require status checks to pass before merging"에 아래 verify 잡을 등록해야 완성된다.
+# (면접 질문 1번 — docs/interview/week1-infra.md)
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # packageManager 필드(pnpm@10.x)를 읽어 동일한 pnpm 버전을 설치한다.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm # pnpm 스토어 캐시 — 무엇이 캐시되는지는 면접 질문 5번
+
+      # --frozen-lockfile: 락파일과 package.json이 어긋나면 설치를 실패시킨다.
+      # CI에서 "내 로컬과 다른 의존성"이 몰래 설치되는 사고를 차단.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
