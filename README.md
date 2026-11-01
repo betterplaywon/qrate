@@ -1,4 +1,4 @@
-# Support Widget — 임베더블 AI 상담 위젯 SDK
+# Qrate — 임베더블 AI 상담 위젯 SDK
 
 소규모 SaaS·커머스 사이트에 **스크립트 한 줄**로 설치하는 AI 상담 위젯과
 운영자용 웹 콘솔. 채널톡·인터콤이 검증한 문제를, 위젯 SDK(Shadow DOM 격리) +
