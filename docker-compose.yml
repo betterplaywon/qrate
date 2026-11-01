@@ -26,6 +26,7 @@ services:
     environment:
       PORT: 8787
       DATABASE_URL: postgresql://sw:sw@db:5432/sw
+      SENTRY_DSN: ${SENTRY_DSN:-} # 셸 환경변수 또는 레포 루트 .env에서 읽음. 없으면 빈 값 → Sentry 비활성
     ports:
       - "8787:8787"
     depends_on:
