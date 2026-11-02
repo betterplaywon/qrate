@@ -59,6 +59,7 @@ docs/reviews.md   AI 코드 리뷰에서 실제 발견한 문제 기록
 
 ```bash
 pnpm install
+cp apps/server/.env.example apps/server/.env   # ANTHROPIC_API_KEY를 넣으면 실제 모델, 비우면 목업 엔진
 pnpm dev                              # API 서버 http://localhost:8787
 pnpm --filter @qrate/widget build        # 위젯 번들 → packages/widget/dist/widget.js
 open packages/widget/demo.html        # 데모 페이지 (서버 켠 상태에서)

@@ -27,6 +27,7 @@ services:
       PORT: 8787
       DATABASE_URL: postgresql://qrate:qrate@db:5432/qrate
       SENTRY_DSN: ${SENTRY_DSN:-} # 셸 환경변수 또는 레포 루트 .env에서 읽음. 없으면 빈 값 → Sentry 비활성
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-} # 없으면 목업 엔진. 모델 설정(QRATE_*)은 코드 기본값을 쓴다
     ports:
       - "8787:8787"
     depends_on:

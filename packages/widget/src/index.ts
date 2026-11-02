@@ -136,7 +136,14 @@ async function streamAnswer(
     return;
   }
   if (!res.ok || !res.body) {
-    addMsg('notice', `오류가 발생했어요. (${res.status})`);
+    // 첫 조각 전의 실패는 서버가 HTTP 상태 + {error, retryable}로 알린다. (재시도 정책은 위젯 분리 단계에서)
+    let retryable = res.status === 503;
+    try {
+      retryable = Boolean(((await res.json()) as { retryable?: boolean }).retryable);
+    } catch {
+      // 본문이 JSON이 아니면 상태 코드로만 판단한다.
+    }
+    addMsg('notice', retryable ? '지금은 답변할 수 없어요. 잠시 후 다시 시도해 주세요.' : `오류가 발생했어요. (${res.status})`);
     return;
   }
 
@@ -158,6 +165,31 @@ async function streamAnswer(
       if (ev.data === '[DONE]') return;
       if (ev.event === 'moderation') {
         addMsg('notice', '안내: 메시지가 검토 대상으로 표시되었어요.');
+        continue;
+      }
+      if (ev.event === 'error') {
+        // 스트림 시작 후의 실패. 이 뒤에는 [DONE] 없이 연결이 끝난다.
+        let retryable = false;
+        try {
+          retryable = Boolean((JSON.parse(ev.data) as { retryable?: boolean }).retryable);
+        } catch {
+          // 형식이 다르면 재시도 불가로 본다.
+        }
+        addMsg('notice', retryable ? '답변이 중단됐어요. 잠시 후 다시 시도해 주세요.' : '답변 중 오류가 발생했어요.');
+        return;
+      }
+      if (ev.event === 'done') {
+        try {
+          const { stopReason } = JSON.parse(ev.data) as { stopReason?: string };
+          if (stopReason === 'refusal') addMsg('notice', '이 질문에는 답변을 드릴 수 없어요. 상담원에게 문의해 주세요.');
+          else if (stopReason === 'max_tokens') addMsg('notice', '답변이 길어 잘렸어요.');
+        } catch {
+          // 형식이 다른 done은 무시한다.
+        }
+        continue;
+      }
+      if (ev.event === 'citation') {
+        // 출처 표시는 위젯 분리 단계에서 iframe 대화창에 그린다. 지금은 계약만 받아 둔다.
         continue;
       }
       try {
