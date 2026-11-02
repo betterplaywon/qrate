@@ -1,7 +1,7 @@
 // W1: 스키마만 확정한다. 클라이언트 연결은 W2(지식 연결)부터:
-//   pnpm --filter @sw/server add -D prisma && pnpm --filter @sw/server add @prisma/client
+//   pnpm --filter @qrate/server add -D prisma && pnpm --filter @qrate/server add @prisma/client
 //   docker compose up db
-//   pnpm --filter @sw/server exec prisma db push
+//   pnpm --filter @qrate/server exec prisma db push
 
 generator client {
   provider = "prisma-client-js"

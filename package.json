@@ -1,18 +1,18 @@
 {
-  "name": "support-widget",
+  "name": "qrate",
   "private": true,
   "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @sw/server dev",
+    "dev": "pnpm --filter @qrate/server dev",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
-    "blog:new": "pnpm --filter @sw/blog-tools run new",
-    "blog:publish": "pnpm --filter @sw/blog-tools run post"
+    "blog:new": "pnpm --filter @qrate/blog-tools run new",
+    "blog:publish": "pnpm --filter @qrate/blog-tools run post"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",

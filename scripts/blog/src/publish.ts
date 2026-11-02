@@ -4,7 +4,7 @@
 // 자동화하는 방법뿐이다. Playwright로 로그인 세션을 .auth/에 보존해 재사용한다.
 //
 // 사용:
-//   1회 준비: pnpm --filter @sw/blog-tools exec playwright install chromium
+//   1회 준비: pnpm --filter @qrate/blog-tools exec playwright install chromium
 //   임시저장: pnpm blog:publish docs/blog/drafts/2026-11-xx.md
 //   공개발행: pnpm blog:publish docs/blog/drafts/2026-11-xx.md --go
 //

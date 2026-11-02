@@ -12,7 +12,7 @@ const SECTIONS = [
 export function App() {
   return (
     <main style={{ maxWidth: 720, margin: '48px auto', fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 22 }}>Support Widget 운영 콘솔</h1>
+      <h1 style={{ fontSize: 22 }}>Qrate 운영 콘솔</h1>
       <p style={{ color: '#57606a' }}>
         W3에서 구현됩니다. 아래는 확정된 정보 구조입니다.
       </p>

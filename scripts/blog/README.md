@@ -8,7 +8,7 @@
 
 ```bash
 pnpm install
-pnpm --filter @sw/blog-tools exec playwright install chromium
+pnpm --filter @qrate/blog-tools exec playwright install chromium
 ```
 
 ## 쓰는 흐름 (주 1회 권장)
