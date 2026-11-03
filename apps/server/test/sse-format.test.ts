@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineEvent } from '../src/engine/types.js';
-import { sseForEngineEvent } from '../src/sse.js';
+import { sseForEngineEvent } from '../src/http/sse.js';
 
 // 전송 형식 자체(이벤트 이름·JSON 모양·[DONE])는 @qrate/contracts의 테스트가 고정한다.
 // 여기서는 엔진 이벤트 → 전송 이벤트 변환, 특히 "무엇을 위젯에 보내지 않는가"를 본다.

@@ -3,27 +3,12 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import type { UsageLogEntry } from '../src/chat.js';
 import { MockEngine } from '../src/engine/mock.js';
-import type { AnswerEngine, EngineEvent, EngineRequest } from '../src/engine/types.js';
+import type { UsageLogEntry } from '../src/http/chat.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
+import { CapturingEngine } from './helpers/capturing-engine.js';
 
 // 실제 HTTP로 핸들러를 통과시키는 계약 테스트. 엔진은 목업(지연 0)이고, 실패 상황은 목업의 테스트 훅으로 재현한다.
-
-/** 엔진에 들어간 요청을 기록해 history·knowledge가 제대로 조립되는지 확인한다. */
-class CapturingEngine implements AnswerEngine {
-  readonly name: string;
-  readonly model: string;
-  readonly requests: EngineRequest[] = [];
-  constructor(private readonly inner: AnswerEngine) {
-    this.name = inner.name;
-    this.model = inner.model;
-  }
-  stream(req: EngineRequest): AsyncIterable<EngineEvent> {
-    this.requests.push(req);
-    return this.inner.stream(req);
-  }
-}
 
 let server: Server;
 let baseUrl: string;

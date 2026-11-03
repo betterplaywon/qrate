@@ -1,6 +1,6 @@
 import type { ApiErrorBody } from '@qrate/contracts';
 import type { RequestHandler } from 'express';
-import type { Repositories } from './repo/types.js';
+import type { Repositories } from '../repo/types.js';
 
 // GET /frame?t=<테넌트 키> — 고객 사이트의 런처가 iframe으로 여는 대화창 문서.
 // "이 테넌트의 위젯을 어느 사이트에 넣을 수 있는가"는 이 응답의 CSP 헤더가 결정하고, 브라우저가 강제한다.
