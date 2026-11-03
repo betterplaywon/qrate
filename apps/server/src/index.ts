@@ -10,7 +10,7 @@ const engine = createEngine(config);
 // W2: 시드 파일 → 메모리 저장소. Postgres(Prisma) 구현은 W3 첫날에 붙인다 (개발 DB 결정 2026-11-02).
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const repos = createRepositoriesFromSeed(seed);
-const app = createApp({ engine, repos, sentryEnabled });
+const app = createApp({ engine, repos, publicOrigin: config.publicOrigin, sentryEnabled });
 
 // Sentry 에러 핸들러는 라우트 등록 "이후", 리스닝 "이전"에 단다.
 if (sentryEnabled) {
@@ -23,4 +23,5 @@ app.listen(config.port, () => {
     `[server] engine=${engine.name} model=${engine.model} thinking=${config.thinking} fallback=${config.fallback ? 'default' : 'off'}`,
   );
   console.log(`[server] seed tenant=${seed.tenant.id} knowledge=${seed.knowledge.length} (memory repositories)`);
+  console.log(`[server] publicOrigin=${config.publicOrigin} — 대화 API는 이 오리진의 iframe에서 온 요청만 받는다`);
 });

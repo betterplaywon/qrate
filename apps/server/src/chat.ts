@@ -54,7 +54,8 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
     const startedAt = Date.now();
     const body = (req.body ?? {}) as ChatBody;
     const message = typeof body.message === 'string' ? body.message.trim() : '';
-    const tenantKey = typeof body.tenant === 'string' && body.tenant ? body.tenant : 'demo';
+    // 테넌트 키는 모든 요청이 명시해야 한다. W1의 'demo' 기본값은 테넌트 검증 단계에서 제거했다.
+    const tenantKey = typeof body.tenant === 'string' && body.tenant ? body.tenant : null;
     const requestedConversationId =
       typeof body.conversationId === 'string' && body.conversationId ? body.conversationId : null;
 
@@ -62,9 +63,14 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
       res.status(400).json({ error: 'message is required' });
       return;
     }
+    if (!tenantKey) {
+      res.status(400).json({ error: 'tenant is required' });
+      return;
+    }
 
-    // 테넌트 키는 공개 식별자다. 여기서는 존재만 확인한다(없으면 404).
-    // "어느 사이트에서 왔는가"의 검증은 테넌트 검증 단계(/frame, frame-ancestors, Origin 검사)에서 한다.
+    // 테넌트 키는 설치 스니펫에 들어가는 공개 식별자다. 여기서는 "있는 테넌트인가"만 본다(없으면 404).
+    // "허용된 사이트에서 왔는가"는 두 겹으로 막는다 — 대화창 문서(GET /frame)의 frame-ancestors가 브라우저 쪽에서,
+    // 이 라우트 앞의 requireOwnOrigin이 서버 쪽에서. (src/frame.ts, src/origin.ts)
     const tenant = await repos.tenants.findByKey(tenantKey);
     if (!tenant) {
       res.status(404).json({ error: 'unknown_tenant' });
