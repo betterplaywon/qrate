@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AppConfig } from '../config.js';
+import { HANDOFF_TOOL, readHandoff } from './handoff.js';
 import { buildSystemPrompt } from './prompt.js';
 import { thinkingParamsFor } from './thinking.js';
 import {
@@ -41,6 +42,9 @@ export class ClaudeEngine implements AnswerEngine {
           { type: 'text', text: buildSystemPrompt(req.tenantName), cache_control: { type: 'ephemeral' } },
         ],
         messages: buildMessages(req),
+        // 핸드오프 신호용 도구(engine/handoff.ts). 도구는 하나고 턴마다 신호는 최대 1회라 병렬 호출은 끈다.
+        tools: [HANDOFF_TOOL],
+        tool_choice: { type: 'auto', disable_parallel_tool_use: true },
         ...thinkingParamsFor(this.config.model, this.config.thinking),
         ...(this.config.fallback ? { betas: [FALLBACK_BETA], fallbacks: 'default' as const } : {}),
       },
@@ -59,7 +63,11 @@ export class ClaudeEngine implements AnswerEngine {
           if (citation) yield { type: 'citation', citation };
         }
       }
-      yield summarize(await stream.finalMessage(), this.config.model);
+      const final = await stream.finalMessage();
+      // 신호용 도구 호출은 응답 끝의 블록이라 finalMessage에서 읽는다. 텍스트 조각을 다 보낸 뒤, done 앞에 1회.
+      const handoff = readHandoff(final.content);
+      if (handoff) yield handoff;
+      yield summarize(final, this.config.model);
     } catch (err) {
       throw toEngineError(err);
     }
@@ -132,6 +140,9 @@ function toStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopReason 
     case 'max_tokens':
     case 'refusal':
       return reason;
+    case 'tool_use':
+      // 신호용 도구(request_handoff) 호출로 끝난 턴. 사용자에게는 정상 종료다 — 신호는 event: handoff로 따로 간다.
+      return 'end_turn';
     default:
       return 'other';
   }

@@ -40,11 +40,14 @@ function main(config: FrameConfig): void {
   let conversationId: string | null = null;
   let inFlight = false;
 
+  // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보인다. 실제 연결은 W3 — 지금은 준비 중 안내.
+  // 모델의 핸드오프 신호(event: handoff)가 붙이는 연결 제안 버튼도 같은 길로 간다.
+  const requestHandoff = (): void => view.addNotice('상담원 연결은 준비 중이에요. 지금은 이 창에서 질문해 주세요.');
+
   const view = createView(root, {
     onSubmit: (message) => void ask(message),
     onClose: () => send({ type: 'close' }),
-    // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보인다. 실제 연결은 W3.
-    onHandoff: () => view.addNotice('상담원 연결은 준비 중이에요. 지금은 이 창에서 질문해 주세요.'),
+    onHandoff: requestHandoff,
   });
 
   // 런처가 보낸 메시지만 받는다: 보낸 문서의 오리진, 보낸 창, 메시지 형식을 모두 확인한다(../protocol.ts).
@@ -112,6 +115,10 @@ function main(config: FrameConfig): void {
           case 'citation':
             answer ??= view.startAnswer();
             answer.addCitation(ev.citation);
+            break;
+          case 'handoff':
+            // 모델이 자료에 없는 질문이라고 신호했다. 안내 문장은 답으로 이미 흘러왔으니, 여기서는 사람 연결로 이어 주는 길만 보인다.
+            view.addNotice('상담원에게 연결해 드릴까요?', { label: '상담원 연결', disabledForMs: null, run: requestHandoff });
             break;
           case 'end':
             answer?.finish('complete');

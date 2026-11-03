@@ -26,6 +26,15 @@ describe('엔진 이벤트 직렬화 — 위젯 파서와의 계약', () => {
     expect(JSON.parse(out.slice('event: citation\ndata: '.length))).toEqual(citation);
   });
 
+  it('handoff는 event: handoff + reason, summary는 있을 때만', () => {
+    expect(sseForEngineEvent({ type: 'handoff', reason: 'not_in_knowledge', summary: '카카오톡 알림 문의' })).toBe(
+      'event: handoff\ndata: {"reason":"not_in_knowledge","summary":"카카오톡 알림 문의"}\n\n',
+    );
+    expect(sseForEngineEvent({ type: 'handoff', reason: 'other', summary: null })).toBe(
+      'event: handoff\ndata: {"reason":"other"}\n\n',
+    );
+  });
+
   it('done은 stopReason만 담고 토큰 사용량·모델은 위젯에 보내지 않는다', () => {
     const done: EngineEvent = {
       type: 'done',

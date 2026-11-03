@@ -12,6 +12,8 @@ function toChatStreamEvent(ev: EngineEvent): ChatStreamEvent {
       return { type: 'delta', text: ev.text };
     case 'citation':
       return { type: 'citation', citation: ev.citation };
+    case 'handoff':
+      return { type: 'handoff', reason: ev.reason, summary: ev.summary };
     case 'done':
       return { type: 'done', stopReason: ev.stopReason, refusalCategory: ev.refusalCategory };
   }

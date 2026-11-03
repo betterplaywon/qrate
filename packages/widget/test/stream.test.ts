@@ -58,9 +58,25 @@ describe('streamChat — 정상 스트림', () => {
   });
 
   it('경고 레벨은 moderation 사건으로, 모르는 이벤트는 건너뛴다', async () => {
-    const res = new Response('event: moderation\ndata: {"level":"warn","reasons":["r"]}\n\nevent: handoff\ndata: {}\n\ndata: [DONE]\n\n');
+    const res = new Response('event: moderation\ndata: {"level":"warn","reasons":["r"]}\n\nevent: typing\ndata: {}\n\ndata: [DONE]\n\n');
     const { events } = await collect(res);
     expect(events).toEqual([{ type: 'moderation' }, { type: 'end', stopReason: null }]);
+  });
+
+  it('핸드오프 신호는 handoff 사건으로 — reason과 summary를 그대로, 답 조각과 end 사이에', async () => {
+    const { events } = await collect(
+      sseResponse([
+        { type: 'delta', text: '그 내용은 안내 자료에 없어요.' },
+        { type: 'handoff', reason: 'not_in_knowledge', summary: '카카오톡 알림 문의' },
+        { type: 'done', stopReason: 'end_turn', refusalCategory: null },
+        { type: 'end' },
+      ]),
+    );
+    expect(events).toEqual([
+      { type: 'delta', text: '그 내용은 안내 자료에 없어요.' },
+      { type: 'handoff', reason: 'not_in_knowledge', summary: '카카오톡 알림 문의' },
+      { type: 'end', stopReason: 'end_turn' },
+    ]);
   });
 });
 

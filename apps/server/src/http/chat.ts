@@ -1,7 +1,7 @@
 import { CONVERSATION_ID_HEADER, encodeChatEvent, type ApiErrorBody, type ChatRequestBody } from '@qrate/contracts';
 import type { Request, Response } from 'express';
 import type { ChatService } from '../chat/service.js';
-import { asEngineError, type EngineEvent, type Usage } from '../engine/types.js';
+import { asEngineError, type EngineEvent, type HandoffReason, type Usage } from '../engine/types.js';
 import { sseForEngineEvent } from './sse.js';
 
 // POST /api/chat — 대화 유스케이스(chat/service.ts)를 HTTP와 SSE로 옮기는 어댑터.
@@ -26,6 +26,10 @@ export interface UsageLogEntry {
   ttftMs: number | null;
   durationMs: number;
   knowledgeItems: number;
+  /** 모델이 상담원 연결을 요청했으면 그 이유(event: handoff). 정의서 지표 '자동 해결률'의 분자가 이 값이다. */
+  handoff: HandoffReason | null;
+  /** 답에 붙은 인용 수. 0이면 자료 없이 답한 턴일 수 있어 핸드오프 신호의 보조 지표로 본다(W5). */
+  citations: number;
   usage: Usage | null;
 }
 
@@ -82,6 +86,8 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
 
     const events = turn.events[Symbol.asyncIterator]();
     let ttftMs: number | null = null;
+    let handoff: HandoffReason | null = null;
+    let citations = 0;
     const finish = (
       outcome: UsageLogEntry['outcome'],
       detail: { done?: DoneEvent | null; errorCode?: string | null },
@@ -101,6 +107,8 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
         ttftMs,
         durationMs: Date.now() - startedAt,
         knowledgeItems: turn.knowledgeItems,
+        handoff,
+        citations,
         usage: detail.done?.usage ?? null,
       });
     };
@@ -140,6 +148,8 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
       for (let r = first; !r.done; r = await events.next()) {
         const ev = r.value;
         if (ev.type === 'delta' && ttftMs === null) ttftMs = Date.now() - startedAt;
+        if (ev.type === 'citation') citations += 1;
+        if (ev.type === 'handoff') handoff = ev.reason;
         if (ev.type === 'done') done = ev;
         res.write(sseForEngineEvent(ev));
       }
