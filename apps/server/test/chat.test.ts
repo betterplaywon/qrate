@@ -320,3 +320,18 @@ describe('테넌트 검증 — Origin 검사와 대화창 문서(/frame)', () =>
     expect(await missing.json()).toEqual({ error: 'tenant is required' });
   });
 });
+
+describe('응답 헤더', () => {
+  it('X-Powered-By를 내지 않는다 — 상태 확인·대화창·대화 API·404 모두', async () => {
+    const responses = await Promise.all([
+      fetch(`${baseUrl}/healthz`),
+      fetch(`${baseUrl}/frame?t=demo`),
+      post({ message: '안녕', tenant: 'demo' }),
+      fetch(`${baseUrl}/no-such-path`),
+    ]);
+    for (const res of responses) {
+      expect(res.headers.get('x-powered-by'), res.url).toBeNull();
+      await res.text();
+    }
+  });
+});
