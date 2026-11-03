@@ -46,11 +46,22 @@ export interface KnowledgeRepository {
   listByTenant(tenantId: string): Promise<KnowledgeItem[]>;
 }
 
+/** 저장할 메시지. createdAt이 없으면 저장 시각으로 기록한다. */
+export interface NewMessage {
+  role: MessageRole;
+  content: string;
+  createdAt?: Date;
+}
+
 export interface ConversationRepository {
   create(tenantId: string): Promise<Conversation>;
   /** 다른 테넌트의 대화 id로는 찾을 수 없다 (테넌트 경계). */
   find(id: string, tenantId: string): Promise<Conversation | null>;
-  appendMessage(conversationId: string, message: { role: MessageRole; content: string }): Promise<void>;
+  /**
+   * 메시지를 끝에 붙인다. 턴은 답변이 끝난 뒤에 질문·답변을 한꺼번에 저장하므로(chat/service.ts),
+   * 질문은 받은 시각을 createdAt으로 넘겨야 기록된 시각이 실제와 같다.
+   */
+  appendMessage(conversationId: string, message: NewMessage): Promise<void>;
 }
 
 export interface Repositories {

@@ -116,6 +116,18 @@ describe('POST /api/chat — SSE 계약', () => {
     expect(engine.requests.at(-1)?.history).toEqual([]);
   });
 
+  it('스트림 도중 실패한 뒤 같은 대화 id로 다시 보내면(위젯의 다시 보내기) 실패한 질문은 history에 남지 않는다', async () => {
+    const failed = await post({ message: '환불되나요? [[fail-mid]]', tenant: 'demo' });
+    const conversationId = failed.headers.get('x-conversation-id');
+    expect(conversationId).toBeTruthy();
+    expect(parseSSE(await failed.text()).at(-1)?.event).toBe('error');
+
+    const retry = await post({ message: '환불되나요?', tenant: 'demo', conversationId });
+    expect(retry.headers.get('x-conversation-id')).toBe(conversationId);
+    await retry.text();
+    expect(engine.requests.at(-1)?.history).toEqual([]);
+  });
+
   it('모르는 테넌트 키는 404', async () => {
     const res = await post({ message: '안녕', tenant: 'no-such-tenant' });
     expect(res.status).toBe(404);
