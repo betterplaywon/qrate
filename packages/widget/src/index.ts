@@ -113,6 +113,9 @@ function mount(config: WidgetConfig): void {
   });
 }
 
+// 서버가 첫 응답 헤더로 알려 주는 대화 id. 다음 요청에 실어 보내면 이전 턴이 문맥으로 들어간다.
+let conversationId: string | null = null;
+
 async function streamAnswer(
   config: WidgetConfig,
   message: string,
@@ -124,7 +127,7 @@ async function streamAnswer(
     res = await fetch(`${config.endpoint}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, tenant: config.tenant }),
+      body: JSON.stringify({ message, tenant: config.tenant, conversationId }),
     });
   } catch {
     addMsg('notice', '서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.');
@@ -146,6 +149,8 @@ async function streamAnswer(
     addMsg('notice', retryable ? '지금은 답변할 수 없어요. 잠시 후 다시 시도해 주세요.' : `오류가 발생했어요. (${res.status})`);
     return;
   }
+
+  conversationId = res.headers.get('X-Conversation-Id') ?? conversationId;
 
   const bot = addMsg('bot', '');
   const reader = res.body.getReader();
