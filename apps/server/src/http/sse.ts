@@ -6,7 +6,7 @@ import type { EngineEvent } from '../engine/types.js';
 // done의 토큰 사용량·실제 모델·폴백 여부는 운영자 정보라 빼고 stopReason(과 거절 카테고리)만 보낸다. 사용량은 서버 로그로 남는다.
 // 첫 이벤트 전에 실패하면 SSE가 아니라 HTTP 상태 코드와 JSON 본문으로 답한다. (http/chat.ts)
 
-export function toChatStreamEvent(ev: EngineEvent): ChatStreamEvent {
+function toChatStreamEvent(ev: EngineEvent): ChatStreamEvent {
   switch (ev.type) {
     case 'delta':
       return { type: 'delta', text: ev.text };
