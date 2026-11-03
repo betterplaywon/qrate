@@ -5,6 +5,7 @@
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
     "types": ["node"],
+    "customConditions": ["source"],
     "noEmit": true
   },
   "include": ["src", "test"]

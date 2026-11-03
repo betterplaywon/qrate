@@ -1,0 +1,26 @@
+{
+  "name": "@qrate/contracts",
+  "private": true,
+  "type": "module",
+  "description": "서버·위젯·콘솔이 공유하는 대화 API 계약 — SSE 이벤트 형식(encode/parse), 요청·오류 본문",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.0"
+  }
+}

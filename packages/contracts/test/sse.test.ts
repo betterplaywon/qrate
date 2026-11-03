@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drainSSEBuffer } from '../src/sse';
+import { drainSSEBuffer, formatSSE } from '../src/sse.js';
 
 describe('drainSSEBuffer — 청크 경계 버퍼링', () => {
   it('완결된 이벤트만 파싱하고 미완결분은 rest로 남긴다', () => {
@@ -32,5 +32,12 @@ describe('drainSSEBuffer — 청크 경계 버퍼링', () => {
   it('한 버퍼에 이벤트 여러 개가 있어도 전부 파싱한다', () => {
     const { events } = drainSSEBuffer('data: {"delta":"a"}\n\ndata: {"delta":"b"}\n\n');
     expect(events).toHaveLength(2);
+  });
+});
+
+describe('formatSSE — 쓰는 쪽', () => {
+  it('event 줄은 이름이 있을 때만 붙고, 빈 줄로 닫는다', () => {
+    expect(formatSSE(null, '{"delta":"a"}')).toBe('data: {"delta":"a"}\n\n');
+    expect(formatSSE('done', '{}')).toBe('event: done\ndata: {}\n\n');
   });
 });

@@ -5,8 +5,8 @@
 # 효과: 이미지 크기 감소 + 공격 표면 축소(빌드 도구·devDependencies 미포함). 면접 질문 8번.
 #
 # 빌드/실행 (리포 루트에서):
-#   docker build -f apps/server/Dockerfile -t sw-server .
-#   docker run -p 8787:8787 sw-server
+#   docker build -f apps/server/Dockerfile -t qrate-server .
+#   docker run -p 8787:8787 qrate-server
 
 FROM node:22-slim AS base
 ENV PNPM_HOME=/pnpm
@@ -18,10 +18,14 @@ WORKDIR /repo
 # 의존성 메타데이터를 먼저 복사 → 소스만 바뀌면 install 레이어 캐시가 재사용된다.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/server/package.json apps/server/
-RUN pnpm install --frozen-lockfile --filter @qrate/server
+COPY packages/contracts/package.json packages/contracts/
+# `@qrate/server...`: 서버가 의존하는 워크스페이스 패키지(@qrate/contracts)까지 함께 설치한다.
+RUN pnpm install --frozen-lockfile --filter @qrate/server...
+COPY packages/contracts packages/contracts
 COPY apps/server apps/server
-RUN pnpm --filter @qrate/server build
-# 서버 패키지 + 프로덕션 의존성만 /out 으로 추출 (pnpm deploy)
+# 의존 순서대로 빌드: contracts(dist + 타입 선언) → server. 서버 빌드는 contracts의 dist를 읽는다.
+RUN pnpm --filter @qrate/server... build
+# 서버 패키지 + 프로덕션 의존성(워크스페이스 패키지 포함)만 /out 으로 추출 (pnpm deploy)
 RUN pnpm --filter @qrate/server deploy --prod --legacy /out
 
 FROM node:22-slim AS runtime

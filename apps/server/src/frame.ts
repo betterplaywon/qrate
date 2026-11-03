@@ -1,3 +1,4 @@
+import type { ApiErrorBody } from '@qrate/contracts';
 import type { RequestHandler } from 'express';
 import type { Repositories } from './repo/types.js';
 
@@ -38,12 +39,12 @@ export function createFrameHandler({ repos }: { repos: Repositories }): RequestH
   return async (req, res) => {
     const key = typeof req.query.t === 'string' && req.query.t ? req.query.t : null;
     if (!key) {
-      res.status(400).json({ error: 'tenant is required' });
+      res.status(400).json({ error: 'tenant is required' } satisfies ApiErrorBody);
       return;
     }
     const tenant = await repos.tenants.findByKey(key);
     if (!tenant) {
-      res.status(404).json({ error: 'unknown_tenant' });
+      res.status(404).json({ error: 'unknown_tenant' } satisfies ApiErrorBody);
       return;
     }
     res.setHeader('Content-Security-Policy', frameCsp(tenant.allowedOrigins));

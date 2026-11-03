@@ -1,3 +1,4 @@
+import { CHAT_PATH, FRAME_PATH } from '@qrate/contracts';
 import express from 'express';
 import { createChatHandler, type UsageLogger } from './chat.js';
 import type { AnswerEngine } from './engine/types.js';
@@ -28,11 +29,11 @@ export function createApp({ engine, repos, publicOrigin, sentryEnabled = false, 
   });
 
   // 대화창 문서. 어느 고객 사이트가 iframe으로 넣을 수 있는지는 이 응답의 CSP frame-ancestors가 정한다. (src/frame.ts)
-  app.get('/frame', createFrameHandler({ repos }));
+  app.get(FRAME_PATH, createFrameHandler({ repos }));
 
   // 대화 API. 순서가 곧 비용 순서다: Origin 검사(헤더만 봄) → 본문 파싱(32kb 상한) → 처리.
   app.post(
-    '/api/chat',
+    CHAT_PATH,
     requireOwnOrigin(publicOrigin),
     express.json({ limit: '32kb' }), // 채팅 입력에 32kb면 충분 — 과대 페이로드 차단
     createChatHandler({ engine, repos, logUsage }),

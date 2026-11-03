@@ -1,3 +1,4 @@
+import { drainSSEBuffer, type SSEEvent } from '@qrate/contracts';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -60,28 +61,12 @@ function post(body: unknown, headers: Record<string, string> = {}): Promise<glob
   });
 }
 
-interface ParsedEvent {
-  event: string;
-  data: string;
+// 응답 전체를 위젯과 같은 파서(@qrate/contracts)로 읽는다. 서버가 보낸 것과 위젯이 읽는 것이 같은 규칙임을 테스트가 보증한다.
+function parseSSE(text: string): SSEEvent[] {
+  return drainSSEBuffer(text).events;
 }
 
-// 테스트용 최소 SSE 파서. 위젯의 drainSSEBuffer와 같은 규칙(\n\n 구분, event:/data: 필드)이다.
-function parseSSE(text: string): ParsedEvent[] {
-  return text
-    .split('\n\n')
-    .filter((chunk) => chunk.length > 0)
-    .map((chunk) => {
-      let event = 'message';
-      const data: string[] = [];
-      for (const line of chunk.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice('event:'.length).trim();
-        else if (line.startsWith('data:')) data.push(line.slice('data:'.length).trimStart());
-      }
-      return { event, data: data.join('\n') };
-    });
-}
-
-function deltasOf(events: ParsedEvent[]): string {
+function deltasOf(events: SSEEvent[]): string {
   return events
     .filter((e) => e.event === 'message' && e.data !== '[DONE]')
     .map((e) => (JSON.parse(e.data) as { delta: string }).delta)
