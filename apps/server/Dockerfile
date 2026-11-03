@@ -27,7 +27,9 @@ COPY packages/widget packages/widget
 COPY apps/server apps/server
 # 의존 순서대로 빌드: contracts → widget(런처 + 대화창 앱) → server. 서버 빌드는 contracts의 dist를 읽는다.
 RUN pnpm --filter @qrate/server... build
-# 서버 패키지 + 프로덕션 의존성(워크스페이스 패키지는 dist만)을 /out 으로 추출 (pnpm deploy)
+# 서버 패키지 + 프로덕션 의존성을 /out 으로 추출 (pnpm deploy). 각 패키지에서 package.json의 files에 적힌 것만 담는다 —
+# 서버는 dist·seed, 워크스페이스 패키지(contracts·widget)는 dist. src·test·tsconfig·.env.example은 빌드 스테이지에만 남는다.
+# W3에서 Prisma를 붙이면 서버 files에 prisma/(schema·migrations)를 추가한다.
 RUN pnpm --filter @qrate/server deploy --prod --legacy /out
 
 FROM node:22-slim AS runtime
