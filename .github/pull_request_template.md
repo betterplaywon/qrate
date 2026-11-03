@@ -1,4 +1,13 @@
 <!--
+제목과 브랜치는 "언제(주차·단계)"가 아니라 "무슨 작업"인지 적는다. 주차·단계 번호는 1번 배경에 쓴다.
+  PR 제목   <대단위> - <소규모>           예) 답변 엔진 - 인터페이스·Claude 스트리밍·지식 연결
+  브랜치    <type>/<대단위>/<소규모>      예) feat/answer-engine/claude-streaming-knowledge, feat/tenant/origin-frame-csp
+            type은 커밋과 같은 feat·fix·chore·docs. 항상 세 단계로 쓴다(feat/tenant와 feat/tenant/x는 공존할 수 없다).
+            소규모가 여럿이면 제목은 ·로, 브랜치는 하이픈으로 잇는다.
+  대단위 어휘(브랜치 = 제목)  widget=위젯 · answer-engine=답변 엔진 · tenant=테넌트 · db=저장소 · console=콘솔 ·
+            billing=결제 · events=이벤트 로그 · eval=평가 · load=부하 · infra=인프라 · workflow=작업 방식. 필요하면 여기에 추가한다.
+  커밋 제목은 그대로 Conventional Commits(feat(server): …)이고 scope는 모듈이다. 브랜치·PR이 "무슨 작업", 커밋이 "어느 모듈"을 말한다.
+
 PR 본문은 "왜 → 무엇 → 어떻게 확인했나 → 어디를 봐야 하나" 순서로 읽힌다.
 각 항목의 주석은 작성 안내다. 렌더링되지 않으니 지우지 않아도 된다.
 규칙: 수치는 실측만 쓰고 시뮬레이션·추정은 그렇게 표기한다. "리뷰에서 잡은 것"은 실제로 있었던 것만 쓴다.
