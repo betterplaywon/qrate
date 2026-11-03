@@ -4,7 +4,7 @@ import type {
   ConversationRepository,
   KnowledgeItem,
   KnowledgeRepository,
-  MessageRole,
+  NewMessage,
   Tenant,
   TenantRepository,
 } from './types.js';
@@ -52,10 +52,10 @@ export class MemoryConversationRepository implements ConversationRepository {
     return conversation && conversation.tenantId === tenantId ? snapshot(conversation) : null;
   }
 
-  async appendMessage(conversationId: string, message: { role: MessageRole; content: string }): Promise<void> {
+  async appendMessage(conversationId: string, message: NewMessage): Promise<void> {
     const conversation = this.byId.get(conversationId);
     if (!conversation) throw new Error(`conversation not found: ${conversationId}`);
-    conversation.messages.push({ ...message, createdAt: new Date() });
+    conversation.messages.push({ role: message.role, content: message.content, createdAt: message.createdAt ?? new Date() });
   }
 }
 
