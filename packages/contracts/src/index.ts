@@ -17,6 +17,7 @@ export {
   type ChatRequestBody,
   type ChatStreamEvent,
   type Citation,
+  type HandoffReason,
   type StopReason,
   type StreamErrorCode,
 } from './chat.js';

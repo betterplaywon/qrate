@@ -154,6 +154,23 @@ test('서버가 재시도 가능하다고 한 실패에만 "다시 보내기"가
   expect(consoleErrors.filter((e) => !e.startsWith('Failed to load resource'))).toEqual([]);
 });
 
+test('모델이 자료에 없는 질문이라고 신호하면 안내 답변 뒤에 상담원 연결 제안이 붙는다', async ({ page, consoleErrors }) => {
+  const frame = await openWidget(page);
+  // [[handoff]] → 목업이 안내 문장만 답하고(인용 없음) event: handoff를 보낸다
+  await send(frame, '[[handoff]] 카카오톡으로 청구서 알림을 보낼 수 있나요?');
+  await expect(finishedAnswers(frame)).toHaveCount(1);
+  const answer = frame.locator('.msg.bot').first();
+  await expect(answer.locator('.text')).toContainText('안내 자료에 없어요');
+  await expect(answer.locator('.sources')).toHaveCount(0);
+
+  // 신호를 받은 대화창은 연결 제안 안내와 버튼을 붙인다. 누르면 지금은 준비 중 안내(실제 연결은 W3)
+  const offer = frame.locator('.msg.notice').last();
+  await expect(offer).toContainText('상담원에게 연결해 드릴까요?');
+  await offer.locator('.notice-action').click();
+  await expect(frame.locator('.msg.notice').last()).toContainText('준비 중');
+  expect(consoleErrors).toEqual([]);
+});
+
 test('닫기는 postMessage로 런처에 전해지고, 닫힌 동안 끝난 답변은 배지로 센다', async ({ page, consoleErrors }) => {
   const frame = await openWidget(page);
   const launcher = page.locator(LAUNCHER);

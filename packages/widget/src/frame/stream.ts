@@ -6,6 +6,7 @@ import {
   parseChatEvent,
   type ChatRequestBody,
   type Citation,
+  type HandoffReason,
   type StopReason,
 } from '@qrate/contracts';
 
@@ -36,6 +37,8 @@ export type ChatEvent =
   | { type: 'moderation' }
   | { type: 'delta'; text: string }
   | { type: 'citation'; citation: SourceCitation }
+  /** 모델이 "자료에 없는 질문"으로 판단해 상담원 연결을 권했다. 안내 문장은 delta로 이미 왔고, 이 사건은 연결로 이어 주는 길을 보이는 신호다. */
+  | { type: 'handoff'; reason: HandoffReason; summary: string | null }
   /** 정상 종료([DONE]). stopReason은 그 앞의 event: done 값이다(없으면 null). */
   | { type: 'end'; stopReason: StopReason | null }
   /** 422 — 모더레이션 차단. 같은 메시지를 다시 보내도 같은 결과다. */
@@ -134,6 +137,9 @@ export async function* streamChat(
             break;
           case 'citation':
             yield { type: 'citation', citation: ev.citation };
+            break;
+          case 'handoff':
+            yield { type: 'handoff', reason: ev.reason, summary: ev.summary };
             break;
           case 'moderation':
             yield { type: 'moderation' };

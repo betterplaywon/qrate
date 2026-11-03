@@ -8,6 +8,7 @@
 //   data: {"delta":"..."}                        답변 조각. event 필드 없음(= message)
 //   event: moderation  data: {level, reasons}    입력이 경고 레벨일 때, 첫 조각 전에 1회
 //   event: citation    data: {...Citation}       인용. 답변 조각 사이에 끼어 온다
+//   event: handoff     data: {reason, summary?}  모델이 "자료에 없는 질문"으로 판단해 상담원 연결을 권함. 답 조각 뒤, done 앞에 최대 1회
 //   event: done        data: {stopReason, ...}   정상 종료 직전의 메타. 토큰 사용량·모델은 보내지 않는다(운영자 정보)
 //   event: error       data: {code, retryable}   스트림 시작 후 실패. 이 뒤에는 [DONE] 없이 연결이 끝난다
 //   data: [DONE]                                  종료 센티널
@@ -57,6 +58,12 @@ export interface ApiErrorBody {
 
 export type StopReason = 'end_turn' | 'max_tokens' | 'refusal' | 'other';
 
+/**
+ * 모델이 상담원 연결을 요청한 이유. not_in_knowledge = 안내 자료에 없는 질문, needs_human = 환불 실행·계정 변경처럼 사람이
+ * 직접 처리해야 하는 요청, out_of_scope = 서비스와 무관한 질문. 수신 쪽은 모르는 값을 other로 읽는다.
+ */
+export type HandoffReason = 'not_in_knowledge' | 'needs_human' | 'out_of_scope' | 'other';
+
 /** API가 원문에서 잘라 준 인용. 모델이 만든 문장이 아니라 서버가 넣은 지식 블록의 텍스트다. */
 export interface Citation {
   /** 요청에 넣은 지식 블록들 중 몇 번째인지 (0부터). */
@@ -75,6 +82,8 @@ export type ChatStreamEvent =
   /** 입력이 경고 레벨(응답은 계속된다). 전송 형식에는 level: 'warn'이 함께 실린다 — 차단은 스트림이 시작되지 않으므로. */
   | { type: 'moderation'; reasons: string[] }
   | { type: 'citation'; citation: Citation }
+  /** 모델이 상담원 연결을 권한 턴. 답 조각 뒤, done 앞에 최대 1회. summary는 상담원이 볼 한 줄 요약(없을 수 있다). */
+  | { type: 'handoff'; reason: HandoffReason; summary: string | null }
   | { type: 'done'; stopReason: StopReason; refusalCategory: string | null }
   | { type: 'error'; code: StreamErrorCode | (string & {}); retryable: boolean }
   /** 종료 센티널 data: [DONE] */
@@ -82,6 +91,7 @@ export type ChatStreamEvent =
 
 const DONE_SENTINEL = '[DONE]';
 const STOP_REASONS: readonly string[] = ['end_turn', 'max_tokens', 'refusal', 'other'] satisfies StopReason[];
+const HANDOFF_REASONS: readonly string[] = ['not_in_knowledge', 'needs_human', 'out_of_scope', 'other'] satisfies HandoffReason[];
 
 export function encodeChatEvent(ev: ChatStreamEvent): string {
   switch (ev.type) {
@@ -91,6 +101,8 @@ export function encodeChatEvent(ev: ChatStreamEvent): string {
       return formatSSE('moderation', JSON.stringify({ level: 'warn', reasons: ev.reasons }));
     case 'citation':
       return formatSSE('citation', JSON.stringify(ev.citation));
+    case 'handoff':
+      return formatSSE('handoff', JSON.stringify({ reason: ev.reason, ...(ev.summary ? { summary: ev.summary } : {}) }));
     case 'done':
       return formatSSE(
         'done',
@@ -121,6 +133,14 @@ export function parseChatEvent(raw: SSEEvent): ChatStreamEvent | null {
       const citation = readCitation(data);
       return citation ? { type: 'citation', citation } : null;
     }
+    case 'handoff':
+      if (typeof data.reason !== 'string') return null;
+      return {
+        type: 'handoff',
+        // 서버가 이유를 늘려도 이전 위젯이 깨지지 않게, 모르는 값은 other로 읽는다.
+        reason: HANDOFF_REASONS.includes(data.reason) ? (data.reason as HandoffReason) : 'other',
+        summary: typeof data.summary === 'string' && data.summary ? data.summary : null,
+      };
     case 'done':
       if (typeof data.stopReason !== 'string') return null;
       return {

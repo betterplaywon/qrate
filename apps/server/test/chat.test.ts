@@ -92,6 +92,29 @@ describe('POST /api/chat — SSE 계약', () => {
     expect(source?.blocks).toContain(parsed.citedText);
   });
 
+  it('핸드오프 신호: 안내 조각 뒤 event: handoff{reason, summary} → done(end_turn). 인용은 없고 로그에 handoff가 남는다', async () => {
+    const res = await post({ message: '[[handoff]] 카카오톡으로 청구서 알림을 보낼 수 있나요?', tenant: 'demo' });
+    expect(res.status).toBe(200);
+    const events = parseSSE(await res.text());
+
+    const at = events.findIndex((e) => e.event === 'handoff');
+    expect(at).toBeGreaterThan(0);
+    expect(JSON.parse(events[at]?.data ?? '{}')).toEqual({ reason: 'not_in_knowledge', summary: '목업: 자료에 없는 질문' });
+    // 안내 문장 조각이 신호보다 먼저 온다 — 위젯은 답을 다 그린 뒤 연결 제안을 붙인다
+    expect(events.slice(0, at).every((e) => e.event === 'message')).toBe(true);
+    expect(deltasOf(events.slice(0, at))).toContain('안내 자료에 없어요');
+    expect(events.at(-2)).toEqual({ event: 'done', data: '{"stopReason":"end_turn"}' });
+    expect(events.some((e) => e.event === 'citation')).toBe(false);
+
+    // [[handoff:needs_human]]처럼 이유를 고를 수 있다
+    const human = parseSSE(await (await post({ message: '[[handoff:needs_human]] 환불해 주세요', tenant: 'demo' })).text());
+    expect(JSON.parse(human.find((e) => e.event === 'handoff')?.data ?? '{}')).toMatchObject({ reason: 'needs_human' });
+
+    const log = logs.find((l) => l.handoff === 'not_in_knowledge');
+    expect(log?.outcome).toBe('done');
+    expect(log?.citations).toBe(0);
+  });
+
   it('대화 id를 헤더로 주고, 같은 id로 다시 보내면 이전 턴이 history로 들어간다', async () => {
     const first = await post({ message: '팀 플랜은 몇 명까지인가요?', tenant: 'demo' });
     const conversationId = first.headers.get('x-conversation-id');
@@ -190,12 +213,15 @@ describe('POST /api/chat — SSE 계약', () => {
     });
   });
 
-  it('요청마다 사용량 로그를 남긴다 (정상은 TTFT·대화 id·지식 수, 실패는 errorCode)', () => {
+  it('요청마다 사용량 로그를 남긴다 (정상은 TTFT·대화 id·지식 수·인용 수·handoff, 실패는 errorCode)', () => {
     const ok = logs.find((l) => l.outcome === 'done' && l.stopReason === 'end_turn');
     expect(ok?.engine).toBe('mock');
     expect(ok?.ttftMs).toBeTypeOf('number');
     expect(ok?.conversationId).toBeTruthy();
     expect(ok?.knowledgeItems).toBe(seed.knowledge.length);
+    // 첫 정상 턴('환불 정책 알려줘')은 목업이 인용 1건을 붙이고 핸드오프 신호는 없다
+    expect(ok?.citations).toBe(1);
+    expect(ok?.handoff).toBeNull();
     expect(logs.find((l) => l.errorCode === 'rate_limited')?.outcome).toBe('error');
     expect(logs.find((l) => l.errorCode === 'upstream_unavailable')?.outcome).toBe('error');
   });

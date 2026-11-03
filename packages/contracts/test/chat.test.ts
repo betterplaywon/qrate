@@ -21,6 +21,8 @@ describe('대화 스트림 이벤트 — encode ↔ parse 왕복', () => {
     { type: 'delta', text: '안' },
     { type: 'moderation', reasons: ['warn:ignore\\s+(?:all\\s+)?(?:pre'] },
     { type: 'citation', citation },
+    { type: 'handoff', reason: 'not_in_knowledge', summary: '카카오톡 알림 기능 문의' },
+    { type: 'handoff', reason: 'needs_human', summary: null },
     { type: 'done', stopReason: 'end_turn', refusalCategory: null },
     { type: 'done', stopReason: 'refusal', refusalCategory: 'general_harms' },
     { type: 'error', code: 'rate_limited', retryable: true },
@@ -45,18 +47,35 @@ describe('대화 스트림 이벤트 — encode ↔ parse 왕복', () => {
     expect(encodeChatEvent({ type: 'error', code: 'rate_limited', retryable: true })).toBe(
       'event: error\ndata: {"code":"rate_limited","retryable":true}\n\n',
     );
+    expect(encodeChatEvent({ type: 'handoff', reason: 'not_in_knowledge', summary: null })).toBe(
+      'event: handoff\ndata: {"reason":"not_in_knowledge"}\n\n',
+    );
     expect(encodeChatEvent({ type: 'end' })).toBe('data: [DONE]\n\n');
   });
 });
 
 describe('parseChatEvent — 수신 쪽은 너그럽게 읽는다', () => {
   it('모르는 이벤트·형식이 다른 데이터는 null(건너뛴다)', () => {
-    expect(parseChatEvent({ event: 'handoff', data: '{}' })).toBeNull();
+    expect(parseChatEvent({ event: 'typing', data: '{}' })).toBeNull();
+    expect(parseChatEvent({ event: 'handoff', data: '{}' })).toBeNull(); // reason 없음
     expect(parseChatEvent({ event: 'message', data: 'not json' })).toBeNull();
     expect(parseChatEvent({ event: 'message', data: '{"delta":1}' })).toBeNull();
     expect(parseChatEvent({ event: 'citation', data: '{"sourceId":"x"}' })).toBeNull();
     expect(parseChatEvent({ event: 'error', data: '{"code":"x"}' })).toBeNull();
     expect(parseChatEvent({ event: 'done', data: '[1]' })).toBeNull();
+  });
+
+  it('모르는 handoff reason은 other, summary는 비어 있지 않은 문자열일 때만', () => {
+    expect(parseChatEvent({ event: 'handoff', data: '{"reason":"billing_dispute","summary":5}' })).toEqual({
+      type: 'handoff',
+      reason: 'other',
+      summary: null,
+    });
+    expect(parseChatEvent({ event: 'handoff', data: '{"reason":"needs_human","summary":""}' })).toEqual({
+      type: 'handoff',
+      reason: 'needs_human',
+      summary: null,
+    });
   });
 
   it('모르는 stopReason은 other — 서버가 종료 사유를 늘려도 이전 위젯이 깨지지 않게', () => {

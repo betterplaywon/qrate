@@ -5,9 +5,9 @@
 // 인용과 종료 사유는 위젯에 그대로 전달되는 값이라 전송 계약(@qrate/contracts)의 타입을 그대로 쓴다.
 // 나머지(사용량, 실제 모델, 폴백 여부)는 서버 안에서만 쓰는 정보라 여기서 정의한다. (src/sse.ts가 둘을 나눈다)
 
-import type { Citation, StopReason, StreamErrorCode } from '@qrate/contracts';
+import type { Citation, HandoffReason, StopReason, StreamErrorCode } from '@qrate/contracts';
 
-export type { Citation, StopReason };
+export type { Citation, HandoffReason, StopReason };
 
 /** 프롬프트에 넣을 지식 한 건. blocks 하나가 인용의 최소 단위가 된다. */
 export interface KnowledgeSource {
@@ -44,6 +44,8 @@ export interface Usage {
 export type EngineEvent =
   | { type: 'delta'; text: string }
   | { type: 'citation'; citation: Citation }
+  /** 모델이 신호용 도구 request_handoff를 불렀다(engine/handoff.ts). 답 조각 뒤, done 앞에 최대 1회. */
+  | { type: 'handoff'; reason: HandoffReason; summary: string | null }
   | {
       type: 'done';
       stopReason: StopReason;
