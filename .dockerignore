@@ -1,0 +1,18 @@
+# 빌드 컨텍스트는 레포 루트다 (docker compose의 context: .). Dockerfile이 COPY apps/server 를 하므로
+# 여기서 빼지 않으면 디렉터리 안의 모든 파일이 이미지에 들어간다.
+#
+# 2026-11-03 실제 발생: 이 파일이 없어 .env(API 키 포함)가 서버 이미지 /app/.env 로 복사됐다. docs/reviews.md 참고.
+**/.env
+**/.env.*
+!**/.env.example
+
+.git
+**/node_modules
+**/dist
+**/coverage
+
+# 서버 이미지에 필요 없는 워크스페이스 (Dockerfile은 apps/server 와 루트 메타파일만 COPY한다)
+apps/console
+packages
+scripts
+docs
