@@ -31,7 +31,7 @@ export type ChatTurn =
       /** ok 또는 warn. 경고면 호출자가 답변 앞에 알린다. */
       moderation: ModerationResult;
       knowledgeItems: number;
-      /** 엔진 이벤트. 끝까지 소비되면 답변이 대화에 저장되고, 중간에 실패하거나 끊기면 저장하지 않는다. */
+      /** 엔진 이벤트. 끝까지 소비되면 질문과 답변이 대화에 저장되고, 중간에 실패하거나 끊기면 둘 다 저장하지 않는다. */
       events: AsyncIterable<EngineEvent>;
     };
 
@@ -46,6 +46,9 @@ export function createChatService({ engine, repos }: { engine: AnswerEngine; rep
     engine,
 
     async start({ tenantKey, message, conversationId: requestedId, signal }) {
+      // 질문을 받은 시각. 저장은 답변이 끝난 뒤에 하므로 그때의 시각이 아니라 이 값을 기록한다.
+      const receivedAt = new Date();
+
       // 테넌트 키는 설치 스니펫에 들어가는 공개 식별자다. 여기서는 "있는 테넌트인가"만 본다.
       // "허용된 사이트에서 왔는가"는 두 겹으로 막는다 — 대화창 문서(GET /frame)의 frame-ancestors가 브라우저 쪽에서,
       // 대화 API 앞의 requireOwnOrigin이 서버 쪽에서. (http/frame.ts, origin.ts)
@@ -60,7 +63,6 @@ export function createChatService({ engine, repos }: { engine: AnswerEngine; rep
       const conversation = existing ?? (await repos.conversations.create(tenant.id));
       const history = toHistory(conversation.messages.slice(-HISTORY_MESSAGES));
       const knowledge = await selectKnowledge(repos.knowledge, tenant.id, message);
-      await repos.conversations.appendMessage(conversation.id, { role: 'user', content: message });
 
       // 엔진 호출은 첫 이벤트를 꺼낼 때 시작된다(async generator). 그 시점은 호출자가 정한다.
       const events = engine.stream({ tenantId: tenant.id, tenantName: tenant.name, message, history, knowledge, signal });
@@ -71,19 +73,24 @@ export function createChatService({ engine, repos }: { engine: AnswerEngine; rep
         conversationId: conversation.id,
         moderation,
         knowledgeItems: knowledge.length,
-        events: recordAnswer(events, (answer) =>
-          repos.conversations.appendMessage(conversation.id, { role: 'assistant', content: answer }),
-        ),
+        events: recordTurn(events, async (answer) => {
+          // 질문은 받은 시각으로, 답변은 저장 시각으로. (W3 Postgres에서는 두 insert를 한 트랜잭션으로 묶는다)
+          await repos.conversations.appendMessage(conversation.id, { role: 'user', content: message, createdAt: receivedAt });
+          if (answer) await repos.conversations.appendMessage(conversation.id, { role: 'assistant', content: answer });
+        }),
       };
     },
   };
 }
 
 /**
- * 이벤트를 그대로 흘려보내며 답변을 모으고, 끝까지 받았을 때만 저장한다.
+ * 이벤트를 그대로 흘려보내며 답변을 모으고, 끝까지 받았을 때만 질문과 답변을 함께 저장한다 — 저장 단위는 턴이다.
+ * 질문을 먼저 저장하면 실패한 턴의 질문이 대화에 남고, 위젯이 같은 질문을 다시 보내면("다시 보내기") 두 번 들어간다.
+ * 그래서 실패·중단한 턴은 대화에 아무것도 남기지 않는다. 그 턴의 기록은 사용량 로그(http/chat.ts)가 맡는다.
  * 끊긴 부분 답은 다음 턴의 문맥을 오염시킬 수 있어 저장하지 않는다 — 실패·중단은 예외로 빠져나가므로 저장 줄에 닿지 않는다.
+ * 답변 없이 끝난 턴(정책 거절)은 질문만 저장한다.
  */
-async function* recordAnswer(
+async function* recordTurn(
   events: AsyncIterable<EngineEvent>,
   save: (answer: string) => Promise<void>,
 ): AsyncGenerator<EngineEvent, void, undefined> {
@@ -92,10 +99,10 @@ async function* recordAnswer(
     if (ev.type === 'delta') answer += ev.text;
     yield ev;
   }
-  if (answer) await save(answer);
+  await save(answer);
 }
 
-// API는 첫 메시지가 user여야 한다. 실패한 턴 때문에 잘린 구간이 assistant로 시작하면 그 앞을 버린다.
+// API는 첫 메시지가 user여야 한다. 답변 없이 끝난 턴(거절) 때문에 잘린 구간이 assistant로 시작하면 그 앞을 버린다.
 function toHistory(messages: { role: HistoryTurn['role']; content: string }[]): HistoryTurn[] {
   const start = messages.findIndex((m) => m.role === 'user');
   if (start < 0) return [];

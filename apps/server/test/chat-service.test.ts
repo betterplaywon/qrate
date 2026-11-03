@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createChatService } from '../src/chat/service.js';
 import { MockEngine } from '../src/engine/mock.js';
 import type { EngineEvent } from '../src/engine/types.js';
@@ -88,11 +88,64 @@ describe('대화 유스케이스 — createChatService', () => {
     expect(engine.requests.at(-1)?.history).toEqual([]);
   });
 
-  it('스트림 도중 실패하면 예외가 그대로 나가고 부분 답변은 저장하지 않는다', async () => {
+  it('스트림 도중 실패하면 예외가 그대로 나가고, 질문도 부분 답변도 저장하지 않는다', async () => {
     const { chat, repos } = makeService();
     const turn = await chat.start({ tenantKey: 'demo', message: '[[fail-mid]]', conversationId: null, signal });
     if (turn.status !== 'accepted') throw new Error('expected accepted');
     await expect(drain(turn.events)).rejects.toThrow(/mid-stream/);
+    const saved = await repos.conversations.find(turn.conversationId, seed.tenant.id);
+    expect(saved?.messages).toEqual([]);
+  });
+
+  it('첫 이벤트 전 실패도 대화에 아무것도 남기지 않는다', async () => {
+    const { chat, repos } = makeService();
+    const turn = await chat.start({ tenantKey: 'demo', message: '[[fail:429]]', conversationId: null, signal });
+    if (turn.status !== 'accepted') throw new Error('expected accepted');
+    await expect(drain(turn.events)).rejects.toThrow(/rate limited/);
+    expect((await repos.conversations.find(turn.conversationId, seed.tenant.id))?.messages).toEqual([]);
+  });
+
+  it('실패한 턴을 같은 대화 id로 다시 보내면 실패한 질문은 history에 없고, 대화에는 한 번만 저장된다', async () => {
+    const { chat, repos, engine } = makeService();
+    // 목업의 실패 훅은 메시지 안의 마커라서, 실제 위젯과 달리 재시도 메시지에서는 마커를 뺀다.
+    const failed = await chat.start({ tenantKey: 'demo', message: '환불되나요? [[fail-mid]]', conversationId: null, signal });
+    if (failed.status !== 'accepted') throw new Error('expected accepted');
+    await expect(drain(failed.events)).rejects.toThrow(/mid-stream/);
+
+    // 위젯의 "다시 보내기"는 같은 대화 id로 같은 질문을 다시 보낸다.
+    const retry = await chat.start({ tenantKey: 'demo', message: '환불되나요?', conversationId: failed.conversationId, signal });
+    if (retry.status !== 'accepted') throw new Error('expected accepted');
+    expect(retry.conversationId).toBe(failed.conversationId);
+    const answer = answerOf(await drain(retry.events));
+
+    expect(engine.requests.at(-1)?.history).toEqual([]);
+    const saved = await repos.conversations.find(failed.conversationId, seed.tenant.id);
+    expect(saved?.messages.map((m) => `${m.role}:${m.content}`)).toEqual(['user:환불되나요?', `assistant:${answer}`]);
+  });
+
+  it('질문은 받은 시각으로, 답변은 저장 시각으로 기록된다 (저장은 답변이 끝난 뒤 한꺼번에)', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-03T12:00:00Z') });
+    try {
+      const { chat, repos } = makeService();
+      const turn = await chat.start({ tenantKey: 'demo', message: '요금제가 뭐가 있나요?', conversationId: null, signal });
+      if (turn.status !== 'accepted') throw new Error('expected accepted');
+      vi.setSystemTime(new Date('2026-11-03T12:00:03Z')); // 답변에 3초가 걸렸다고 치자
+      await drain(turn.events);
+
+      const [question, answer] = (await repos.conversations.find(turn.conversationId, seed.tenant.id))?.messages ?? [];
+      expect(question?.createdAt).toEqual(new Date('2026-11-03T12:00:00Z'));
+      expect(answer?.createdAt).toEqual(new Date('2026-11-03T12:00:03Z'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('답변 없이 끝난 턴(정책 거절)은 질문만 저장한다', async () => {
+    const { chat, repos } = makeService();
+    const turn = await chat.start({ tenantKey: 'demo', message: '[[refuse]]', conversationId: null, signal });
+    if (turn.status !== 'accepted') throw new Error('expected accepted');
+    const events = await drain(turn.events);
+    expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'refusal' });
     const saved = await repos.conversations.find(turn.conversationId, seed.tenant.id);
     expect(saved?.messages.map((m) => m.role)).toEqual(['user']);
   });
