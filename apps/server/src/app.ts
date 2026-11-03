@@ -21,12 +21,21 @@ export interface AppOptions {
   repos: Repositories;
   /** 브라우저에 보이는 이 서버의 오리진(scheme://host[:port]). 대화 API는 이 오리진의 문서(iframe)에서 온 요청만 받는다. */
   publicOrigin: string;
+  /** 대화창 앱 정적 파일(app.js·app.css)이 있는 디렉터리. 위젯 패키지의 빌드 산출물 dist/frame. (index.ts가 찾는다) */
+  frameAssetsDir: string;
   sentryEnabled?: boolean;
   /** 테스트에서 로그를 가로채기 위한 주입점. 기본은 stdout JSON 한 줄. */
   logUsage?: UsageLogger;
 }
 
-export function createApp({ engine, repos, publicOrigin, sentryEnabled = false, logUsage }: AppOptions): express.Express {
+export function createApp({
+  engine,
+  repos,
+  publicOrigin,
+  frameAssetsDir,
+  sentryEnabled = false,
+  logUsage,
+}: AppOptions): express.Express {
   const app = express();
   const chat = createChatService({ engine, repos });
 
@@ -37,6 +46,10 @@ export function createApp({ engine, repos, publicOrigin, sentryEnabled = false, 
   app.get('/healthz', (_req, res) => {
     res.json({ ok: true, sentry: sentryEnabled, engine: engine.name, model: engine.model });
   });
+
+  // 대화창 앱의 정적 파일(/frame/app.js 등). 파일 이름에 해시가 없으므로 매번 재검증(ETag)하게 한다 — 배포 뒤 옛 번들이 남지 않게.
+  // /frame 자체(파일 없음)는 아래 문서 핸들러로 넘어간다. redirect: false — 기본값이면 /frame?t= 을 /frame/ 로 돌려보낸다.
+  app.use(FRAME_PATH, express.static(frameAssetsDir, { index: false, redirect: false, maxAge: 0 }));
 
   // 대화창 문서. 어느 고객 사이트가 iframe으로 넣을 수 있는지는 이 응답의 CSP frame-ancestors가 정한다. (http/frame.ts)
   app.get(FRAME_PATH, createFrameHandler({ repos }));

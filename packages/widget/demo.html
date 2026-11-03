@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>호스트 사이트 데모 — 위젯 설치 예시</title>
     <style>
-      /* 일부러 공격적인 전역 스타일: Shadow DOM 격리가 작동하면 위젯은 영향받지 않아야 한다 */
+      /* 일부러 공격적인 전역 스타일: Shadow DOM 격리가 작동하면 런처는 영향받지 않아야 한다 */
       * { font-family: serif !important; color: red; }
       body { max-width: 640px; margin: 40px auto; }
     </style>
@@ -14,16 +14,19 @@
     <h1>가상의 고객 사이트</h1>
     <p>
       이 페이지의 전역 CSS는 모든 글자를 빨간 serif로 만든다.
-      그런데도 우하단 위젯이 멀쩡하다면 Shadow DOM 격리가 작동하는 것이다.
+      그런데도 우하단 런처가 멀쩡하다면 Shadow DOM 격리가, 대화창이 뜬다면 iframe 격리와
+      허용 사이트 검사(CSP frame-ancestors)가 작동하는 것이다.
     </p>
     <p>
       실행 순서:
       <code>pnpm dev</code>(서버) →
       <code>pnpm --filter @qrate/widget build</code> →
-      이 파일을 브라우저로 열기.
+      <code>pnpm --filter @qrate/widget demo</code> →
+      <code>http://localhost:5173/demo.html</code>.
+      파일로 직접 열면(file://) 오리진이 null이라 대화창이 막힌다.
     </p>
 
-    <!-- 고객 사이트에 배포할 설치 스니펫은 이 한 줄이 전부다 -->
+    <!-- 고객 사이트에 배포할 설치 스니펫은 이 한 줄이 전부다. data-endpoint는 위젯 서버가 이 스크립트와 다른 오리진일 때만 적는다(로컬 데모). -->
     <script
       src="./dist/widget.js"
       data-endpoint="http://localhost:8787"

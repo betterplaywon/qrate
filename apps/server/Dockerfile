@@ -19,13 +19,15 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/server/package.json apps/server/
 COPY packages/contracts/package.json packages/contracts/
-# `@qrate/server...`: 서버가 의존하는 워크스페이스 패키지(@qrate/contracts)까지 함께 설치한다.
+COPY packages/widget/package.json packages/widget/
+# `@qrate/server...`: 서버가 의존하는 워크스페이스 패키지(@qrate/contracts, 대화창 자산을 주는 @qrate/widget)까지 함께 설치한다.
 RUN pnpm install --frozen-lockfile --filter @qrate/server...
 COPY packages/contracts packages/contracts
+COPY packages/widget packages/widget
 COPY apps/server apps/server
-# 의존 순서대로 빌드: contracts(dist + 타입 선언) → server. 서버 빌드는 contracts의 dist를 읽는다.
+# 의존 순서대로 빌드: contracts → widget(런처 + 대화창 앱) → server. 서버 빌드는 contracts의 dist를 읽는다.
 RUN pnpm --filter @qrate/server... build
-# 서버 패키지 + 프로덕션 의존성(워크스페이스 패키지 포함)만 /out 으로 추출 (pnpm deploy)
+# 서버 패키지 + 프로덕션 의존성(워크스페이스 패키지는 dist만)을 /out 으로 추출 (pnpm deploy)
 RUN pnpm --filter @qrate/server deploy --prod --legacy /out
 
 FROM node:22-slim AS runtime

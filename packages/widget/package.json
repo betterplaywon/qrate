@@ -4,14 +4,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
-    "build": "vite build",
-    "typecheck": "tsc -p tsconfig.json"
+    "dev:frame": "vite build --watch -c vite.frame.config.ts",
+    "build": "rm -rf dist && vite build && vite build -c vite.frame.config.ts",
+    "demo": "node demo.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@qrate/contracts": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vite": "^7.1.0"
+    "vite": "^7.1.0",
+    "vitest": "^3.2.0"
   }
 }
