@@ -1,4 +1,4 @@
-# CI 게이트: 타입체크·린트·테스트·빌드가 전부 통과해야 머지할 수 있다.
+# CI 게이트: 타입체크·린트·테스트·빌드·브라우저 E2E가 전부 통과해야 머지할 수 있다.
 #
 # 주의: 이 파일만으로는 "게이트"가 아니다. 워크플로우는 결과를 보고할 뿐이고,
 # 실제 강제는 GitHub 저장소 Settings → Branches → Branch protection rule에서
@@ -33,3 +33,18 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+      # 브라우저 E2E(packages/widget/e2e): 방금 빌드한 서버 dist·위젯 dist로 목업 서버와 데모 페이지를 띄워
+      # Chromium에서 런처·대화창 iframe·postMessage·CSP를 확인한다. 하나의 verify 잡에 두어 보호 규칙의 필수 체크에 그대로 포함된다.
+      # Chromium은 매번 받는다 — 캐시 키를 관리하는 것보다 단순하고, 이 저장소의 실행 빈도에선 충분하다.
+      - run: pnpm --filter @qrate/widget exec playwright install --with-deps chromium
+      - run: pnpm e2e
+
+      # 실패한 테스트의 트레이스. `pnpm --filter @qrate/widget exec playwright show-trace <trace.zip>`으로 재생한다.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: packages/widget/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

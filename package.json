@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
+    "e2e": "pnpm --filter @qrate/widget e2e",
     "blog:new": "pnpm --filter @qrate/blog-tools run new",
     "blog:publish": "pnpm --filter @qrate/blog-tools run post"
   },
