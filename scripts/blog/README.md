@@ -18,6 +18,7 @@ pnpm --filter @qrate/blog-tools exec playwright install chromium
 pnpm blog:new "AI 상담 위젯 1주차 — CI 게이트를 코드보다 먼저 세운 이유"
 
 # 2) docs/blog/drafts/ 에서 초안 작성 (면접 질문 답변을 글로 옮기면 그게 곧 초안)
+#    docs/blog/는 .gitignore 대상이다. 글은 초안이든 발행본이든 레포에 올리지 않는다.
 
 # 3) 임시저장(기본) — 티스토리 에디터에서 눈으로 확인 후 발행해도 된다
 pnpm blog:publish docs/blog/drafts/2026-11-05-....md

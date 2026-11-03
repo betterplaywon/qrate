@@ -10,5 +10,8 @@ coverage/
 # 티스토리 로그인 세션 (쿠키 포함 — 유출 시 계정 탈취 가능)
 scripts/blog/.auth/
 
+# 블로그 글(초안·발행본) — 글은 레포에서 관리하지 않는다. 발행 파이프라인 코드(scripts/blog)만 둔다.
+docs/blog/
+
 *.log
 .DS_Store
