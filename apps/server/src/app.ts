@@ -37,6 +37,9 @@ export function createApp({
   logUsage,
 }: AppOptions): express.Express {
   const app = express();
+  // Express 기본 `X-Powered-By: Express` 헤더를 끈다. 서버 구현을 알리는 정보일 뿐 기능이 없고,
+  // 알려진 취약점이 있는 버전을 고르는 데 쓰일 수 있다. (PR #9 컨테이너 점검에서 확인)
+  app.disable('x-powered-by');
   const chat = createChatService({ engine, repos });
 
   // CORS 헤더는 없다 (W1의 전체 허용 `*` 제거 — 테넌트 검증 단계).
