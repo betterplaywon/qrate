@@ -49,4 +49,4 @@ B/C로 간다면 W2 위젯 작업 범위에 로더/iframe 분리를 넣는다.)
 ## 결과 확인 방법
 
 - `packages/widget/demo.html`의 공격적 전역 CSS(`* { font-family: serif !important; color: red }`) 아래에서 위젯 스타일이 유지되는지 — CSS 격리 검증.
-- (B/C 선택 시) 호스트 콘솔에서 `document.querySelector('#sw-widget-host').shadowRoot`로 대화 DOM에 접근 **불가**함을 확인 — 오리진 격리 검증.
+- (B/C 선택 시) 호스트 콘솔에서 `document.querySelector('#qrate-host').shadowRoot`로 대화 DOM에 접근 **불가**함을 확인 — 오리진 격리 검증.

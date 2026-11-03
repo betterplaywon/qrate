@@ -18,11 +18,11 @@ WORKDIR /repo
 # 의존성 메타데이터를 먼저 복사 → 소스만 바뀌면 install 레이어 캐시가 재사용된다.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/server/package.json apps/server/
-RUN pnpm install --frozen-lockfile --filter @sw/server
+RUN pnpm install --frozen-lockfile --filter @qrate/server
 COPY apps/server apps/server
-RUN pnpm --filter @sw/server build
+RUN pnpm --filter @qrate/server build
 # 서버 패키지 + 프로덕션 의존성만 /out 으로 추출 (pnpm deploy)
-RUN pnpm --filter @sw/server deploy --prod --legacy /out
+RUN pnpm --filter @qrate/server deploy --prod --legacy /out
 
 FROM node:22-slim AS runtime
 WORKDIR /app

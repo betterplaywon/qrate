@@ -6,7 +6,7 @@ export default defineConfig({
   build: {
     lib: {
       entry: 'src/index.ts',
-      name: 'SupportWidget',
+      name: 'Qrate',
       formats: ['iife'],
       fileName: () => 'widget.js',
     },

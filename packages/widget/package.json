@@ -1,5 +1,5 @@
 {
-  "name": "@sw/widget",
+  "name": "@qrate/widget",
   "private": true,
   "type": "module",
   "scripts": {

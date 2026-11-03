@@ -63,7 +63,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 function mount(config: WidgetConfig): void {
   const host = el('div');
-  host.id = 'sw-widget-host';
+  host.id = 'qrate-host';
   const root = host.attachShadow({ mode: 'open' });
 
   const style = document.createElement('style');

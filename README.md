@@ -60,9 +60,9 @@ docs/reviews.md   AI 코드 리뷰에서 실제 발견한 문제 기록
 ```bash
 pnpm install
 pnpm dev                              # API 서버 http://localhost:8787
-pnpm --filter @sw/widget build        # 위젯 번들 → packages/widget/dist/widget.js
+pnpm --filter @qrate/widget build        # 위젯 번들 → packages/widget/dist/widget.js
 open packages/widget/demo.html        # 데모 페이지 (서버 켠 상태에서)
-pnpm --filter @sw/console dev         # 운영 콘솔 셸
+pnpm --filter @qrate/console dev         # 운영 콘솔 셸
 
 pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일
 docker compose up --build             # Postgres + 서버 (Docker)
