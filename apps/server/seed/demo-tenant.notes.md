@@ -11,7 +11,7 @@
 1. **사실의 일관성** — 같은 숫자(가격, 인원, 기간)가 항목마다 같은가. 모델은 자료를 그대로 믿으므로 자료끼리 충돌하면 답도 흔들린다.
 2. **블록 단위** — `blocks`의 문단 하나가 인용의 최소 단위다. 한 블록에 서로 다른 사실을 너무 많이 넣으면 인용이 거칠어진다.
 3. **말투** — 위젯 답변은 이 자료의 문장을 근거로 삼는다. 고객에게 보여도 되는 문장인지.
-4. **이름** — `마루인보이스`, `status.maru-invoice.example`은 바꿔도 된다. `tenant.id`/`apiKey`(`demo`)는 위젯 기본값과 맞춰져 있어 바꾸면 `packages/widget/src/index.ts`도 같이 고친다.
+4. **이름** — `마루인보이스`, `status.maru-invoice.example`은 바꿔도 된다. `tenant.id`/`apiKey`(`demo`)는 데모 페이지(`packages/widget/demo.html`)의 `data-tenant`와 맞춰져 있어 바꾸면 같이 고친다(위젯에 기본 테넌트는 없다).
 5. **`allowedOrigins`** — 위젯을 넣을 수 있는 고객 사이트의 오리진 목록이다. `GET /frame` 응답의 CSP `frame-ancestors`에 그대로 들어가 브라우저가 강제하므로, 정규형 `scheme://host[:port]`만 허용되고 경로·끝 슬래시·와일드카드는 시드 로드 때 거부된다. 데모 페이지는 이 목록의 오리진(`http://localhost:5173`)에서 서빙해야 한다 — `file://`로 열면 오리진이 `null`이라 iframe이 막힌다.
 
 ## 의도적으로 비워 둔 주제 (W5 "문서에 없는 질문" 케이스용)

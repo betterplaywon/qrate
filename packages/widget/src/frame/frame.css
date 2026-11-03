@@ -1,0 +1,200 @@
+/* 대화창 문서의 스타일. 이 문서의 CSP(default-src 'self')가 인라인 style을 막으므로 모양은 전부 여기 클래스로 정한다. */
+
+:root {
+  --qrate-blue: #1f6feb;
+  --qrate-border: #d0d7de;
+  --qrate-text: #1f2328;
+  --qrate-muted: #57606a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--qrate-text);
+  background: #fff;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--qrate-blue);
+  color: #fff;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.head-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.handoff,
+.close {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.msgs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.msg {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg.user {
+  margin-left: 48px;
+  color: #fff;
+  background: var(--qrate-blue);
+}
+
+.msg.bot {
+  margin-right: 48px;
+  background: #f6f8fa;
+}
+
+.msg.bot .text {
+  margin: 0;
+}
+
+.msg.bot.partial .text::after {
+  content: ' …';
+  color: var(--qrate-muted);
+}
+
+.msg.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #4d2d00;
+  background: #fff8c5;
+}
+
+.notice-action {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #4d2d00;
+  background: #fff;
+  border: 1px solid #d4a72c;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.notice-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sources {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--qrate-muted);
+}
+
+.sources summary {
+  cursor: pointer;
+}
+
+.source-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.source-title {
+  font-weight: 600;
+}
+
+.quotes {
+  margin: 2px 0 6px;
+  padding-left: 14px;
+}
+
+.quote q {
+  quotes: '“' '”';
+}
+
+.composer {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid var(--qrate-border);
+}
+
+.composer input {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--qrate-border);
+  border-radius: 8px;
+}
+
+.send {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #fff;
+  background: var(--qrate-blue);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* 서버가 대화창 대신 내려주는 안내 문서(허용되지 않은 사이트 등). apps/server/src/http/frame.ts */
+.notice-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--qrate-muted);
+}

@@ -1,6 +1,9 @@
 import { drainSSEBuffer, type SSEEvent } from '@qrate/contracts';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { MockEngine } from '../src/engine/mock.js';
@@ -17,12 +20,16 @@ const engine = new CapturingEngine(new MockEngine(0));
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 // Origin 검사는 글자 비교라서, 서버가 실제로 듣는 주소(임시 포트)와 설정값이 같을 필요가 없다.
 const OWN_ORIGIN = 'http://widget.test';
+// 대화창 자산은 위젯 빌드 산출물이라 테스트에서는 임시 디렉터리에 가짜 app.js를 두고 서빙 규칙(경로·캐시)만 본다.
+const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-frame-'));
+writeFileSync(path.join(frameAssetsDir, 'app.js'), '/* test bundle */');
 
 beforeAll(async () => {
   const app = createApp({
     engine,
     repos: createRepositoriesFromSeed(seed),
     publicOrigin: OWN_ORIGIN,
+    frameAssetsDir,
     logUsage: (entry) => logs.push(entry),
   });
   await new Promise<void>((resolve) => {
@@ -34,6 +41,7 @@ beforeAll(async () => {
 afterAll(
   () =>
     new Promise<void>((resolve) => {
+      rmSync(frameAssetsDir, { recursive: true, force: true });
       server.close(() => resolve());
     }),
 );
@@ -221,8 +229,10 @@ describe('테넌트 검증 — Origin 검사와 대화창 문서(/frame)', () =>
     expect(await res.json()).toEqual({ error: 'tenant is required' });
   });
 
-  it('GET /frame?t=demo → HTML, CSP frame-ancestors는 시드의 allowedOrigins, 캐시 금지', async () => {
-    const res = await fetch(`${baseUrl}/frame?t=demo`);
+  const allowedParent = seed.tenant.allowedOrigins[0] ?? '';
+
+  it('GET /frame?t=demo&o=<허용 사이트> → 대화창 HTML(정적 app.js·app.css 참조), CSP frame-ancestors는 시드의 allowedOrigins, 캐시 금지', async () => {
+    const res = await fetch(`${baseUrl}/frame?t=demo&o=${encodeURIComponent(allowedParent)}`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     expect(res.headers.get('content-security-policy')).toBe(
@@ -230,7 +240,36 @@ describe('테넌트 검증 — Origin 검사와 대화창 문서(/frame)', () =>
     );
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(res.headers.get('x-frame-options')).toBeNull();
-    expect(await res.text()).toContain('<!doctype html>');
+    const html = await res.text();
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('src="/frame/app.js"');
+    expect(html).toContain('href="/frame/app.css"');
+    expect(html).not.toContain('<script>'); // 인라인 스크립트 없음 — CSP default-src 'self'와 맞아야 한다
+  });
+
+  it('GET /frame — o가 없거나 허용 목록 밖이거나 정규형이 아니면 403 안내 HTML, CSP·no-store는 그대로', async () => {
+    for (const query of ['', '&o=http://evil.example', `&o=${encodeURIComponent(allowedParent + '/')}`, '&o=null']) {
+      const res = await fetch(`${baseUrl}/frame?t=demo${query}`);
+      expect(res.status, query).toBe(403);
+      expect(res.headers.get('content-type')).toContain('text/html');
+      expect(res.headers.get('content-security-policy')).toContain('frame-ancestors');
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      const html = await res.text();
+      expect(html).toContain('상담 창을 열 수 없어요');
+      expect(html).not.toContain('app.js');
+    }
+  });
+
+  it('GET /frame/app.js — 대화창 앱 정적 파일을 재검증 캐시로 서빙하고, 없는 파일은 404', async () => {
+    const res = await fetch(`${baseUrl}/frame/app.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('javascript');
+    expect(res.headers.get('cache-control')).toContain('max-age=0');
+    expect(res.headers.get('etag')).toBeTruthy();
+    expect(await res.text()).toBe('/* test bundle */');
+
+    const missing = await fetch(`${baseUrl}/frame/nope.js`);
+    expect(missing.status).toBe(404);
   });
 
   it('GET /frame — 모르는 키는 404, 키가 없으면 400', async () => {

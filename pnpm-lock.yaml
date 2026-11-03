@@ -54,6 +54,9 @@ importers:
       '@qrate/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@qrate/widget':
+        specifier: workspace:*
+        version: link:../../packages/widget
       '@sentry/node':
         specifier: ^10.0.0
         version: 10.78.0(@opentelemetry/core@2.12.0(@opentelemetry/api@1.9.1))
@@ -98,6 +101,9 @@ importers:
       vite:
         specifier: ^7.1.0
         version: 7.3.7(@types/node@22.20.5)(tsx@4.23.15)
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.5)(tsx@4.23.15)
 
   scripts/blog:
     dependencies:

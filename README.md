@@ -37,7 +37,7 @@ SSE 스트리밍 + 크레딧 과금(멱등) + 품질 평가셋 관점에서 처�
 ```
 apps/server         Express 5 + TS — 대화 API(SSE 스트리밍)·입력 모더레이션·답변 엔진·저장소, (W3~) Prisma/PostgreSQL
 apps/console        React + Vite — 운영 콘솔 (W3)
-packages/widget     임베더블 SDK — IIFE 번들, Shadow DOM, fetch 스트림
+packages/widget     임베더블 SDK — 런처(IIFE, Shadow DOM) + 대화창 앱(서버 오리진 iframe, postMessage)
 packages/contracts  서버·위젯이 함께 쓰는 대화 API 계약 — SSE 이벤트 encode/parse, 요청·오류 본문
 scripts/blog        티스토리 발행 파이프라인 (Playwright)
 docs/adr            아키텍처 결정 기록 (직접 작성)
@@ -61,10 +61,10 @@ docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
 ```bash
 pnpm install
 cp apps/server/.env.example apps/server/.env   # ANTHROPIC_API_KEY를 넣으면 실제 모델, 비우면 목업 엔진
-pnpm dev                              # API 서버 http://localhost:8787
-pnpm --filter @qrate/widget build        # 위젯 번들 → packages/widget/dist/widget.js
-open packages/widget/demo.html        # 데모 페이지 (서버 켠 상태에서)
-pnpm --filter @qrate/console dev         # 운영 콘솔 셸
+pnpm dev                              # API 서버 http://localhost:8787 (대화창 iframe 문서·자산도 여기서 나간다)
+pnpm --filter @qrate/widget build     # 런처 widget.js + 대화창 앱 dist/frame/app.js·app.css
+pnpm --filter @qrate/widget demo      # 데모 http://localhost:5173/demo.html — 허용 사이트 오리진에서 서빙 (file://는 막힌다)
+pnpm --filter @qrate/console dev      # 운영 콘솔 셸
 
 pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일
 docker compose up --build             # Postgres + 서버 (Docker)
