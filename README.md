@@ -37,7 +37,7 @@ SSE 스트리밍 + 크레딧 과금(멱등) + 품질 평가셋 관점에서 처�
 ```
 apps/server         Express 5 + TS — 대화 API(SSE 스트리밍)·입력 모더레이션·답변 엔진·저장소, (W3~) Prisma/PostgreSQL
 apps/console        React + Vite — 운영 콘솔 (W3)
-packages/widget     임베더블 SDK — 런처(IIFE, Shadow DOM) + 대화창 앱(서버 오리진 iframe, postMessage)
+packages/widget     임베더블 SDK — 런처(IIFE, Shadow DOM) + 대화창 앱(서버 오리진 iframe, postMessage) + 브라우저 E2E(e2e/)
 packages/contracts  서버·위젯이 함께 쓰는 대화 API 계약 — SSE 이벤트 encode/parse, 요청·오류 본문
 scripts/blog        티스토리 발행 파이프라인 (Playwright)
 docs/adr            아키텍처 결정 기록 (직접 작성)
@@ -66,7 +66,9 @@ pnpm --filter @qrate/widget build     # 런처 widget.js + 대화창 앱 dist/fr
 pnpm --filter @qrate/widget demo      # 데모 http://localhost:5173/demo.html — 허용 사이트 오리진에서 서빙 (file://는 막힌다)
 pnpm --filter @qrate/console dev      # 운영 콘솔 셸
 
-pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일
+pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일 (아래 e2e까지)
+pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 산출물로 목업 서버·데모를 띄워 런처·대화창·postMessage·CSP 확인
+                                      # 처음 한 번: pnpm --filter @qrate/widget exec playwright install chromium. 8787·5173이 비어 있어야 한다
 docker compose up --build             # Postgres + 서버 (Docker)
 ```
 
@@ -76,7 +78,7 @@ docker compose up --build             # Postgres + 서버 (Docker)
 
 - 아키텍처 결정은 [docs/adr](docs/adr)에 직접 작성 — 결정·대안·트레이드오프
 - PR 이름은 주차가 아니라 작업으로 — PR 제목 `<대단위> - <소규모>`, 브랜치는 `<type>/<짧은-설명>`(예: `feat/widget-iframe-split`). 어휘·예시는 [PR 템플릿](.github/pull_request_template.md) 머리말
-- 머지는 CI 게이트(typecheck·lint·test·build) 통과 시에만 — [ci.yml](.github/workflows/ci.yml)
+- 머지는 CI 게이트(typecheck·lint·test·build·브라우저 e2e) 통과 시에만 — [ci.yml](.github/workflows/ci.yml)
 - 결제·인증·SSE·모더레이션 코드는 줄 단위로 읽는다 — [PR 템플릿](.github/pull_request_template.md)
 - AI 생성 코드에서 실제 발견한 문제만 [docs/reviews.md](docs/reviews.md)에 기록
 - 주 1회: [면접 질문 뱅크](docs/interview)에 코드 안 보고 답하기 → 블로그로 발행(`pnpm blog:new`)

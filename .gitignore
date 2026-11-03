@@ -1,6 +1,9 @@
 node_modules/
 dist/
 coverage/
+# Playwright E2E 산출물 (실패 시 트레이스)
+test-results/
+playwright-report/
 
 # 환경변수 — 비밀키는 절대 커밋하지 않는다 (면접 질문: 왜?)
 .env
