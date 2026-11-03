@@ -30,7 +30,7 @@ const THINKING_SETTINGS = ['off', 'low', 'medium', 'high'] as const satisfies re
 const ENGINE_KINDS = ['auto', 'mock', 'claude'] as const satisfies readonly EngineKind[];
 
 // D5 결정(2026-11-02): 기본 Sonnet 5.5 + 사고 끔. 환경변수 한 줄로 교체한다.
-export const DEFAULT_MODEL = 'claude-sonnet-5-5';
+const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = parsePositiveInt(env.PORT, 8787);

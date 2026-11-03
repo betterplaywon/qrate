@@ -2,11 +2,16 @@
 //
 // 왜 인터페이스를 두는가: 실제 모델(Claude)과 목업을 같은 모양으로 바꿔 끼우기 위해서다.
 // CI·테스트는 키 없이 목업으로 돌고, 모델·공급자 교체는 이 계약 뒤에서 일어난다.
-// SSE 전송 형식(src/sse.ts)은 이 이벤트들을 그대로 직렬화한다.
+// 인용과 종료 사유는 위젯에 그대로 전달되는 값이라 전송 계약(@qrate/contracts)의 타입을 그대로 쓴다.
+// 나머지(사용량, 실제 모델, 폴백 여부)는 서버 안에서만 쓰는 정보라 여기서 정의한다. (src/sse.ts가 둘을 나눈다)
 
-/** 프롬프트에 넣을 지식 한 건. blocks 하나가 인용의 최소 단위가 된다. (W2 지식 연결에서 채움) */
+import type { Citation, StopReason, StreamErrorCode } from '@qrate/contracts';
+
+export type { Citation, StopReason };
+
+/** 프롬프트에 넣을 지식 한 건. blocks 하나가 인용의 최소 단위가 된다. */
 export interface KnowledgeSource {
-  /** 안정적인 식별자. 인용의 source 필드로 돌아온다. 예: faq:refund-policy */
+  /** 안정적인 식별자. 인용의 sourceId로 돌아온다. 예: faq:refund-policy */
   id: string;
   title: string;
   blocks: string[];
@@ -22,25 +27,11 @@ export interface EngineRequest {
   /** 시스템 지시에 들어가는 표시 이름. 테넌트별로 고정이어야 캐시 접두사가 유지된다. */
   tenantName: string;
   message: string;
-  /** 이전 턴들. 첫 턴은 반드시 user. (W2에서는 비어 있고, 대화 저장소가 생기면 채운다) */
+  /** 이전 턴들(대화 저장소에서 가져온 최근 메시지). 첫 턴은 반드시 user. */
   history: HistoryTurn[];
   knowledge: KnowledgeSource[];
   /** 클라이언트가 연결을 끊으면 abort된다. 엔진은 즉시 멈춰야 한다. */
   signal: AbortSignal;
-}
-
-export type StopReason = 'end_turn' | 'max_tokens' | 'refusal' | 'other';
-
-/** API가 원문에서 잘라 준 인용. 모델이 만든 문장이 아니라 우리가 넣은 블록의 텍스트다. */
-export interface Citation {
-  /** 요청에 넣은 search_result 블록들 중 몇 번째인지 (0부터). */
-  sourceIndex: number;
-  sourceId: string;
-  title: string;
-  citedText: string;
-  /** 해당 지식의 blocks 배열에서 [blockStart, blockEnd) 범위. */
-  blockStart: number;
-  blockEnd: number;
 }
 
 export interface Usage {
@@ -72,13 +63,8 @@ export interface AnswerEngine {
   stream(req: EngineRequest): AsyncIterable<EngineEvent>;
 }
 
-export type EngineErrorCode =
-  | 'upstream_auth'
-  | 'rate_limited'
-  | 'upstream_unavailable'
-  | 'upstream_bad_request'
-  | 'upstream_error'
-  | 'aborted';
+/** 전송 계약의 실패 코드 + 서버 안에서만 쓰는 aborted(클라이언트가 끊음 — 위젯에 보낼 일이 없다). */
+export type EngineErrorCode = StreamErrorCode | 'aborted';
 
 /** 엔진 실패를 HTTP 응답으로 옮길 수 있는 형태로 정규화한다. 공급자별 예외는 각 엔진이 여기로 변환한다. */
 export class EngineError extends Error {

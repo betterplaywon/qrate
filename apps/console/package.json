@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "echo \"@qrate/console: W3(운영 콘솔)에서 테스트 추가 예정\""
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "react": "^19.1.0",

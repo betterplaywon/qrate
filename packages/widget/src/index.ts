@@ -5,8 +5,16 @@
 // 1) Shadow DOM — 호스트 사이트의 CSS가 위젯을 깨뜨리지 못하고, 위젯 CSS도 밖으로 새지 않는다.
 // 2) IIFE 번들 — 호스트의 빌드 설정과 무관하게 로드된다. (vite.config.ts)
 // 3) fetch + ReadableStream — POST 본문이 필요해 EventSource 대신 선택. (ADR-0002)
+// 서버와의 전송 계약(요청 본문, SSE 이벤트, 오류 본문)은 @qrate/contracts 하나를 서버와 함께 쓴다.
 
-import { drainSSEBuffer } from './sse';
+import {
+  CHAT_PATH,
+  CONVERSATION_ID_HEADER,
+  drainSSEBuffer,
+  parseApiErrorBody,
+  parseChatEvent,
+  type ChatRequestBody,
+} from '@qrate/contracts';
 
 interface WidgetConfig {
   endpoint: string;
@@ -122,12 +130,13 @@ async function streamAnswer(
   addMsg: (cls: 'user' | 'bot' | 'notice', text: string) => HTMLElement,
   msgs: HTMLElement,
 ): Promise<void> {
+  const body: ChatRequestBody = { message, tenant: config.tenant, conversationId };
   let res: Response;
   try {
-    res = await fetch(`${config.endpoint}/api/chat`, {
+    res = await fetch(`${config.endpoint}${CHAT_PATH}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, tenant: config.tenant, conversationId }),
+      body: JSON.stringify(body),
     });
   } catch {
     addMsg('notice', '서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.');
@@ -142,7 +151,7 @@ async function streamAnswer(
     // 첫 조각 전의 실패는 서버가 HTTP 상태 + {error, retryable}로 알린다. (재시도 정책은 위젯 분리 단계에서)
     let retryable = res.status === 503;
     try {
-      retryable = Boolean(((await res.json()) as { retryable?: boolean }).retryable);
+      retryable = parseApiErrorBody(await res.json())?.retryable ?? retryable;
     } catch {
       // 본문이 JSON이 아니면 상태 코드로만 판단한다.
     }
@@ -150,7 +159,7 @@ async function streamAnswer(
     return;
   }
 
-  conversationId = res.headers.get('X-Conversation-Id') ?? conversationId;
+  conversationId = res.headers.get(CONVERSATION_ID_HEADER) ?? conversationId;
 
   const bot = addMsg('bot', '');
   const reader = res.body.getReader();
@@ -166,44 +175,32 @@ async function streamAnswer(
     const { events, rest } = drainSSEBuffer(buffer);
     buffer = rest;
 
-    for (const ev of events) {
-      if (ev.data === '[DONE]') return;
-      if (ev.event === 'moderation') {
-        addMsg('notice', '안내: 메시지가 검토 대상으로 표시되었어요.');
-        continue;
-      }
-      if (ev.event === 'error') {
-        // 스트림 시작 후의 실패. 이 뒤에는 [DONE] 없이 연결이 끝난다.
-        let retryable = false;
-        try {
-          retryable = Boolean((JSON.parse(ev.data) as { retryable?: boolean }).retryable);
-        } catch {
-          // 형식이 다르면 재시도 불가로 본다.
-        }
-        addMsg('notice', retryable ? '답변이 중단됐어요. 잠시 후 다시 시도해 주세요.' : '답변 중 오류가 발생했어요.');
-        return;
-      }
-      if (ev.event === 'done') {
-        try {
-          const { stopReason } = JSON.parse(ev.data) as { stopReason?: string };
-          if (stopReason === 'refusal') addMsg('notice', '이 질문에는 답변을 드릴 수 없어요. 상담원에게 문의해 주세요.');
-          else if (stopReason === 'max_tokens') addMsg('notice', '답변이 길어 잘렸어요.');
-        } catch {
-          // 형식이 다른 done은 무시한다.
-        }
-        continue;
-      }
-      if (ev.event === 'citation') {
-        // 출처 표시는 위젯 분리 단계에서 iframe 대화창에 그린다. 지금은 계약만 받아 둔다.
-        continue;
-      }
-      try {
-        const parsed = JSON.parse(ev.data) as { delta?: string };
-        answer += parsed.delta ?? '';
-        bot.textContent = answer;
-        msgs.scrollTop = msgs.scrollHeight;
-      } catch {
-        // 형식이 다른 이벤트는 무시 — 서버와의 계약은 test/sse.test.ts로 고정한다.
+    for (const raw of events) {
+      // 모르는 이벤트·형식이 다른 데이터는 건너뛴다. 계약은 @qrate/contracts의 테스트가 고정한다.
+      const ev = parseChatEvent(raw);
+      if (!ev) continue;
+      switch (ev.type) {
+        case 'end':
+          return;
+        case 'moderation':
+          addMsg('notice', '안내: 메시지가 검토 대상으로 표시되었어요.');
+          break;
+        case 'error':
+          // 스트림 시작 후의 실패. 이 뒤에는 [DONE] 없이 연결이 끝난다.
+          addMsg('notice', ev.retryable ? '답변이 중단됐어요. 잠시 후 다시 시도해 주세요.' : '답변 중 오류가 발생했어요.');
+          return;
+        case 'done':
+          if (ev.stopReason === 'refusal') addMsg('notice', '이 질문에는 답변을 드릴 수 없어요. 상담원에게 문의해 주세요.');
+          else if (ev.stopReason === 'max_tokens') addMsg('notice', '답변이 길어 잘렸어요.');
+          break;
+        case 'citation':
+          // 출처 표시는 위젯 분리 단계에서 iframe 대화창에 그린다. 지금은 계약만 받아 둔다.
+          break;
+        case 'delta':
+          answer += ev.text;
+          bot.textContent = answer;
+          msgs.scrollTop = msgs.scrollHeight;
+          break;
       }
     }
   }

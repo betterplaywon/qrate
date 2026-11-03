@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moderateInput } from '../src/moderation.js';
+import { moderateInput } from '../src/chat/moderation.js';
 
 describe('moderateInput — 3단계 대응', () => {
   it('일반 문의는 ok', () => {

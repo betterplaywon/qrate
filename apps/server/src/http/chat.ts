@@ -1,12 +1,12 @@
+import { CONVERSATION_ID_HEADER, encodeChatEvent, type ApiErrorBody, type ChatRequestBody } from '@qrate/contracts';
 import type { Request, Response } from 'express';
-import { asEngineError, type AnswerEngine, type EngineEvent, type HistoryTurn, type Usage } from './engine/types.js';
-import { selectKnowledge } from './knowledge/select.js';
-import { moderateInput } from './moderation.js';
-import type { Repositories } from './repo/types.js';
-import { SSE_DONE, formatSSE, sseForEngineEvent } from './sse.js';
+import type { ChatService } from '../chat/service.js';
+import { asEngineError, type EngineEvent, type Usage } from '../engine/types.js';
+import { sseForEngineEvent } from './sse.js';
 
-/** 프롬프트에 넣는 이전 메시지 수 상한. 길어질수록 입력 토큰과 TTFT가 늘어난다. */
-const HISTORY_MESSAGES = 10;
+// POST /api/chat — 대화 유스케이스(chat/service.ts)를 HTTP와 SSE로 옮기는 어댑터.
+// 여기서 정하는 것: 본문 모양 검사(400), 결과 종류 → 상태 코드(404·422), 첫 이벤트 전 실패 → HTTP 상태 + Retry-After,
+// 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 요청 1건의 사용량 로그.
 
 /** 요청 1건의 결과 기록. W4에서 이벤트 로그(DB)로 옮기고, 지금은 stdout JSON 한 줄이다. */
 export interface UsageLogEntry {
@@ -35,64 +35,33 @@ const logToStdout: UsageLogger = (entry) => {
   console.log(JSON.stringify(entry));
 };
 
-interface ChatBody {
-  message?: unknown;
-  tenant?: unknown;
-  conversationId?: unknown;
-}
+/** 요청 본문의 모양은 계약(ChatRequestBody)이지만, 바깥에서 온 값이라 필드마다 unknown으로 받아 검사한다. */
+type ChatBody = Partial<Record<keyof ChatRequestBody, unknown>>;
 
 type DoneEvent = Extract<EngineEvent, { type: 'done' }>;
 
 export interface ChatHandlerDeps {
-  engine: AnswerEngine;
-  repos: Repositories;
+  chat: ChatService;
   logUsage?: UsageLogger;
 }
 
-export function createChatHandler({ engine, repos, logUsage = logToStdout }: ChatHandlerDeps) {
+export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerDeps) {
   return async function handleChat(req: Request, res: Response): Promise<void> {
     const startedAt = Date.now();
     const body = (req.body ?? {}) as ChatBody;
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     // 테넌트 키는 모든 요청이 명시해야 한다. W1의 'demo' 기본값은 테넌트 검증 단계에서 제거했다.
-    const tenantKey = typeof body.tenant === 'string' && body.tenant ? body.tenant : null;
-    const requestedConversationId =
-      typeof body.conversationId === 'string' && body.conversationId ? body.conversationId : null;
+    const tenantKey = nonEmptyString(body.tenant);
+    const requestedConversationId = nonEmptyString(body.conversationId);
 
     if (!message) {
-      res.status(400).json({ error: 'message is required' });
+      res.status(400).json({ error: 'message is required' } satisfies ApiErrorBody);
       return;
     }
     if (!tenantKey) {
-      res.status(400).json({ error: 'tenant is required' });
+      res.status(400).json({ error: 'tenant is required' } satisfies ApiErrorBody);
       return;
     }
-
-    // 테넌트 키는 설치 스니펫에 들어가는 공개 식별자다. 여기서는 "있는 테넌트인가"만 본다(없으면 404).
-    // "허용된 사이트에서 왔는가"는 두 겹으로 막는다 — 대화창 문서(GET /frame)의 frame-ancestors가 브라우저 쪽에서,
-    // 이 라우트 앞의 requireOwnOrigin이 서버 쪽에서. (src/frame.ts, src/origin.ts)
-    const tenant = await repos.tenants.findByKey(tenantKey);
-    if (!tenant) {
-      res.status(404).json({ error: 'unknown_tenant' });
-      return;
-    }
-
-    // 모더레이션은 토큰을 한 글자라도 내보내기 전에 수행한다.
-    const moderation = moderateInput(message);
-    if (moderation.level === 'block') {
-      // 422: 요청 형식은 맞지만 내용 정책 위반. (400과 구분 — 면접 소재)
-      res.status(422).json({ error: 'blocked_by_moderation', reasons: moderation.reasons });
-      return;
-    }
-
-    // 대화: 위젯이 보낸 id가 이 테넌트의 대화면 이어 가고, 없거나 다른 테넌트 것이면 새로 만든다.
-    const existing = requestedConversationId
-      ? await repos.conversations.find(requestedConversationId, tenant.id)
-      : null;
-    const conversation = existing ?? (await repos.conversations.create(tenant.id));
-    const history = toHistory(conversation.messages.slice(-HISTORY_MESSAGES));
-    const knowledge = await selectKnowledge(repos.knowledge, tenant.id, message);
-    await repos.conversations.appendMessage(conversation.id, { role: 'user', content: message });
 
     // 클라이언트가 먼저 끊으면 모델 호출도 즉시 중단한다 — 출력 토큰 비용과 연결 누수를 거기서 멈춘다.
     // req가 아니라 res의 'close'여야 한다. 최신 Node에서 req의 'close'는 요청 본문 수신 완료 시점에 발생한다.
@@ -100,16 +69,18 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
     const abort = new AbortController();
     res.on('close', () => abort.abort());
 
-    const stream = engine.stream({
-      tenantId: tenant.id,
-      tenantName: tenant.name,
-      message,
-      history,
-      knowledge,
-      signal: abort.signal,
-    });
-    const events = stream[Symbol.asyncIterator]();
+    const turn = await chat.start({ tenantKey, message, conversationId: requestedConversationId, signal: abort.signal });
+    if (turn.status === 'unknown_tenant') {
+      res.status(404).json({ error: 'unknown_tenant' } satisfies ApiErrorBody);
+      return;
+    }
+    if (turn.status === 'blocked') {
+      // 422: 요청 형식은 맞지만 내용 정책 위반. (400과 구분 — 면접 소재)
+      res.status(422).json({ error: 'blocked_by_moderation', reasons: turn.reasons } satisfies ApiErrorBody);
+      return;
+    }
 
+    const events = turn.events[Symbol.asyncIterator]();
     let ttftMs: number | null = null;
     const finish = (
       outcome: UsageLogEntry['outcome'],
@@ -118,10 +89,10 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
       logUsage({
         type: 'chat_usage',
         ts: new Date(startedAt).toISOString(),
-        tenant: tenant.id,
-        conversationId: conversation.id,
-        engine: engine.name,
-        model: engine.model,
+        tenant: turn.tenantId,
+        conversationId: turn.conversationId,
+        engine: chat.engine.name,
+        model: chat.engine.model,
         servedBy: detail.done?.servedBy ?? null,
         fallbackUsed: detail.done?.fallbackUsed ?? false,
         outcome,
@@ -129,7 +100,7 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
         errorCode: detail.errorCode ?? null,
         ttftMs,
         durationMs: Date.now() - startedAt,
-        knowledgeItems: knowledge.length,
+        knowledgeItems: turn.knowledgeItems,
         usage: detail.done?.usage ?? null,
       });
     };
@@ -146,7 +117,7 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
       }
       const e = asEngineError(err);
       if (e.retryable) res.setHeader('Retry-After', '2');
-      res.status(e.status).json({ error: e.code, retryable: e.retryable });
+      res.status(e.status).json({ error: e.code, retryable: e.retryable } satisfies ApiErrorBody);
       finish('error', { errorCode: e.code });
       return;
     }
@@ -156,23 +127,19 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     // 위젯은 이 id를 다음 요청에 실어 대화를 이어 간다.
-    res.setHeader('X-Conversation-Id', conversation.id);
+    res.setHeader(CONVERSATION_ID_HEADER, turn.conversationId);
     res.flushHeaders();
 
-    if (moderation.level === 'warn') {
+    if (turn.moderation.level === 'warn') {
       // 경고 레벨은 응답을 계속하되, 위젯과 콘솔이 알 수 있게 첫 조각 전에 별도 이벤트로 알린다.
-      res.write(formatSSE('moderation', moderation));
+      res.write(encodeChatEvent({ type: 'moderation', reasons: turn.moderation.reasons }));
     }
 
     let done: DoneEvent | null = null;
-    let answer = '';
     try {
       for (let r = first; !r.done; r = await events.next()) {
         const ev = r.value;
-        if (ev.type === 'delta') {
-          if (ttftMs === null) ttftMs = Date.now() - startedAt;
-          answer += ev.text;
-        }
+        if (ev.type === 'delta' && ttftMs === null) ttftMs = Date.now() - startedAt;
         if (ev.type === 'done') done = ev;
         res.write(sseForEngineEvent(ev));
       }
@@ -182,23 +149,19 @@ export function createChatHandler({ engine, repos, logUsage = logToStdout }: Cha
         return;
       }
       const e = asEngineError(err);
-      res.write(formatSSE('error', { code: e.code, retryable: e.retryable }));
+      res.write(encodeChatEvent({ type: 'error', code: e.code, retryable: e.retryable }));
       res.end();
       finish('error', { errorCode: e.code });
       return;
     }
 
-    res.write(SSE_DONE);
+    // 여기 닿았으면 유스케이스가 답변을 대화에 저장한 뒤다(chat/service.ts).
+    res.write(encodeChatEvent({ type: 'end' }));
     res.end();
-    // 끝까지 받은 답만 대화에 남긴다. 끊긴 부분 답은 다음 턴의 문맥을 오염시킬 수 있어 저장하지 않는다.
-    if (answer) await repos.conversations.appendMessage(conversation.id, { role: 'assistant', content: answer });
     finish('done', { done });
   };
 }
 
-// API는 첫 메시지가 user여야 한다. 실패한 턴 때문에 잘린 구간이 assistant로 시작하면 그 앞을 버린다.
-function toHistory(messages: { role: HistoryTurn['role']; content: string }[]): HistoryTurn[] {
-  const start = messages.findIndex((m) => m.role === 'user');
-  if (start < 0) return [];
-  return messages.slice(start).map((m) => ({ role: m.role, text: m.content }));
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
 }

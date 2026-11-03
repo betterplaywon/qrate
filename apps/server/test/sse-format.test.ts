@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineEvent } from '../src/engine/types.js';
-import { SSE_DONE, formatSSE, sseForEngineEvent } from '../src/sse.js';
+import { sseForEngineEvent } from '../src/http/sse.js';
+
+// 전송 형식 자체(이벤트 이름·JSON 모양·[DONE])는 @qrate/contracts의 테스트가 고정한다.
+// 여기서는 엔진 이벤트 → 전송 이벤트 변환, 특히 "무엇을 위젯에 보내지 않는가"를 본다.
 
 const zeroUsage = { inputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, outputTokens: 0 };
 
-describe('SSE 직렬화 — 위젯 파서와의 계약', () => {
+describe('엔진 이벤트 직렬화 — 위젯 파서와의 계약', () => {
   it('delta는 event 필드 없이 data만 (기본 이벤트 message)', () => {
     expect(sseForEngineEvent({ type: 'delta', text: '안' })).toBe('data: {"delta":"안"}\n\n');
   });
@@ -49,12 +52,5 @@ describe('SSE 직렬화 — 위젯 파서와의 계약', () => {
     expect(sseForEngineEvent(done)).toBe(
       'event: done\ndata: {"stopReason":"refusal","refusalCategory":"general_harms"}\n\n',
     );
-  });
-
-  it('error 이벤트와 [DONE] 센티널 형식', () => {
-    expect(formatSSE('error', { code: 'rate_limited', retryable: true })).toBe(
-      'event: error\ndata: {"code":"rate_limited","retryable":true}\n\n',
-    );
-    expect(SSE_DONE).toBe('data: [DONE]\n\n');
   });
 });

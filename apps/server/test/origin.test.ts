@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frameCsp } from '../src/frame.js';
+import { frameCsp } from '../src/http/frame.js';
 import { isAllowedOrigin, isOriginString, parseOrigin } from '../src/origin.js';
 
 describe('오리진 문자열 검증 (테넌트 allowedOrigins → CSP 헤더에 그대로 들어간다)', () => {

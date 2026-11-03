@@ -22,7 +22,7 @@ AI 응답은 수 초가 걸리므로 "다 되면 한 번에"가 아니라 토큰
 
 - 전송 형식은 SSE(`text/event-stream`, `data:` 라인, `\n\n` 구분, `[DONE]` 센티널).
 - 수신은 `EventSource`가 아니라 `fetch` + `ReadableStream` 수동 파싱
-  (`packages/widget/src/sse.ts`의 `drainSSEBuffer`).
+  (`packages/contracts/src/sse.ts`의 `drainSSEBuffer` — 서버·위젯이 함께 쓰는 계약 패키지).
 
 ## 스스로 답해볼 유도 질문
 
@@ -41,5 +41,5 @@ AI 응답은 수 초가 걸리므로 "다 되면 한 번에"가 아니라 토큰
 
 ## 결과 확인 방법
 
-- `packages/widget/test/sse.test.ts`가 청크 경계 케이스를 고정한다.
+- `packages/contracts/test/sse.test.ts`가 청크 경계 케이스를, `packages/contracts/test/chat.test.ts`가 이벤트 encode↔parse 왕복을 고정한다.
 - W5 평가셋에서 TTFT(first token time) p50/p95를 측정한다.

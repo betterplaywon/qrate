@@ -1,3 +1,4 @@
+import type { ApiErrorBody } from '@qrate/contracts';
 import type { RequestHandler } from 'express';
 
 // 오리진(origin) = scheme://host[:port]. 브라우저가 "같은 오리진끼리만 자유롭게 통신"하게 두는 경계의 단위다.
@@ -55,7 +56,7 @@ export function isAllowedOrigin(originHeader: string | undefined, ownOrigin: str
 export function requireOwnOrigin(ownOrigin: string): RequestHandler {
   return (req, res, next) => {
     if (!isAllowedOrigin(req.headers.origin, ownOrigin)) {
-      res.status(403).json({ error: 'origin_not_allowed' });
+      res.status(403).json({ error: 'origin_not_allowed' } satisfies ApiErrorBody);
       return;
     }
     next();

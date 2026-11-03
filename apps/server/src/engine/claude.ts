@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AppConfig } from '../config.js';
-import { buildSystemPrompt } from '../prompt.js';
+import { buildSystemPrompt } from './prompt.js';
 import { thinkingParamsFor } from './thinking.js';
 import {
   EngineError,

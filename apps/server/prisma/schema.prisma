@@ -1,7 +1,7 @@
-// W1: 스키마만 확정한다. 클라이언트 연결은 W2(지식 연결)부터:
-//   pnpm --filter @qrate/server add -D prisma && pnpm --filter @qrate/server add @prisma/client
-//   docker compose up db
-//   pnpm --filter @qrate/server exec prisma db push
+// W1에서 스키마만 확정했다. 실제 연결은 W3 첫날(개발 DB 결정, 2026-11-02): Prisma 설치 → docker compose up db →
+// `prisma migrate dev`로 마이그레이션 파일을 레포에 남긴다. 마이그레이션을 시작한 뒤에는 개발 DB에 db push를 쓰지 않는다.
+// W2 서버는 이 스키마를 읽지 않는다 — 저장소 계약(src/repo/types.ts)의 메모리 구현과 시드(seed/)로 돈다.
+// 저장소 계약에는 있지만 여기 없는 것(지식 항목 KnowledgeItem, 테넌트의 allowedOrigins)은 W3 Postgres 구현 때 추가한다.
 
 generator client {
   provider = "prisma-client-js"
@@ -15,8 +15,8 @@ datasource db {
 model Tenant {
   id            String         @id @default(cuid())
   name          String
-  // 위젯 설치 스니펫의 data-tenant 키. 노출되는 식별자이므로 비밀키가 아니다 —
-  // 요청 위조 방지는 W2의 도메인 화이트리스트(CORS)와 함께 설계한다.
+  // 위젯 설치 스니펫의 data-tenant 키. 노출되는 식별자이므로 비밀키가 아니다.
+  // 어느 사이트에서 쓸 수 있는지는 테넌트 검증(Origin 검사 + GET /frame의 frame-ancestors, src/origin.ts)이 막는다.
   apiKey        String         @unique
   createdAt     DateTime       @default(now())
   conversations Conversation[]

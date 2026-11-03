@@ -5,8 +5,7 @@
   "scripts": {
     "new": "tsx src/new-draft.ts",
     "post": "tsx src/publish.ts",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "echo \"@qrate/blog-tools: 수동 발행 도구 — 테스트 대상 아님\""
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",
