@@ -48,7 +48,7 @@ docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
 ## 진행 상황
 
 - [x] W1 기반: 모노레포(pnpm workspace) · CI 게이트(GitHub Actions) · Sentry · Docker · SSE 목업 스트리밍 · 입력 모더레이션(3단계) + 테스트
-- [x] W2 답변 엔진(Claude 스트리밍 · 서버 측 폴백 · 목업 교체) · 지식(FAQ) 전량 주입 + 인용 · 테넌트 검증(Origin 검사 · frame-ancestors) · 위젯 iframe 분리(postMessage · 출처 UI) · 브라우저 E2E · Docker 이미지 정리
+- [x] W2 답변 엔진(Claude 스트리밍 · 서버 측 폴백 · 목업 교체) · 지식(FAQ) 전량 주입 + 인용 · 핸드오프 신호(도구 호출) · 테넌트 검증(Origin 검사 · frame-ancestors) · 위젯 iframe 분리(postMessage · 출처 UI) · 브라우저 E2E · Docker 이미지 정리
 - [ ] W3 운영 콘솔(대화 로그 · 미응답 큐 · 핸드오프)
 - [ ] W4 크레딧 결제(멱등) · 이벤트 로그 · 간단 A/B
 - [ ] W5 응답 품질 평가셋(30케이스) · 실패 사례 기록
