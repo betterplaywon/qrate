@@ -59,6 +59,7 @@ docs/reviews.md   AI 코드 리뷰에서 실제 발견한 문제 기록
 
 ```bash
 pnpm install
+cp apps/server/.env.example apps/server/.env   # ANTHROPIC_API_KEY를 넣으면 실제 모델, 비우면 목업 엔진
 pnpm dev                              # API 서버 http://localhost:8787
 pnpm --filter @qrate/widget build        # 위젯 번들 → packages/widget/dist/widget.js
 open packages/widget/demo.html        # 데모 페이지 (서버 켠 상태에서)
@@ -73,6 +74,7 @@ docker compose up --build             # Postgres + 서버 (Docker)
 구현은 AI 에이전트가, **설계·리뷰·설명 책임은 사람이** 맡는다.
 
 - 아키텍처 결정은 [docs/adr](docs/adr)에 직접 작성 — 결정·대안·트레이드오프
+- 브랜치·PR 이름은 주차가 아니라 작업으로 — 브랜치 `<type>/<대단위>/<소규모>`, PR 제목 `<대단위> - <소규모>`. 어휘·예시는 [PR 템플릿](.github/pull_request_template.md) 머리말
 - 머지는 CI 게이트(typecheck·lint·test·build) 통과 시에만 — [ci.yml](.github/workflows/ci.yml)
 - 결제·인증·SSE·모더레이션 코드는 줄 단위로 읽는다 — [PR 템플릿](.github/pull_request_template.md)
 - AI 생성 코드에서 실제 발견한 문제만 [docs/reviews.md](docs/reviews.md)에 기록
