@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isOriginString } from '../origin.js';
 import { MemoryConversationRepository, MemoryKnowledgeRepository, MemoryTenantRepository } from './memory.js';
 import type { KnowledgeItem, Repositories, Tenant } from './types.js';
 
@@ -43,8 +44,14 @@ export function parseSeed(raw: unknown, source = 'seed'): SeedFile {
   const id = nonEmptyString(t.id) ?? fail('tenant.id');
   const apiKey = nonEmptyString(t.apiKey) ?? fail('tenant.apiKey');
   const name = nonEmptyString(t.name) ?? fail('tenant.name');
-  const allowedOrigins = Array.isArray(t.allowedOrigins) ? t.allowedOrigins : fail('tenant.allowedOrigins 배열 아님');
-  if (!allowedOrigins.every((o) => typeof o === 'string')) return fail('tenant.allowedOrigins 항목이 문자열 아님');
+  if (!Array.isArray(t.allowedOrigins)) return fail('tenant.allowedOrigins 배열 아님');
+  const allowedOrigins = t.allowedOrigins.map((o, i): string => {
+    if (typeof o !== 'string') return fail(`tenant.allowedOrigins[${i}] 문자열 아님`);
+    // CSP frame-ancestors 헤더에 글자 그대로 들어간다. 정규형(scheme://host[:port]) 외의 값은 헤더를 깨뜨리거나
+    // 다른 지시어를 끼워 넣을 수 있어 시드 단계에서 거부한다. W3 콘솔의 입력 검증도 같은 isOriginString을 쓴다.
+    if (!isOriginString(o)) return fail(`tenant.allowedOrigins[${i}] 정규형 오리진 아님: ${o}`);
+    return o;
+  });
 
   if (!Array.isArray(raw.knowledge) || raw.knowledge.length === 0) return fail('knowledge 비어 있음');
   const seen = new Set<string>();
@@ -61,7 +68,7 @@ export function parseSeed(raw: unknown, source = 'seed'): SeedFile {
     return { id: kid, title, category, blocks };
   });
 
-  return { tenant: { id, apiKey, name, allowedOrigins: allowedOrigins as string[] }, knowledge };
+  return { tenant: { id, apiKey, name, allowedOrigins }, knowledge };
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

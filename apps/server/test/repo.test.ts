@@ -30,6 +30,13 @@ describe('시드 로더', () => {
     );
     expect(() => parseSeed({ tenant: { ...tenant, apiKey: '' }, knowledge: [] })).toThrow(/apiKey/);
   });
+
+  it('allowedOrigins는 정규형 오리진만 — CSP 헤더에 그대로 들어가므로', () => {
+    const knowledge = [{ id: 'a', title: 'A', category: 'c', blocks: ['x'] }];
+    const tenant = { id: 't', apiKey: 'k', name: '테스트', allowedOrigins: ['https://shop.example.com/'] };
+    expect(() => parseSeed({ tenant, knowledge })).toThrow(/allowedOrigins\[0\]/);
+    expect(() => parseSeed({ tenant: { ...tenant, allowedOrigins: ['https://shop.example.com'] }, knowledge })).not.toThrow();
+  });
 });
 
 describe('메모리 저장소 — 계약 (W3의 Postgres 구현에도 같은 테스트를 돌린다)', () => {
