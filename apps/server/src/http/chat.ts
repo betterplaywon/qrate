@@ -155,7 +155,7 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
       return;
     }
 
-    // 여기 닿았으면 유스케이스가 답변을 대화에 저장한 뒤다(chat/service.ts).
+    // 여기 닿았으면 유스케이스가 질문과 답변을 대화에 저장한 뒤다(chat/service.ts).
     res.write(encodeChatEvent({ type: 'end' }));
     res.end();
     finish('done', { done });

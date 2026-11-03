@@ -55,9 +55,10 @@ describe('메모리 저장소 — 계약 (W3의 Postgres 구현에도 같은 테
     expect(await repos.knowledge.listByTenant('other')).toEqual([]);
   });
 
-  it('대화: 만들고 → 메시지 추가 → 같은 테넌트로만 찾는다', async () => {
+  it('대화: 만들고 → 메시지 추가(시각은 넘긴 값, 없으면 저장 시각) → 같은 테넌트로만 찾는다', async () => {
     const created = await repos.conversations.create('demo');
-    await repos.conversations.appendMessage(created.id, { role: 'user', content: '환불되나요?' });
+    const asked = new Date('2026-11-03T12:00:00Z');
+    await repos.conversations.appendMessage(created.id, { role: 'user', content: '환불되나요?', createdAt: asked });
     await repos.conversations.appendMessage(created.id, { role: 'assistant', content: '7일 이내면 됩니다.' });
 
     const found = await repos.conversations.find(created.id, 'demo');
@@ -65,6 +66,8 @@ describe('메모리 저장소 — 계약 (W3의 Postgres 구현에도 같은 테
       'user:환불되나요?',
       'assistant:7일 이내면 됩니다.',
     ]);
+    expect(found?.messages[0]?.createdAt).toEqual(asked);
+    expect(found?.messages[1]?.createdAt.getTime()).toBeGreaterThanOrEqual(asked.getTime());
     expect(await repos.conversations.find(created.id, 'other-tenant')).toBeNull();
     expect(await repos.conversations.find('missing', 'demo')).toBeNull();
   });
