@@ -54,6 +54,13 @@ export type ApiErrorCode =
   | 'payload_too_large'
   | 'not_found'
   | 'internal_error'
+  /** 콘솔 API(console.ts). 로그인 실패(401, 테넌트 없음과 키 틀림을 구분하지 않는다), 세션 없음·만료(401), 시도 초과(429), 쿼리·본문 값 오류(400). */
+  | 'invalid_credentials'
+  | 'unauthorized'
+  | 'too_many_attempts'
+  | 'invalid_limit'
+  | 'invalid_cursor'
+  | 'invalid_status'
   | StreamErrorCode;
 
 export interface ApiErrorBody {

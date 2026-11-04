@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { sortKnowledgeById } from './knowledge-order.js';
 import { compareNewestFirst, decodeCursor, encodeCursor, isAfterCursor, previewOf } from './listing.js';
 import type {
@@ -37,9 +36,16 @@ export class MemoryTenantRepository implements TenantRepository {
   }
 
   async findByKey(apiKey: string): Promise<Tenant | null> {
-    const t = this.byKey.get(apiKey);
-    return t ? { ...t, allowedOrigins: [...t.allowedOrigins] } : null;
+    return copyTenant(this.byKey.get(apiKey));
   }
+
+  async findById(id: string): Promise<Tenant | null> {
+    return copyTenant([...this.byKey.values()].find((t) => t.id === id));
+  }
+}
+
+function copyTenant(t: Tenant | undefined): Tenant | null {
+  return t ? { ...t, allowedOrigins: [...t.allowedOrigins] } : null;
 }
 
 export class MemoryKnowledgeRepository implements KnowledgeRepository {
@@ -161,8 +167,17 @@ export class MemoryHandoffRepository implements HandoffRepository {
   }
 }
 
+/**
+ * 핸드오프 id — 같은 밀리초에 두 건이 생겨도 뒤의 것이 더 큰 문자열이 되게(시각 base36 + 프로세스 카운터).
+ * 큐 정렬의 tie-break가 id 내림차순이라, Postgres의 cuid(시각 + 카운터)처럼 저장 순서를 그대로 보존해야 두 구현의 결과가 같다.
+ */
+const nextHandoffId = (() => {
+  let counter = 0;
+  return (): string => `m${Date.now().toString(36).padStart(9, '0')}${(counter++).toString(36).padStart(6, '0')}`;
+})();
+
 function newHandoff(fields: Pick<HandoffRecord, 'source' | 'reason' | 'summary' | 'contact'>, now: Date): HandoffRecord {
-  return { id: randomUUID(), ...fields, status: 'open', createdAt: now, updatedAt: now };
+  return { id: nextHandoffId(), ...fields, status: 'open', createdAt: now, updatedAt: now };
 }
 
 function toQueueItem(c: Conversation, h: HandoffRecord): HandoffQueueItem {

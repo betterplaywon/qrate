@@ -2,20 +2,32 @@
   "name": "@qrate/console",
   "private": true,
   "type": "module",
+  "description": "운영 콘솔 — 서버가 /console/ 로 서빙하는 정적 React 앱. API 계약은 @qrate/contracts/console.ts",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "typecheck": "tsc -p tsconfig.json"
+    "build": "rm -rf dist && vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "playwright test"
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "@qrate/contracts": "workspace:*"
   },
   "devDependencies": {
+    "@hookform/resolvers": "7.0.2",
+    "@playwright/test": "^1.64.1",
+    "@tanstack/react-query": "5.105.3",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "ky": "2.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-hook-form": "7.91.0",
     "typescript": "^5.9.3",
-    "vite": "^7.1.0"
+    "vite": "^7.1.0",
+    "zod": "4.6.7"
   }
 }

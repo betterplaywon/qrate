@@ -32,6 +32,8 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect(tenant?.name).toBeTruthy();
       expect(tenant?.allowedOrigins).toContain('http://localhost:5173');
       expect(await ctx.repos.tenants.findByKey('nope')).toBeNull();
+      expect((await ctx.repos.tenants.findById(ctx.tenantId))?.apiKey).toBe('demo');
+      expect(await ctx.repos.tenants.findById('nope')).toBeNull();
     });
 
     it('지식: 테넌트별로, id 오름차순 고정 (프롬프트 캐시 접두사가 요청마다 같아야 한다)', async () => {

@@ -1,10 +1,5 @@
-import {
-  CONVERSATION_ID_HEADER,
-  MAX_MESSAGE_CHARS,
-  encodeChatEvent,
-  type ApiErrorBody,
-  type ChatRequestBody,
-} from '@qrate/contracts';
+import { CONVERSATION_ID_HEADER, encodeChatEvent, type ApiErrorBody, type ApiErrorCode } from '@qrate/contracts';
+import { chatRequestSchema } from '@qrate/contracts/schemas';
 import type { Request, Response } from 'express';
 import type { ChatService } from '../chat/service.js';
 import {
@@ -53,9 +48,6 @@ const logToStdout: UsageLogger = (entry) => {
   console.log(JSON.stringify(entry));
 };
 
-/** 요청 본문의 모양은 계약(ChatRequestBody)이지만, 바깥에서 온 값이라 필드마다 unknown으로 받아 검사한다. */
-type ChatBody = Partial<Record<keyof ChatRequestBody, unknown>>;
-
 type DoneEvent = Extract<EngineEvent, { type: 'done' }>;
 
 export interface ChatHandlerDeps {
@@ -86,25 +78,15 @@ const REPORTED_CODES: ReadonlySet<EngineErrorCode> = new Set(['upstream_auth', '
 export function createChatHandler({ chat, logUsage = logToStdout, reportError = reportToStderr }: ChatHandlerDeps) {
   return async function handleChat(req: Request, res: Response): Promise<void> {
     const startedAt = Date.now();
-    const body = (req.body ?? {}) as ChatBody;
-    const message = typeof body.message === 'string' ? body.message.trim() : '';
-    // 테넌트 키는 모든 요청이 명시해야 한다. W1의 'demo' 기본값은 테넌트 검증 단계에서 제거했다.
-    const tenantKey = nonEmptyString(body.tenant);
-    const requestedConversationId = nonEmptyString(body.conversationId);
-
-    if (!message) {
-      res.status(400).json({ error: 'message is required' } satisfies ApiErrorBody);
+    // 본문 모양은 계약의 zod 스키마(@qrate/contracts/schemas). 메시지 길이 상한은 본문 32kb 상한(app.ts)과 별개다 —
+    // 테넌트 키는 공개값이라 긴 입력은 곧 요청당 입력 토큰 비용이다. 테넌트 키는 모든 요청이 명시한다(W1의 'demo' 기본값은 제거).
+    const parsed = chatRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: chatBodyError(parsed.error.issues) } satisfies ApiErrorBody);
       return;
     }
-    if (message.length > MAX_MESSAGE_CHARS) {
-      // 본문 32kb 상한(app.ts)과 별개로 메시지 자체를 막는다 — 테넌트 키는 공개값이라 긴 입력은 곧 요청당 입력 토큰 비용이다.
-      res.status(400).json({ error: 'message_too_long' } satisfies ApiErrorBody);
-      return;
-    }
-    if (!tenantKey) {
-      res.status(400).json({ error: 'tenant is required' } satisfies ApiErrorBody);
-      return;
-    }
+    const { message, tenant: tenantKey } = parsed.data;
+    const requestedConversationId = parsed.data.conversationId || null;
 
     // 클라이언트가 먼저 끊으면 모델 호출도 즉시 중단한다 — 출력 토큰 비용과 연결 누수를 거기서 멈춘다.
     // req가 아니라 res의 'close'여야 한다. 최신 Node에서 req의 'close'는 요청 본문 수신 완료 시점에 발생한다.
@@ -218,6 +200,10 @@ export function createChatHandler({ chat, logUsage = logToStdout, reportError = 
   };
 }
 
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value ? value : null;
+/** 스키마 위반 → 계약의 오류 코드. 메시지 문제가 테넌트 문제보다 먼저고, 너무 긴 메시지는 따로 알린다(위젯이 안내 문구를 나눈다). */
+function chatBodyError(issues: readonly { path: PropertyKey[]; code: string }[]): ApiErrorCode {
+  const message = issues.filter((i) => i.path[0] === 'message');
+  if (message.some((i) => i.code === 'too_big')) return 'message_too_long';
+  if (message.length > 0) return 'message is required';
+  return 'tenant is required';
 }

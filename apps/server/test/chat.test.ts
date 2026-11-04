@@ -294,6 +294,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
           findByKey: async () => {
             throw new Error('db down');
           },
+          findById: async () => null,
         },
       },
       publicOrigin: OWN_ORIGIN,

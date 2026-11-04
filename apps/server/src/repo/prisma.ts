@@ -41,11 +41,16 @@ export class PrismaTenantRepository implements TenantRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async findByKey(apiKey: string): Promise<Tenant | null> {
-    const t = await this.prisma.tenant.findUnique({ where: { apiKey } });
-    return t
-      ? { id: t.id, apiKey: t.apiKey, name: t.name, allowedOrigins: t.allowedOrigins, consoleKeyHash: t.consoleKeyHash }
-      : null;
+    return toTenant(await this.prisma.tenant.findUnique({ where: { apiKey } }));
   }
+
+  async findById(id: string): Promise<Tenant | null> {
+    return toTenant(await this.prisma.tenant.findUnique({ where: { id } }));
+  }
+}
+
+function toTenant(t: Prisma.TenantGetPayload<object> | null): Tenant | null {
+  return t ? { id: t.id, apiKey: t.apiKey, name: t.name, allowedOrigins: t.allowedOrigins, consoleKeyHash: t.consoleKeyHash } : null;
 }
 
 export class PrismaKnowledgeRepository implements KnowledgeRepository {

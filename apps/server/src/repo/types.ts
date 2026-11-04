@@ -4,7 +4,9 @@
 // 메모리 구현은 W3 이후에도 단위 테스트용으로 남기고, 두 구현에 같은 계약 테스트를 돌린다.
 // 메모리 구현은 UNIQUE 제약·트랜잭션·정렬 규칙에서 실제 DB와 다를 수 있다 — 계약 테스트가 그 차이를 잡는다.
 
-import type { HandoffReason } from '@qrate/contracts';
+import type { HandoffReason, HandoffSource, HandoffStatus } from '@qrate/contracts';
+
+export type { HandoffSource, HandoffStatus };
 
 export interface Tenant {
   id: string;
@@ -34,12 +36,6 @@ export interface ConversationMessage {
   createdAt: Date;
 }
 
-/** 요청의 입구. model = 엔진의 request_handoff 도구(engine/handoff.ts), visitor = 대화창의 "상담원 연결" 버튼. */
-export type HandoffSource = 'model' | 'visitor';
-/** 콘솔 큐의 상태. 운영자가 옮긴다. 전이 제한은 없다(되돌리기 포함). */
-export type HandoffStatus = 'open' | 'in_progress' | 'done';
-export const HANDOFF_STATUSES: readonly HandoffStatus[] = ['open', 'in_progress', 'done'];
-
 /** 상담원 연결 요청 = 미응답 큐의 항목(콘솔 결정 2026-11-04: 큐에는 이 행만 들어간다). */
 export interface HandoffRecord {
   id: string;
@@ -63,7 +59,10 @@ export interface Conversation {
 }
 
 export interface TenantRepository {
+  /** 위젯·로그인이 쓰는 공개 키로 찾기. */
   findByKey(apiKey: string): Promise<Tenant | null>;
+  /** 세션에 든 id로 찾기(콘솔). */
+  findById(id: string): Promise<Tenant | null>;
 }
 
 export interface KnowledgeRepository {

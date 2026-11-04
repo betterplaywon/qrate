@@ -25,15 +25,17 @@ COPY apps/server/package.json apps/server/prisma.config.ts apps/server/
 COPY apps/server/prisma apps/server/prisma
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/widget/package.json packages/widget/
-# `@qrate/server...`: 서버가 의존하는 워크스페이스 패키지(@qrate/contracts, 대화창 자산을 주는 @qrate/widget)까지 함께 설치한다.
+COPY apps/console/package.json apps/console/
+# `@qrate/server...`: 서버가 의존하는 워크스페이스 패키지(@qrate/contracts, 대화창 자산을 주는 @qrate/widget, 콘솔 앱 @qrate/console)까지 함께 설치한다.
 RUN pnpm install --frozen-lockfile --filter @qrate/server...
 COPY packages/contracts packages/contracts
 COPY packages/widget packages/widget
+COPY apps/console apps/console
 COPY apps/server apps/server
-# 의존 순서대로 빌드: contracts → widget(런처 + 대화창 앱) → server. 서버 빌드는 contracts의 dist를 읽는다.
+# 의존 순서대로 빌드: contracts → widget(런처 + 대화창 앱)·console(운영 콘솔) → server. 서버 빌드는 contracts의 dist를 읽는다.
 RUN pnpm --filter @qrate/server... build
 # 서버 패키지 + 프로덕션 의존성을 /out 으로 추출 (pnpm deploy). 각 패키지에서 package.json의 files에 적힌 것만 담는다 —
-# 서버는 dist·seed, 워크스페이스 패키지(contracts·widget)는 dist. src·test·tsconfig·prisma·.env.example은 빌드 스테이지에만 남는다.
+# 서버는 dist·seed, 워크스페이스 패키지(contracts·widget·console)는 dist(콘솔의 react는 devDependency라 번들에만 있다). src·test·tsconfig·prisma·.env.example은 빌드 스테이지에만 남는다.
 # Prisma 클라이언트는 dist/generated(tsc가 함께 컴파일)와 @prisma/client 런타임(프로덕션 의존성)으로 돈다 — CLI·스키마 엔진은 필요 없다.
 # 마이그레이션·시드는 이 빌드 스테이지를 compose의 migrate 서비스가 그대로 실행한다(docker-compose.yml).
 RUN pnpm --filter @qrate/server deploy --prod --legacy /out
