@@ -3,6 +3,7 @@
 //   POST /api/chat   본문 ChatRequestBody. 성공이면 SSE 스트림(ChatStreamEvent의 연속)과 응답 헤더 X-Conversation-Id.
 //                    첫 이벤트 전에 실패하면 HTTP 상태 + ApiErrorBody(재시도 가능하면 Retry-After 헤더).
 //   GET  /frame?t=   대화창 문서. 테넌트 키가 없으면 400, 모르는 키면 404 (ApiErrorBody).
+//   그 밖의 실패 — 본문을 읽을 수 없음(400·413), 모르는 경로(404), 처리 중 예외(500) — 도 ApiErrorBody로 답한다.
 //
 // 스트림 이벤트의 전송 형식 (encodeChatEvent ↔ parseChatEvent):
 //   data: {"delta":"..."}                        답변 조각. event 필드 없음(= message)
@@ -19,6 +20,8 @@
 import { formatSSE, type SSEEvent } from './sse.js';
 
 export const CHAT_PATH = '/api/chat';
+/** 메시지 한 건의 최대 길이(UTF-16 코드 단위). 서버는 넘으면 400 message_too_long, 대화창 입력은 같은 값으로 maxLength를 건다. */
+export const MAX_MESSAGE_CHARS = 2000;
 export const FRAME_PATH = '/frame';
 /** 서버가 첫 응답 헤더로 알려 주는 대화 id. 다음 요청 본문의 conversationId에 실으면 이전 턴이 문맥으로 들어간다. */
 export const CONVERSATION_ID_HEADER = 'X-Conversation-Id';
@@ -45,6 +48,12 @@ export type ApiErrorCode =
   | 'unknown_tenant'
   | 'origin_not_allowed'
   | 'blocked_by_moderation'
+  | 'message_too_long'
+  /** 본문이 JSON이 아니거나 읽을 수 없음(400), 32kb 초과(413), 모르는 경로(404), 처리 중 예외(500). */
+  | 'invalid_json'
+  | 'payload_too_large'
+  | 'not_found'
+  | 'internal_error'
   | StreamErrorCode;
 
 export interface ApiErrorBody {

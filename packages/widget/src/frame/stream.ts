@@ -78,6 +78,8 @@ export async function* streamChat(
   }
 
   if (res.status === 422) {
+    // 본문(걸린 규칙 id)은 쓰지 않는다. 읽지 않은 본문 스트림을 닫아 연결을 붙잡고 있지 않게 한다.
+    await res.body?.cancel().catch(() => undefined);
     yield { type: 'blocked' };
     return;
   }

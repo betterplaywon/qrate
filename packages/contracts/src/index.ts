@@ -9,6 +9,7 @@ export {
   CHAT_PATH,
   CONVERSATION_ID_HEADER,
   FRAME_PATH,
+  MAX_MESSAGE_CHARS,
   encodeChatEvent,
   parseApiErrorBody,
   parseChatEvent,
