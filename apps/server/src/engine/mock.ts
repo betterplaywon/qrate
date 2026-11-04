@@ -44,7 +44,7 @@ export class MockEngine implements AnswerEngine {
     for (const [i, ch] of [...answer].entries()) {
       req.signal.throwIfAborted();
       if (failMid && i === 5) {
-        throw new EngineError('upstream_unavailable', 503, true, 'mock: mid-stream failure');
+        throw new EngineError('upstream_unavailable', true, 'mock: mid-stream failure');
       }
       yield { type: 'delta', text: ch };
       if (this.delayMs > 0) await sleep(this.delayMs, req.signal);
@@ -74,16 +74,17 @@ export class MockEngine implements AnswerEngine {
   }
 }
 
+/** 훅의 숫자는 상류 상태 코드를 흉내 낸 별칭일 뿐이다. 위젯이 받는 HTTP 상태는 코드에서 http/chat.ts가 정한다. */
 function failureFor(status: number): EngineError {
   switch (status) {
     case 401:
-      return new EngineError('upstream_auth', 502, false, 'mock: upstream auth failure');
+      return new EngineError('upstream_auth', false, 'mock: upstream auth failure');
     case 429:
-      return new EngineError('rate_limited', 503, true, 'mock: rate limited');
+      return new EngineError('rate_limited', true, 'mock: rate limited');
     case 503:
-      return new EngineError('upstream_unavailable', 503, true, 'mock: upstream unavailable');
+      return new EngineError('upstream_unavailable', true, 'mock: upstream unavailable');
     default:
-      return new EngineError('upstream_error', 502, false, `mock: upstream error ${status}`);
+      return new EngineError('upstream_error', false, `mock: upstream error ${status}`);
   }
 }
 

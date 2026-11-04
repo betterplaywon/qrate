@@ -149,28 +149,36 @@ function toStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopReason 
 }
 
 // SDK의 타입 있는 예외를 우리 계약으로 옮긴다. 문자열 매칭은 하지 않는다.
-// 비밀값이 섞일 수 있는 메시지(인증)는 그대로 노출하지 않는다.
-function toEngineError(err: unknown): EngineError {
+// 비밀값이 섞일 수 있는 메시지(인증)는 그대로 노출하지 않는다. 테스트에서 매핑을 고정하려고 export한다.
+export function toEngineError(err: unknown): EngineError {
   if (err instanceof EngineError) return err;
   if (err instanceof Anthropic.APIUserAbortError || isAbortError(err)) {
-    return new EngineError('aborted', 499, false, 'client aborted', { cause: err });
+    return new EngineError('aborted', false, 'client aborted', { cause: err });
   }
   if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
-    return new EngineError('upstream_auth', 502, false, 'upstream rejected credentials', { cause: err });
+    return new EngineError('upstream_auth', false, 'upstream rejected credentials', { cause: err });
   }
   if (err instanceof Anthropic.RateLimitError) {
-    return new EngineError('rate_limited', 503, true, 'upstream rate limited', { cause: err });
+    return new EngineError('rate_limited', true, 'upstream rate limited', { cause: err });
   }
   if (err instanceof Anthropic.BadRequestError || err instanceof Anthropic.UnprocessableEntityError) {
-    return new EngineError('upstream_bad_request', 500, false, err.message, { cause: err });
+    return new EngineError('upstream_bad_request', false, err.message, { cause: err });
   }
   if (err instanceof Anthropic.APIConnectionError || err instanceof Anthropic.InternalServerError) {
-    return new EngineError('upstream_unavailable', 503, true, 'upstream unavailable', { cause: err });
+    return new EngineError('upstream_unavailable', true, 'upstream unavailable', { cause: err });
   }
   if (err instanceof Anthropic.APIError) {
-    return new EngineError('upstream_error', 502, false, err.message, { cause: err });
+    // 스트림 도중의 `event: error`는 SDK가 상태 코드 없는 APIError로 던진다(core/streaming.js). 그래서 위 상태별 클래스에 걸리지 않고
+    // 본문의 type만 남는다. overloaded·api_error는 재시도의 대표 사례라 여기서 가른다.
+    if (err.type === 'overloaded_error' || err.type === 'api_error') {
+      return new EngineError('upstream_unavailable', true, `upstream ${err.type}`, { cause: err });
+    }
+    if (err.type === 'rate_limit_error') {
+      return new EngineError('rate_limited', true, 'upstream rate limited', { cause: err });
+    }
+    return new EngineError('upstream_error', false, err.message, { cause: err });
   }
-  return new EngineError('upstream_error', 502, false, err instanceof Error ? err.message : String(err), {
+  return new EngineError('upstream_error', false, err instanceof Error ? err.message : String(err), {
     cause: err,
   });
 }

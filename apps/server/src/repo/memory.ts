@@ -1,10 +1,11 @@
-import { randomUUID } from 'node:crypto';
 import type {
   Conversation,
+  ConversationMessage,
   ConversationRepository,
   KnowledgeItem,
   KnowledgeRepository,
   NewMessage,
+  NewTurn,
   Tenant,
   TenantRepository,
 } from './types.js';
@@ -41,24 +42,34 @@ export class MemoryKnowledgeRepository implements KnowledgeRepository {
 export class MemoryConversationRepository implements ConversationRepository {
   private readonly byId = new Map<string, Conversation>();
 
-  async create(tenantId: string): Promise<Conversation> {
-    const conversation: Conversation = { id: randomUUID(), tenantId, createdAt: new Date(), messages: [] };
-    this.byId.set(conversation.id, conversation);
-    return snapshot(conversation);
-  }
-
-  async find(id: string, tenantId: string): Promise<Conversation | null> {
+  async find(id: string, tenantId: string, opts: { lastMessages?: number } = {}): Promise<Conversation | null> {
     const conversation = this.byId.get(id);
-    return conversation && conversation.tenantId === tenantId ? snapshot(conversation) : null;
+    if (!conversation || conversation.tenantId !== tenantId) return null;
+    const n = opts.lastMessages;
+    const messages = n === undefined ? conversation.messages : n > 0 ? conversation.messages.slice(-n) : [];
+    return {
+      ...conversation,
+      messages: messages.map((m) => ({ ...m })),
+      handoffs: conversation.handoffs.map((h) => ({ ...h })),
+    };
   }
 
-  async appendMessage(conversationId: string, message: NewMessage): Promise<void> {
-    const conversation = this.byId.get(conversationId);
-    if (!conversation) throw new Error(`conversation not found: ${conversationId}`);
-    conversation.messages.push({ role: message.role, content: message.content, createdAt: message.createdAt ?? new Date() });
+  async appendTurn(conversationId: string, tenantId: string, turn: NewTurn): Promise<void> {
+    const now = new Date();
+    let conversation = this.byId.get(conversationId);
+    if (conversation && conversation.tenantId !== tenantId) {
+      throw new Error(`conversation belongs to another tenant: ${conversationId}`);
+    }
+    if (!conversation) {
+      conversation = { id: conversationId, tenantId, createdAt: turn.question.createdAt ?? now, messages: [], handoffs: [] };
+      this.byId.set(conversation.id, conversation);
+    }
+    conversation.messages.push(toMessage(turn.question, now));
+    if (turn.answer) conversation.messages.push(toMessage(turn.answer, now));
+    if (turn.handoff) conversation.handoffs.push({ reason: turn.handoff.reason, summary: turn.handoff.summary, createdAt: now });
   }
 }
 
-function snapshot(conversation: Conversation): Conversation {
-  return { ...conversation, messages: conversation.messages.map((m) => ({ ...m })) };
+function toMessage(message: NewMessage, now: Date): ConversationMessage {
+  return { role: message.role, content: message.content, createdAt: message.createdAt ?? now };
 }
