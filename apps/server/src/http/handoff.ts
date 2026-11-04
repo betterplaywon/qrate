@@ -1,9 +1,9 @@
 import { type ApiErrorBody, type ApiErrorCode, type HandoffRequestResponse } from '@qrate/contracts';
 import { handoffRequestSchema } from '@qrate/contracts/schemas';
 import express, { type RequestHandler } from 'express';
-import { rateLimit } from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import type { Repositories } from '../repo/types.js';
+import { jsonRateLimit } from './rate-limit.js';
 
 // POST /api/handoff — 방문자의 상담원 연결 요청(계약 @qrate/contracts/handoff.ts). 콘솔 미응답 큐의 source=visitor 항목이 된다.
 //
@@ -14,6 +14,14 @@ import type { Repositories } from '../repo/types.js';
 
 const DEFAULT_REQUEST_LIMIT = { max: 20, windowMs: 60_000 };
 
+/** 어느 항목이 틀렸는지 → 오류 코드. 연락처가 먼저, 그다음 메모, 나머지는 테넌트. */
+function bodyError(issues: readonly { path: PropertyKey[] }[]): ApiErrorCode {
+  const field = issues[0]?.path[0];
+  if (field === 'contact') return 'invalid_contact';
+  if (field === 'message') return 'message_too_long';
+  return 'tenant is required';
+}
+
 export interface HandoffRouteOptions {
   repos: Repositories;
   /** IP당 고정 창 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
@@ -22,15 +30,7 @@ export interface HandoffRouteOptions {
 
 /** Origin 검사 뒤에 붙는 핸들러 묶음: 요율 제한 → JSON 본문 → 처리. */
 export function createHandoffRoute({ repos, requestLimit = DEFAULT_REQUEST_LIMIT }: HandoffRouteOptions): RequestHandler[] {
-  const limiter = rateLimit({
-    windowMs: requestLimit.windowMs,
-    limit: requestLimit.max,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    handler: (_req, res) => {
-      res.status(429).json({ error: 'too_many_requests' } satisfies ApiErrorBody);
-    },
-  });
+  const limiter = jsonRateLimit({ ...requestLimit, code: 'too_many_requests' });
 
   const handler: RequestHandler = async (req, res) => {
     const parsed = handoffRequestSchema.safeParse(req.body ?? {});
@@ -51,11 +51,4 @@ export function createHandoffRoute({ repos, requestLimit = DEFAULT_REQUEST_LIMIT
   };
 
   return [limiter, express.json({ limit: '8kb' }), handler];
-}
-
-function bodyError(issues: readonly { path: PropertyKey[] }[]): ApiErrorCode {
-  const field = issues[0]?.path[0];
-  if (field === 'contact') return 'invalid_contact';
-  if (field === 'message') return 'message_too_long';
-  return 'tenant is required';
 }
