@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { loadConfig, type AppConfig } from './config.js';
+import { hashConsoleKey } from './console/key.js';
 import { createEngine } from './engine/index.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import { createPrismaClient, createPrismaRepositories } from './repo/prisma.js';
@@ -75,8 +76,10 @@ async function createStorage(cfg: AppConfig): Promise<{ repos: Repositories; des
     // 운영에서 메모리 저장소면 대화가 프로세스 재시작 때 사라진다. 막지는 않는다(목업 엔진과 같은 정책) — 로그로 크게 알린다.
     console.warn('[server] WARNING: memory storage in production — DATABASE_URL이 없어 대화가 재시작 때 사라진다');
   }
+  // 콘솔 로그인 키는 시드 파일에 없다(비밀). 환경변수가 있으면 해시해 붙이고, 없으면 콘솔 로그인이 안 되는 채로 뜬다.
+  const consoleKeyHash = cfg.demoConsoleKey ? hashConsoleKey(cfg.demoConsoleKey) : null;
   return {
-    repos: createRepositoriesFromSeed(seed),
-    description: `memory seed tenant=${seed.tenant.id} knowledge=${seed.knowledge.length}`,
+    repos: createRepositoriesFromSeed(seed, { consoleKeyHash }),
+    description: `memory seed tenant=${seed.tenant.id} knowledge=${seed.knowledge.length} console=${consoleKeyHash ? 'on' : 'off (QRATE_DEMO_CONSOLE_KEY 없음)'}`,
   };
 }

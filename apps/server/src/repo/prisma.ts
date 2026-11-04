@@ -7,9 +7,14 @@ import type {
   Conversation,
   ConversationPage,
   ConversationRepository,
+  HandoffPage,
+  HandoffQueueItem,
+  HandoffRepository,
+  HandoffStatus,
   KnowledgeItem,
   KnowledgeRepository,
   NewTurn,
+  NewVisitorHandoff,
   Repositories,
   Tenant,
   TenantRepository,
@@ -28,6 +33,7 @@ export function createPrismaRepositories(prisma: PrismaClient): Repositories {
     tenants: new PrismaTenantRepository(prisma),
     knowledge: new PrismaKnowledgeRepository(prisma),
     conversations: new PrismaConversationRepository(prisma),
+    handoffs: new PrismaHandoffRepository(prisma),
   };
 }
 
@@ -36,7 +42,9 @@ export class PrismaTenantRepository implements TenantRepository {
 
   async findByKey(apiKey: string): Promise<Tenant | null> {
     const t = await this.prisma.tenant.findUnique({ where: { apiKey } });
-    return t ? { id: t.id, apiKey: t.apiKey, name: t.name, allowedOrigins: t.allowedOrigins } : null;
+    return t
+      ? { id: t.id, apiKey: t.apiKey, name: t.name, allowedOrigins: t.allowedOrigins, consoleKeyHash: t.consoleKeyHash }
+      : null;
   }
 }
 
@@ -74,7 +82,7 @@ export class PrismaConversationRepository implements ConversationRepository {
       tenantId: row.tenantId,
       createdAt: row.createdAt,
       messages: messages.map((m) => ({ role: m.role, content: m.content, createdAt: m.createdAt })),
-      handoffs: row.handoffs.map((h) => ({ reason: h.reason, summary: h.summary, createdAt: h.createdAt })),
+      handoffs: row.handoffs.map(toHandoffRecord),
     };
   }
 
@@ -140,25 +148,124 @@ export class PrismaConversationRepository implements ConversationRepository {
       await tx.message.createMany({ data: messages });
       if (turn.handoff) {
         await tx.handoff.create({
-          data: { conversationId, reason: turn.handoff.reason, summary: turn.handoff.summary },
+          data: { tenantId, conversationId, source: 'model', reason: turn.handoff.reason, summary: turn.handoff.summary },
         });
       }
     });
   }
 }
 
+const QUEUE_SELECT = {
+  id: true,
+  tenantId: true,
+  conversationId: true,
+  source: true,
+  reason: true,
+  summary: true,
+  contact: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  conversation: { select: { messages: { where: { role: 'user' }, orderBy: { seq: 'asc' }, take: 1, select: { content: true } } } },
+} satisfies Prisma.HandoffSelect;
+
+type QueueRow = Prisma.HandoffGetPayload<{ select: typeof QUEUE_SELECT }>;
+
+export class PrismaHandoffRepository implements HandoffRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async list(
+    tenantId: string,
+    { status, limit, cursor = null }: { status?: HandoffStatus; limit: number; cursor?: string | null },
+  ): Promise<HandoffPage> {
+    if (limit < 1) throw new RangeError('limit must be >= 1');
+    const after = cursor ? decodeCursor(cursor) : null;
+    // (tenantId, status, createdAt) 인덱스. id(cuid, 소문자 영숫자)의 tie-break는 콜레이션과 무관하다.
+    const rows = await this.prisma.handoff.findMany({
+      where: {
+        tenantId,
+        ...(status ? { status } : {}),
+        ...(after
+          ? { OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }] }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      select: QUEUE_SELECT,
+    });
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return { items: page.map(toQueueItem), nextCursor: rows.length > limit && last ? encodeCursor(last) : null };
+  }
+
+  async updateStatus(id: string, tenantId: string, status: HandoffStatus): Promise<HandoffQueueItem | null> {
+    // 테넌트 경계는 WHERE로 — updateMany는 조건에 맞는 행만 바꾸고 개수를 돌려준다.
+    const { count } = await this.prisma.handoff.updateMany({ where: { id, tenantId }, data: { status } });
+    if (count === 0) return null;
+    const row = await this.prisma.handoff.findFirst({ where: { id, tenantId }, select: QUEUE_SELECT });
+    return row ? toQueueItem(row) : null;
+  }
+
+  async requestByVisitor(conversationId: string, tenantId: string, input: NewVisitorHandoff): Promise<{ id: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const conversation = await tx.conversation.upsert({
+        where: { id: conversationId },
+        create: { id: conversationId, tenantId },
+        update: {},
+        select: { tenantId: true },
+      });
+      if (conversation.tenantId !== tenantId) {
+        throw new Error(`conversation belongs to another tenant: ${conversationId}`);
+      }
+      const created = await tx.handoff.create({
+        data: { tenantId, conversationId, source: 'visitor', reason: 'needs_human', summary: input.summary, contact: input.contact },
+        select: { id: true },
+      });
+      return { id: created.id };
+    });
+  }
+}
+
+function toHandoffRecord(h: Omit<QueueRow, 'conversation' | 'tenantId' | 'conversationId'>) {
+  return {
+    id: h.id,
+    source: h.source,
+    reason: h.reason,
+    summary: h.summary,
+    contact: h.contact,
+    status: h.status,
+    createdAt: h.createdAt,
+    updatedAt: h.updatedAt,
+  };
+}
+
+function toQueueItem(r: QueueRow): HandoffQueueItem {
+  return {
+    ...toHandoffRecord(r),
+    tenantId: r.tenantId,
+    conversationId: r.conversationId,
+    preview: previewOf(r.conversation.messages[0]?.content),
+  };
+}
+
 /**
  * 시드 파일을 DB에 반영한다 — `prisma db seed`(prisma/seed.ts)와 Postgres 계약 테스트가 쓴다.
  * 몇 번을 돌려도 결과가 같다: 테넌트·지식은 upsert, 시드에서 빠진 지식은 지운다. 대화는 건드리지 않는다.
  */
-export async function applySeed(prisma: PrismaClient, seed: SeedFile): Promise<void> {
+export async function applySeed(
+  prisma: PrismaClient,
+  seed: SeedFile,
+  // 콘솔 키 해시는 시드 파일 밖(환경변수)에서 온다. undefined면 DB의 값을 건드리지 않고, null이면 지운다(로그인 불가).
+  { consoleKeyHash }: { consoleKeyHash?: string | null } = {},
+): Promise<void> {
   const { tenant, knowledge } = seed;
   await prisma.$transaction(
     async (tx) => {
+      const fields = { apiKey: tenant.apiKey, name: tenant.name, allowedOrigins: tenant.allowedOrigins };
       await tx.tenant.upsert({
         where: { id: tenant.id },
-        create: { id: tenant.id, apiKey: tenant.apiKey, name: tenant.name, allowedOrigins: tenant.allowedOrigins },
-        update: { apiKey: tenant.apiKey, name: tenant.name, allowedOrigins: tenant.allowedOrigins },
+        create: { id: tenant.id, ...fields, consoleKeyHash: consoleKeyHash ?? null },
+        update: { ...fields, ...(consoleKeyHash === undefined ? {} : { consoleKeyHash }) },
       });
       await tx.knowledgeItem.deleteMany({ where: { tenantId: tenant.id, id: { notIn: knowledge.map((k) => k.id) } } });
       for (const k of knowledge) {

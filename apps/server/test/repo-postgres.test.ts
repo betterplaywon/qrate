@@ -89,6 +89,16 @@ describe.skipIf(!url)('Postgres 저장소', () => {
       }
     });
 
+    it('콘솔 키 해시: 시드가 넘기면 저장, 안 넘기면 그대로, null이면 지움 — 시드 파일에는 비밀이 없다', async () => {
+      const key = () => createPrismaRepositories(prisma).tenants.findByKey(seed.tenant.apiKey).then((t) => t?.consoleKeyHash);
+      await applySeed(prisma, seed, { consoleKeyHash: 'scrypt$salt$hash' });
+      expect(await key()).toBe('scrypt$salt$hash');
+      await applySeed(prisma, seed);
+      expect(await key()).toBe('scrypt$salt$hash');
+      await applySeed(prisma, seed, { consoleKeyHash: null });
+      expect(await key()).toBeNull();
+    });
+
     it('시드는 몇 번을 넣어도 같다 — 바뀐 항목은 덮어쓰고, 빠진 항목은 지운다', async () => {
       const count = () => prisma.knowledgeItem.count({ where: { tenantId: seed.tenant.id } });
       await applySeed(prisma, seed);

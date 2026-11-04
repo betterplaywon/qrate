@@ -13,6 +13,8 @@ export interface Tenant {
   name: string;
   /** 위젯을 넣을 수 있는 사이트. 테넌트 검증 단계에서 frame-ancestors로 강제한다. */
   allowedOrigins: string[];
+  /** 운영 콘솔 로그인 키의 해시(console/key.ts). null이면 콘솔에 로그인할 수 없다. 원문은 어디에도 없다. */
+  consoleKeyHash: string | null;
 }
 
 export interface KnowledgeItem {
@@ -32,11 +34,24 @@ export interface ConversationMessage {
   createdAt: Date;
 }
 
-/** 모델이 상담원 연결을 요청한 기록(engine/handoff.ts). W3 미응답 큐의 입력이다 — 큐의 상태(처리 중·완료)는 그때 붙인다. */
+/** 요청의 입구. model = 엔진의 request_handoff 도구(engine/handoff.ts), visitor = 대화창의 "상담원 연결" 버튼. */
+export type HandoffSource = 'model' | 'visitor';
+/** 콘솔 큐의 상태. 운영자가 옮긴다. 전이 제한은 없다(되돌리기 포함). */
+export type HandoffStatus = 'open' | 'in_progress' | 'done';
+export const HANDOFF_STATUSES: readonly HandoffStatus[] = ['open', 'in_progress', 'done'];
+
+/** 상담원 연결 요청 = 미응답 큐의 항목(콘솔 결정 2026-11-04: 큐에는 이 행만 들어간다). */
 export interface HandoffRecord {
+  id: string;
+  source: HandoffSource;
   reason: HandoffReason;
+  /** 모델 신호면 질문 요약, 방문자 요청이면 방문자가 적은 메모. */
   summary: string | null;
+  /** 방문자 요청의 연락처(이메일). 모델 신호에는 없다. */
+  contact: string | null;
+  status: HandoffStatus;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Conversation {
@@ -93,6 +108,33 @@ export interface ConversationPage {
   nextCursor: string | null;
 }
 
+/** 큐의 한 줄: 핸드오프 + 어느 대화의 것인지 + 그 대화의 첫 질문 미리보기. */
+export interface HandoffQueueItem extends HandoffRecord {
+  tenantId: string;
+  conversationId: string;
+  preview: string;
+}
+
+export interface HandoffPage {
+  items: HandoffQueueItem[];
+  nextCursor: string | null;
+}
+
+/** 방문자의 "상담원 연결" 요청. 대화가 아직 없으면(질문 전에 눌렀으면) 빈 대화와 함께 생긴다. */
+export interface NewVisitorHandoff {
+  contact: string;
+  summary: string | null;
+}
+
+export interface HandoffRepository {
+  /** 테넌트의 요청을 최근순(createdAt·id 내림차순)으로. status를 주면 그 상태만. 커서는 listByTenant와 같은 규칙. */
+  list(tenantId: string, opts: { status?: HandoffStatus; limit: number; cursor?: string | null }): Promise<HandoffPage>;
+  /** 상태 전이. 테넌트 경계 — 다른 테넌트의 id면 못 찾은 것과 같다(null). */
+  updateStatus(id: string, tenantId: string, status: HandoffStatus): Promise<HandoffQueueItem | null>;
+  /** 방문자 요청 접수(source=visitor, reason=needs_human). 대화가 없으면 만들고, 다른 테넌트의 대화면 실패한다. */
+  requestByVisitor(conversationId: string, tenantId: string, input: NewVisitorHandoff): Promise<{ id: string }>;
+}
+
 export interface ConversationRepository {
   /**
    * 테넌트 경계: 다른 테넌트의 대화 id로는 찾을 수 없다.
@@ -116,6 +158,7 @@ export interface Repositories {
   tenants: TenantRepository;
   knowledge: KnowledgeRepository;
   conversations: ConversationRepository;
+  handoffs: HandoffRepository;
 }
 
 /** 목록 커서가 이 구현이 만든 값이 아닐 때. HTTP 계층은 400으로 옮긴다. */
