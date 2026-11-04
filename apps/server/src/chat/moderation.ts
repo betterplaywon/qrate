@@ -38,6 +38,11 @@ const WARN_RULES: readonly Rule[] = [
   { id: 'warn:prompt_injection', pattern: /(?:너|네)의?\s*(?:설정|프롬프트|규칙)\s*(?:을|를)?\s*(?:알려|보여|출력)/ },
 ];
 
+/** 걸린 규칙의 id. 같은 id의 패턴이 여럿 걸려도 한 번만. */
+function matchedRuleIds(rules: readonly Rule[], text: string): string[] {
+  return [...new Set(rules.filter((rule) => rule.pattern.test(text)).map((rule) => rule.id))];
+}
+
 export function moderateInput(text: string): ModerationResult {
   const blocked = matchedRuleIds(BLOCK_RULES, text);
   if (blocked.length > 0) return { level: 'block', reasons: blocked };
@@ -46,9 +51,4 @@ export function moderateInput(text: string): ModerationResult {
   if (warned.length > 0) return { level: 'warn', reasons: warned };
 
   return { level: 'ok', reasons: [] };
-}
-
-/** 걸린 규칙의 id. 같은 id의 패턴이 여럿 걸려도 한 번만. */
-function matchedRuleIds(rules: readonly Rule[], text: string): string[] {
-  return [...new Set(rules.filter((rule) => rule.pattern.test(text)).map((rule) => rule.id))];
 }

@@ -1,5 +1,6 @@
 import {
   CONSOLE_API_PATH,
+  parseApiErrorBody,
   type ConsoleLoginBody,
   type ConsoleSessionResponse,
   type ConversationDetailResponse,
@@ -27,13 +28,9 @@ export class ApiError extends Error {
 
 const client = ky.create({ prefix: CONSOLE_API_PATH, retry: 0, headers: { accept: 'application/json' } });
 
+/** ky가 미리 읽어 둔 오류 본문(error.data)에서 계약의 오류 코드를. 계약 모양이 아니면(프록시 오류 페이지 등) unknown_error. */
 function toApiError(err: HTTPError): ApiError {
-  const body: unknown = err.data;
-  const code =
-    typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string'
-      ? (body as { error: string }).error
-      : 'unknown_error';
-  return new ApiError(err.response.status, code);
+  return new ApiError(err.response.status, parseApiErrorBody(err.data)?.error ?? 'unknown_error');
 }
 
 async function run<T>(request: Promise<T>): Promise<T> {

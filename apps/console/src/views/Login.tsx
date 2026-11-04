@@ -7,19 +7,20 @@ import { useLogin } from '../queries';
 // 로그인 = 테넌트 키(위젯 설치 스니펫의 data-tenant 값) + 콘솔 비밀키. 세션은 서버가 HttpOnly 쿠키로 준다 — 스크립트는 토큰을 만지지 않는다.
 // 폼 상태는 react-hook-form, 입력 검사는 서버와 같은 zod 스키마(@qrate/contracts/schemas)다.
 
+/** 서버 응답 → 사람이 읽을 문구. 상태 코드별로 하나씩. */
+function loginErrorMessage(error: unknown): string | null {
+  if (!error) return null;
+  if (error instanceof ApiError && error.status === 401) return '테넌트 키 또는 콘솔 키가 맞지 않아요.';
+  if (error instanceof ApiError && error.status === 429) return '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.';
+  return '서버에 연결할 수 없어요.';
+}
+
 export function Login() {
   const login = useLogin();
   const form = useForm<ConsoleLoginInput>({ resolver: zodResolver(consoleLoginSchema), defaultValues: { tenant: '', key: '' } });
   const { errors, isSubmitting } = form.formState;
-
-  const serverError =
-    login.error instanceof ApiError && login.error.status === 401
-      ? '테넌트 키 또는 콘솔 키가 맞지 않아요.'
-      : login.error instanceof ApiError && login.error.status === 429
-        ? '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.'
-        : login.error
-          ? '서버에 연결할 수 없어요.'
-          : null;
+  const busy = isSubmitting || login.isPending;
+  const serverError = loginErrorMessage(login.error);
 
   return (
     <main className="login">
@@ -41,8 +42,8 @@ export function Login() {
             {serverError}
           </p>
         )}
-        <button type="submit" disabled={isSubmitting || login.isPending}>
-          {isSubmitting || login.isPending ? '확인하는 중…' : '로그인'}
+        <button type="submit" disabled={busy}>
+          {busy ? '확인하는 중…' : '로그인'}
         </button>
       </form>
     </main>

@@ -12,7 +12,8 @@
     "noEmit": true,
     "customConditions": [
       "source"
-    ]
+    ],
+    "noUncheckedSideEffectImports": true
   },
   "include": [
     "src",

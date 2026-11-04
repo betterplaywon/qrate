@@ -1,3 +1,5 @@
+import { LoadMore } from '../components/LoadMore';
+import { QueryBoundary } from '../components/QueryBoundary';
 import { formatTime } from '../labels';
 import { useConversations } from '../queries';
 import { href } from '../route';
@@ -6,24 +8,26 @@ import { href } from '../route';
 
 export function ConversationList() {
   const list = useConversations();
-  const items = list.data?.pages.flatMap((p) => p.items);
+  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
     <section>
       <div className="section-head">
         <h2>대화 로그</h2>
       </div>
-      {list.isPending ? (
-        <p className="status">불러오는 중…</p>
-      ) : list.isError ? (
-        <p className="status error">대화 로그를 불러오지 못했어요.</p>
-      ) : items && items.length === 0 ? (
-        <p className="status" data-testid="conversations-empty">
-          아직 대화가 없어요. 위젯에서 질문이 오면 여기 쌓여요.
-        </p>
-      ) : (
+      <QueryBoundary
+        pending={list.isPending}
+        error={list.isError && '대화 로그를 불러오지 못했어요.'}
+        empty={
+          items.length === 0 && (
+            <p className="status" data-testid="conversations-empty">
+              아직 대화가 없어요. 위젯에서 질문이 오면 여기 쌓여요.
+            </p>
+          )
+        }
+      >
         <ul className="list" data-testid="conversation-list">
-          {items?.map((c) => (
+          {items.map((c) => (
             <li key={c.id} className="row" data-testid="conversation-item">
               <a className="row-main" href={href.conversation(c.id)}>
                 <div className="row-top">
@@ -38,12 +42,8 @@ export function ConversationList() {
             </li>
           ))}
         </ul>
-      )}
-      {list.hasNextPage && (
-        <button type="button" className="ghost more" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-          더 보기
-        </button>
-      )}
+      </QueryBoundary>
+      <LoadMore query={list} />
     </section>
   );
 }
