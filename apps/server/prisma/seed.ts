@@ -4,6 +4,16 @@ import { hashConsoleKey } from '../src/console/key.js';
 import { applySeed, createPrismaClient } from '../src/repo/prisma.js';
 import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
 
+/** 로그용 — 비밀번호는 빼고 호스트·DB 이름만. */
+function describeDatabase(databaseUrl: string): string {
+  try {
+    const u = new URL(databaseUrl);
+    return `${u.hostname}${u.port ? `:${u.port}` : ''}${u.pathname}`;
+  } catch {
+    return '(unparseable DATABASE_URL)';
+  }
+}
+
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL이 필요하다 (apps/server/.env 또는 환경변수)');
 
@@ -21,14 +31,4 @@ try {
   }
 } finally {
   await prisma.$disconnect();
-}
-
-/** 로그용 — 비밀번호는 빼고 호스트·DB 이름만. */
-function describeDatabase(databaseUrl: string): string {
-  try {
-    const u = new URL(databaseUrl);
-    return `${u.hostname}${u.port ? `:${u.port}` : ''}${u.pathname}`;
-  } catch {
-    return '(unparseable DATABASE_URL)';
-  }
 }

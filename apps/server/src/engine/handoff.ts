@@ -46,6 +46,10 @@ interface ContentBlockLike {
   input?: unknown;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * 응답 content에서 신호용 도구 호출을 찾아 엔진 이벤트로 만든다. 없으면 null.
  * 입력이 스키마와 달라도 신호 자체는 살린다 — reason은 other, summary는 null. 신호를 잃는 것보다 사유를 잃는 쪽이 낫다.
@@ -60,8 +64,4 @@ export function readHandoff(content: readonly ContentBlockLike[]): Extract<Engin
       : 'other';
   const summary = typeof input.summary === 'string' && input.summary.trim() ? input.summary.trim().slice(0, SUMMARY_MAX) : null;
   return { type: 'handoff', reason, summary };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

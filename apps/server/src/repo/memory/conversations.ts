@@ -3,6 +3,13 @@ import type { Conversation, ConversationPage, ConversationRepository, NewTurn } 
 import { newHandoff, toMessage, toSummary } from './records.js';
 import { MemoryStore } from './store.js';
 
+/** 최근 n개. n이 없으면 전부, 0이면 하나도. */
+function lastMessages<T>(messages: T[], n: number | undefined): T[] {
+  if (n === undefined) return messages;
+  if (n <= 0) return [];
+  return messages.slice(-n);
+}
+
 export class MemoryConversationRepository implements ConversationRepository {
   private readonly byId: Map<string, Conversation>;
 
@@ -49,11 +56,4 @@ export class MemoryConversationRepository implements ConversationRepository {
       conversation.handoffs.push(newHandoff({ source: 'model', reason: turn.handoff.reason, summary: turn.handoff.summary, contact: null }, now));
     }
   }
-}
-
-/** 최근 n개. n이 없으면 전부, 0이면 하나도. */
-function lastMessages<T>(messages: T[], n: number | undefined): T[] {
-  if (n === undefined) return messages;
-  if (n <= 0) return [];
-  return messages.slice(-n);
 }

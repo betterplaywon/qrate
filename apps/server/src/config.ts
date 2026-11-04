@@ -42,6 +42,22 @@ const REPO_KINDS = ['auto', 'memory', 'postgres'] as const satisfies readonly Re
 // D5 결정(2026-11-02): 기본 Sonnet 5.5 + 사고 끔. 환경변수 한 줄로 교체한다.
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
+/** 짧은 비밀은 조용히 받지 않는다 — 오타로 'secret' 같은 값이 들어가면 세션 위조가 쉬워진다. 시작 시점에 실패시킨다. */
+function parseConsoleSecret(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (raw.length < 16) throw new Error('QRATE_CONSOLE_SECRET은 16자 이상이어야 함');
+  return raw;
+}
+
+function parseEnum<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(raw as T) ? (raw as T) : fallback;
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = parsePositiveInt(env.PORT, 8787);
   const thinking = parseEnum(env.QRATE_THINKING, THINKING_SETTINGS, 'off');
@@ -62,20 +78,4 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     demoConsoleKey: env.QRATE_DEMO_CONSOLE_KEY ? env.QRATE_DEMO_CONSOLE_KEY : undefined,
     consoleSecret: parseConsoleSecret(env.QRATE_CONSOLE_SECRET),
   };
-}
-
-/** 짧은 비밀은 조용히 받지 않는다 — 오타로 'secret' 같은 값이 들어가면 세션 위조가 쉬워진다. 시작 시점에 실패시킨다. */
-function parseConsoleSecret(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  if (raw.length < 16) throw new Error('QRATE_CONSOLE_SECRET은 16자 이상이어야 함');
-  return raw;
-}
-
-function parseEnum<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
-  return allowed.includes(raw as T) ? (raw as T) : fallback;
-}
-
-function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  const n = Number(raw);
-  return Number.isInteger(n) && n > 0 ? n : fallback;
 }

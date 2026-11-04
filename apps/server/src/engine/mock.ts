@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { AnswerEngine, EngineEvent, EngineRequest, HandoffReason } from './types.js';
 import { EngineError } from './types.js';
 
@@ -14,6 +15,20 @@ const FAIL_MID_STREAM = '[[fail-mid]]'; //          일부 전송 후 끊김
 const REFUSE = '[[refuse]]'; //                    정책 거절(stop_reason: refusal)
 const HANDOFF = /\[\[handoff(?::([a-z_]+))?\]\]/; // [[handoff]] 또는 [[handoff:needs_human]] → 안내 문장 뒤 핸드오프 신호, 인용 없음
 const HANDOFF_REASONS: readonly string[] = ['not_in_knowledge', 'needs_human', 'out_of_scope'] satisfies HandoffReason[];
+
+/** 훅의 숫자는 상류 상태 코드를 흉내 낸 별칭일 뿐이다. 위젯이 받는 HTTP 상태는 코드에서 http/chat.ts가 정한다. */
+function failureFor(status: number): EngineError {
+  switch (status) {
+    case 401:
+      return new EngineError('upstream_auth', false, 'mock: upstream auth failure');
+    case 429:
+      return new EngineError('rate_limited', true, 'mock: rate limited');
+    case 503:
+      return new EngineError('upstream_unavailable', true, 'mock: upstream unavailable');
+    default:
+      return new EngineError('upstream_error', false, `mock: upstream error ${status}`);
+  }
+}
 
 export class MockEngine implements AnswerEngine {
   readonly name = 'mock';
@@ -47,7 +62,8 @@ export class MockEngine implements AnswerEngine {
         throw new EngineError('upstream_unavailable', true, 'mock: mid-stream failure');
       }
       yield { type: 'delta', text: ch };
-      if (this.delayMs > 0) await sleep(this.delayMs, req.signal);
+      // 끊기면(abort) 기다리지 않고 거절된다 — 타이머와 신호를 손수 엮지 않고 Node 내장 timers/promises를 쓴다.
+      if (this.delayMs > 0) await sleep(this.delayMs, undefined, { signal: req.signal });
     }
 
     if (!refuse && source && cited) {
@@ -74,30 +90,3 @@ export class MockEngine implements AnswerEngine {
   }
 }
 
-/** 훅의 숫자는 상류 상태 코드를 흉내 낸 별칭일 뿐이다. 위젯이 받는 HTTP 상태는 코드에서 http/chat.ts가 정한다. */
-function failureFor(status: number): EngineError {
-  switch (status) {
-    case 401:
-      return new EngineError('upstream_auth', false, 'mock: upstream auth failure');
-    case 429:
-      return new EngineError('rate_limited', true, 'mock: rate limited');
-    case 503:
-      return new EngineError('upstream_unavailable', true, 'mock: upstream unavailable');
-    default:
-      return new EngineError('upstream_error', false, `mock: upstream error ${status}`);
-  }
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal.reason);
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-}

@@ -26,23 +26,12 @@ export interface SeedFile {
 // 컨테이너에는 pnpm deploy가 패키지 디렉터리의 seed/ 를 함께 담는다.
 export const DEFAULT_SEED_PATH = fileURLToPath(new URL('../../seed/demo-tenant.json', import.meta.url));
 
-export function loadSeedFile(path: string = DEFAULT_SEED_PATH): SeedFile {
-  const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
-  return parseSeed(raw, path);
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-export function createRepositoriesFromSeed(
-  seed: SeedFile,
-  { consoleKeyHash = null }: { consoleKeyHash?: string | null } = {},
-): Repositories {
-  const knowledge: KnowledgeItem[] = seed.knowledge.map((k) => ({ ...k, tenantId: seed.tenant.id }));
-  const store = new MemoryStore();
-  return {
-    tenants: new MemoryTenantRepository([{ ...seed.tenant, consoleKeyHash }]),
-    knowledge: new MemoryKnowledgeRepository(knowledge),
-    conversations: new MemoryConversationRepository(store),
-    handoffs: new MemoryHandoffRepository(store),
-  };
+function nonEmptyString(v: unknown): string | null {
+  return typeof v === 'string' && v.trim().length > 0 ? v : null;
 }
 
 /** 모양이 틀린 시드는 서버 시작 때 바로 실패시킨다. 런타임에 조용히 깨지는 것보다 낫다. */
@@ -84,10 +73,21 @@ export function parseSeed(raw: unknown, source = 'seed'): SeedFile {
   return { tenant: { id, apiKey, name, allowedOrigins }, knowledge };
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+export function loadSeedFile(path: string = DEFAULT_SEED_PATH): SeedFile {
+  const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  return parseSeed(raw, path);
 }
 
-function nonEmptyString(v: unknown): string | null {
-  return typeof v === 'string' && v.trim().length > 0 ? v : null;
+export function createRepositoriesFromSeed(
+  seed: SeedFile,
+  { consoleKeyHash = null }: { consoleKeyHash?: string | null } = {},
+): Repositories {
+  const knowledge: KnowledgeItem[] = seed.knowledge.map((k) => ({ ...k, tenantId: seed.tenant.id }));
+  const store = new MemoryStore();
+  return {
+    tenants: new MemoryTenantRepository([{ ...seed.tenant, consoleKeyHash }]),
+    knowledge: new MemoryKnowledgeRepository(knowledge),
+    conversations: new MemoryConversationRepository(store),
+    handoffs: new MemoryHandoffRepository(store),
+  };
 }

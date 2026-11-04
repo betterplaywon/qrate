@@ -8,11 +8,13 @@
 //
 // 재시도 정책(ADR-0002 질문 4): 자동 재시도는 없다. 서버가 retryable이라고 한 실패만 "다시 보내기" 버튼을 보이고,
 // Retry-After 동안 버튼을 잠근다. 같은 메시지를 다시 보내도 결과가 같은 실패(차단, 재시도 불가)에는 버튼이 없다.
+//
+// 상태(열림·안 읽은 수·대화 id·진행 중)는 FrameApp 하나가 든다. 화면 핸들러와 스트림 처리가 서로를 부르므로 클로저 대신 메서드로 둔다.
 
 import { MAX_UNREAD, parseLauncherMessage, toWire, type FrameMessage } from '../protocol';
-import { requestHandoff as postHandoffRequest } from './handoff';
+import { requestHandoff as postHandoffRequest, type HandoffResult } from './handoff';
 import { streamChat, type ChatEvent } from './stream';
-import { createView, type AnswerView } from './view';
+import { createView, type AnswerView, type ChatView } from './view';
 import './frame.css';
 
 interface FrameConfig {
@@ -21,6 +23,8 @@ interface FrameConfig {
   parentOrigin: string;
 }
 
+type Failure = Extract<ChatEvent, { type: 'failed' }>;
+
 function readConfig(): FrameConfig | null {
   const params = new URLSearchParams(location.search);
   const tenant = params.get('t')?.trim();
@@ -28,150 +32,158 @@ function readConfig(): FrameConfig | null {
   return tenant && parentOrigin ? { tenant, parentOrigin } : null;
 }
 
-function main(config: FrameConfig): void {
-  const root = document.getElementById('app');
-  if (!root) return;
+/** 실패 단계와 재시도 가능 여부 → 안내 문구. */
+function failureText(ev: Failure): string {
+  if (ev.stage === 'connect') return '서버에 연결할 수 없어요.';
+  if (ev.stage === 'response') return ev.retryable ? '지금은 답변할 수 없어요.' : `오류가 발생했어요. (${ev.status ?? '?'})`;
+  return ev.retryable ? '답변이 중단됐어요.' : '답변 중 오류가 발생했어요.';
+}
 
-  const send = (msg: FrameMessage): void => {
-    window.parent.postMessage(toWire(msg), config.parentOrigin);
-  };
+/** 접수 실패 → 안내 문구. 연락처 문제만 따로 알리고 나머지는 "나중에 다시". */
+function handoffFailureText(result: Extract<HandoffResult, { ok: false }>): string {
+  if (result.code === 'invalid_contact') return '이메일 주소를 확인해 주세요.';
+  if (result.status === 429) return '요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.';
+  return '지금은 접수할 수 없어요. 잠시 뒤 다시 시도해 주세요.';
+}
 
-  let visible = false;
-  let unread = 0;
-  let conversationId: string | null = null;
-  let inFlight = false;
+class FrameApp {
+  private readonly view: ChatView;
+  private visible = false;
+  private unread = 0;
+  private conversationId: string | null = null;
+  private inFlight = false;
+
+  constructor(
+    private readonly config: FrameConfig,
+    root: HTMLElement,
+  ) {
+    this.view = createView(root, {
+      onSubmit: (message) => void this.ask(message),
+      onClose: () => this.send({ type: 'close' }),
+      onHandoff: () => this.requestHandoff(),
+    });
+
+    // 런처가 보낸 메시지만 받는다: 보낸 문서의 오리진, 보낸 창, 메시지 형식을 모두 확인한다(../protocol.ts).
+    window.addEventListener('message', (event: MessageEvent<unknown>) => this.onLauncherMessage(event));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') this.send({ type: 'close' });
+    });
+
+    // 런처는 이 메시지를 받은 뒤에야 열림 상태를 보낸다(그 전에는 받을 리스너가 없다).
+    this.send({ type: 'ready' });
+  }
+
+  private send(msg: FrameMessage): void {
+    window.parent.postMessage(toWire(msg), this.config.parentOrigin);
+  }
+
+  private onLauncherMessage(event: MessageEvent<unknown>): void {
+    if (event.origin !== this.config.parentOrigin || event.source !== window.parent) return;
+    const msg = parseLauncherMessage(event.data);
+    if (!msg) return;
+    this.visible = msg.open;
+    if (this.visible) {
+      this.unread = 0;
+      this.view.focusInput();
+    }
+  }
+
+  /** 패널이 닫힌 동안 끝난 답변을 세어 런처 배지에 알린다. 열리면 런처와 여기서 함께 0이 된다. */
+  private noteAnswered(): void {
+    if (this.visible) return;
+    this.unread = Math.min(this.unread + 1, MAX_UNREAD);
+    this.send({ type: 'unread', count: this.unread });
+  }
 
   // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보인다. 누르면 연락처(이메일)와 남길 말을 받아 서버에 접수한다(POST /api/handoff).
   // 접수는 콘솔의 미응답 큐에 들어가고 운영자가 이메일로 답한다(콘솔 결정 2026-11-04, 핸드오프 A). 모델의 핸드오프 신호(event: handoff)가
   // 붙이는 연결 제안 버튼도 같은 길로 간다. 질문 전에 눌러도 되고, 그때 서버가 만든 대화 id를 이어받아 다음 질문이 같은 대화로 간다.
-  const requestHandoff = (): void =>
-    view.showHandoffForm({
+  private requestHandoff(): void {
+    this.view.showHandoffForm({
       submit: async (contact, message) => {
-        const result = await postHandoffRequest({ tenant: config.tenant, conversationId, contact, message });
-        if (result.ok) {
-          conversationId = result.conversationId;
-          return { ok: true, text: '접수됐어요. 적어 주신 이메일로 답을 드릴게요.' };
-        }
-        const text =
-          result.code === 'invalid_contact'
-            ? '이메일 주소를 확인해 주세요.'
-            : result.status === 429
-              ? '요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.'
-              : '지금은 접수할 수 없어요. 잠시 뒤 다시 시도해 주세요.';
-        return { ok: false, text };
+        const result = await postHandoffRequest({ tenant: this.config.tenant, conversationId: this.conversationId, contact, message });
+        if (!result.ok) return { ok: false, text: handoffFailureText(result) };
+        this.conversationId = result.conversationId;
+        return { ok: true, text: '접수됐어요. 적어 주신 이메일로 답을 드릴게요.' };
       },
     });
+  }
 
-  const view = createView(root, {
-    onSubmit: (message) => void ask(message),
-    onClose: () => send({ type: 'close' }),
-    onHandoff: requestHandoff,
-  });
+  private showFailure(ev: Failure, message: string): void {
+    const retry = ev.retryable
+      ? { label: '다시 보내기', disabledForMs: ev.retryAfterMs, run: () => void this.ask(message, { retry: true }) }
+      : undefined;
+    this.view.addNotice(failureText(ev), retry);
+  }
 
-  // 런처가 보낸 메시지만 받는다: 보낸 문서의 오리진, 보낸 창, 메시지 형식을 모두 확인한다(../protocol.ts).
-  window.addEventListener('message', (event: MessageEvent<unknown>) => {
-    if (event.origin !== config.parentOrigin || event.source !== window.parent) return;
-    const msg = parseLauncherMessage(event.data);
-    if (!msg) return;
-    visible = msg.open;
-    if (visible) {
-      unread = 0;
-      view.focusInput();
-    }
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') send({ type: 'close' });
-  });
-
-  /** 패널이 닫힌 동안 끝난 답변을 세어 런처 배지에 알린다. 열리면 런처와 여기서 함께 0이 된다. */
-  const noteAnswered = (): void => {
-    if (visible) return;
-    unread = Math.min(unread + 1, MAX_UNREAD);
-    send({ type: 'unread', count: unread });
-  };
-
-  const showFailure = (ev: Extract<ChatEvent, { type: 'failed' }>, message: string): void => {
-    const text =
-      ev.stage === 'connect'
-        ? '서버에 연결할 수 없어요.'
-        : ev.stage === 'response'
-          ? ev.retryable
-            ? '지금은 답변할 수 없어요.'
-            : `오류가 발생했어요. (${ev.status ?? '?'})`
-          : ev.retryable
-            ? '답변이 중단됐어요.'
-            : '답변 중 오류가 발생했어요.';
-    view.addNotice(
-      text,
-      ev.retryable
-        ? { label: '다시 보내기', disabledForMs: ev.retryAfterMs, run: () => void ask(message, { retry: true }) }
-        : undefined,
-    );
-  };
-
-  async function ask(message: string, opts: { retry?: boolean } = {}): Promise<void> {
-    if (inFlight) return;
-    inFlight = true;
-    if (!opts.retry) view.addUser(message);
-    view.setBusy(true);
+  private async ask(message: string, opts: { retry?: boolean } = {}): Promise<void> {
+    if (this.inFlight) return;
+    this.inFlight = true;
+    if (!opts.retry) this.view.addUser(message);
+    this.view.setBusy(true);
 
     let answer: AnswerView | null = null;
     try {
-      for await (const ev of streamChat({ message, tenant: config.tenant, conversationId })) {
+      for await (const ev of streamChat({ message, tenant: this.config.tenant, conversationId: this.conversationId })) {
         switch (ev.type) {
           case 'conversation':
-            conversationId = ev.id;
+            this.conversationId = ev.id;
             break;
           case 'moderation':
-            view.addNotice('안내: 메시지가 검토 대상으로 표시되었어요.');
+            this.view.addNotice('안내: 메시지가 검토 대상으로 표시되었어요.');
             break;
           case 'delta':
-            answer ??= view.startAnswer();
+            answer ??= this.view.startAnswer();
             answer.append(ev.text);
             break;
           case 'citation':
-            answer ??= view.startAnswer();
+            answer ??= this.view.startAnswer();
             answer.addCitation(ev.citation);
             break;
           case 'handoff':
             // 모델이 자료에 없는 질문이라고 신호했다. 안내 문장은 답으로 이미 흘러왔으니, 여기서는 사람 연결로 이어 주는 길만 보인다.
-            view.addNotice('상담원에게 연결해 드릴까요?', { label: '상담원 연결', disabledForMs: null, run: requestHandoff });
+            this.view.addNotice('상담원에게 연결해 드릴까요?', {
+              label: '상담원 연결',
+              disabledForMs: null,
+              run: () => this.requestHandoff(),
+            });
             break;
           case 'end':
             answer?.finish('complete');
             if (ev.stopReason === 'refusal') {
-              view.addNotice('이 질문에는 답변을 드릴 수 없어요. 상담원에게 문의해 주세요.');
+              this.view.addNotice('이 질문에는 답변을 드릴 수 없어요. 상담원에게 문의해 주세요.');
             } else if (ev.stopReason === 'max_tokens') {
-              view.addNotice('답변이 길어 잘렸어요.');
+              this.view.addNotice('답변이 길어 잘렸어요.');
             }
-            noteAnswered();
+            this.noteAnswered();
             break;
           case 'blocked':
-            view.addNotice('해당 메시지는 전송할 수 없어요. 표현을 바꿔 다시 시도해 주세요.');
+            this.view.addNotice('해당 메시지는 전송할 수 없어요. 표현을 바꿔 다시 시도해 주세요.');
             break;
           case 'failed':
             answer?.finish('interrupted');
-            showFailure(ev, message);
+            this.showFailure(ev, message);
             break;
         }
       }
     } finally {
-      inFlight = false;
-      view.setBusy(false);
-      if (visible) view.focusInput();
+      this.inFlight = false;
+      this.view.setBusy(false);
+      if (this.visible) this.view.focusInput();
     }
   }
+}
 
-  // 런처는 이 메시지를 받은 뒤에야 열림 상태를 보낸다(그 전에는 받을 리스너가 없다).
-  send({ type: 'ready' });
+function start(config: FrameConfig): void {
+  const root = document.getElementById('app');
+  if (root) new FrameApp(config, root);
 }
 
 const CONFIG = readConfig();
 if (CONFIG) {
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => main(CONFIG));
+    document.addEventListener('DOMContentLoaded', () => start(CONFIG));
   } else {
-    main(CONFIG);
+    start(CONFIG);
   }
 }

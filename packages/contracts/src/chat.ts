@@ -137,6 +137,39 @@ export function encodeChatEvent(ev: ChatStreamEvent): string {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJsonObject(data: string): Record<string, unknown> | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  return isRecord(value) ? value : null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function readCitation(data: Record<string, unknown>): Citation | null {
+  const { sourceIndex, sourceId, title, citedText, blockStart, blockEnd } = data;
+  if (
+    typeof sourceIndex !== 'number' ||
+    typeof sourceId !== 'string' ||
+    typeof title !== 'string' ||
+    typeof citedText !== 'string' ||
+    typeof blockStart !== 'number' ||
+    typeof blockEnd !== 'number'
+  ) {
+    return null;
+  }
+  return { sourceIndex, sourceId, title, citedText, blockStart, blockEnd };
+}
+
 /** 수신한 SSE 이벤트를 계약의 이벤트로. 모르는 이벤트·형식이 다른 데이터는 null(건너뛴다). */
 export function parseChatEvent(raw: SSEEvent): ChatStreamEvent | null {
   if (raw.event === 'message' && raw.data === DONE_SENTINEL) return { type: 'end' };
@@ -185,37 +218,4 @@ export function parseApiErrorBody(value: unknown): ApiErrorBody | null {
     ...(typeof value.retryable === 'boolean' ? { retryable: value.retryable } : {}),
     ...(isStringArray(value.reasons) ? { reasons: value.reasons } : {}),
   };
-}
-
-function parseJsonObject(data: string): Record<string, unknown> | null {
-  let value: unknown;
-  try {
-    value = JSON.parse(data);
-  } catch {
-    return null;
-  }
-  return isRecord(value) ? value : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-function readCitation(data: Record<string, unknown>): Citation | null {
-  const { sourceIndex, sourceId, title, citedText, blockStart, blockEnd } = data;
-  if (
-    typeof sourceIndex !== 'number' ||
-    typeof sourceId !== 'string' ||
-    typeof title !== 'string' ||
-    typeof citedText !== 'string' ||
-    typeof blockStart !== 'number' ||
-    typeof blockEnd !== 'number'
-  ) {
-    return null;
-  }
-  return { sourceIndex, sourceId, title, citedText, blockStart, blockEnd };
 }
