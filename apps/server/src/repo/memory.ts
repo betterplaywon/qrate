@@ -1,3 +1,4 @@
+import { sortKnowledgeById } from './knowledge-order.js';
 import type {
   Conversation,
   ConversationMessage,
@@ -30,8 +31,7 @@ export class MemoryKnowledgeRepository implements KnowledgeRepository {
   private readonly items: KnowledgeItem[];
 
   constructor(items: KnowledgeItem[]) {
-    // 로캘에 기대지 않는 코드 단위 비교 — 어느 환경에서도 같은 순서여야 캐시가 맞는다.
-    this.items = [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    this.items = sortKnowledgeById(items);
   }
 
   async listByTenant(tenantId: string): Promise<KnowledgeItem[]> {
