@@ -3,10 +3,21 @@
   "compilerOptions": {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
-    "types": ["node"],
-    "customConditions": ["source"],
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node"
+    ],
+    "customConditions": [
+      "source"
+    ],
     "noEmit": true
   },
-  "include": ["src", "test"]
+  "include": [
+    "src",
+    "test",
+    "prisma",
+    "prisma.config.ts"
+  ]
 }

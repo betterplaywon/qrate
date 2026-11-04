@@ -8,6 +8,8 @@ import { parseOrigin } from './origin.js';
 export type ThinkingSetting = 'off' | 'low' | 'medium' | 'high';
 /** auto = API 키가 있으면 claude, 없으면 mock. CI와 테스트는 키가 없어 항상 mock으로 돈다. */
 export type EngineKind = 'auto' | 'mock' | 'claude';
+/** auto = DATABASE_URL이 있으면 postgres(Prisma), 없으면 memory(시드 파일). 테스트와 E2E는 memory를 명시한다. */
+export type RepoKind = 'auto' | 'memory' | 'postgres';
 
 export interface AppConfig {
   port: number;
@@ -24,10 +26,14 @@ export interface AppConfig {
   /** 정책 거절(stop_reason: refusal) 시 서버 측 대체 모델 재시도(베타). Haiku처럼 지원하지 않는 모델에선 무시된다. */
   fallback: boolean;
   maxTokens: number;
+  repo: RepoKind;
+  /** Postgres 연결 문자열. 비밀번호가 들어 있으니 어디에도 로그로 남기지 않는다. */
+  databaseUrl: string | undefined;
 }
 
 const THINKING_SETTINGS = ['off', 'low', 'medium', 'high'] as const satisfies readonly ThinkingSetting[];
 const ENGINE_KINDS = ['auto', 'mock', 'claude'] as const satisfies readonly EngineKind[];
+const REPO_KINDS = ['auto', 'memory', 'postgres'] as const satisfies readonly RepoKind[];
 
 // D5 결정(2026-11-02): 기본 Sonnet 5.5 + 사고 끔. 환경변수 한 줄로 교체한다.
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
@@ -47,6 +53,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     thinking,
     fallback: (env.QRATE_FALLBACK ?? 'default') !== 'off',
     maxTokens: parsePositiveInt(env.QRATE_MAX_TOKENS, defaultMaxTokens),
+    repo: parseEnum(env.QRATE_REPO, REPO_KINDS, 'auto'),
+    databaseUrl: env.DATABASE_URL ? env.DATABASE_URL : undefined,
   };
 }
 

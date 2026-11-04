@@ -14,6 +14,25 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # 저장소 계약 테스트(apps/server/test/repo-postgres.test.ts)용 Postgres. 로컬의 docker compose db(qrate_test)와 같은 역할.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qrate
+          POSTGRES_PASSWORD: qrate
+          POSTGRES_DB: qrate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qrate"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # 마이그레이션 적용(db:deploy)과 테스트가 같은 전용 DB를 본다. E2E 서버는 QRATE_REPO=memory로 고정이라 이 값을 쓰지 않는다.
+      DATABASE_URL: postgresql://qrate:qrate@localhost:5432/qrate_test
+      QRATE_TEST_DATABASE_URL: postgresql://qrate:qrate@localhost:5432/qrate_test
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +46,11 @@ jobs:
 
       # --frozen-lockfile: 락파일과 package.json이 어긋나면 설치를 실패시킨다.
       # CI에서 "내 로컬과 다른 의존성"이 몰래 설치되는 사고를 차단.
+      # 서버 postinstall이 prisma generate를 돌린다(생성 코드는 git에 없다) — 타입체크·테스트·빌드가 그걸 읽는다.
       - run: pnpm install --frozen-lockfile
+
+      # 마이그레이션 파일(apps/server/prisma/migrations)을 테스트 DB에 적용한다. 스키마와 마이그레이션이 어긋나면 여기서 실패한다.
+      - run: pnpm --filter @qrate/server db:deploy
 
       - run: pnpm lint
       - run: pnpm typecheck

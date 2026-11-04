@@ -4,10 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --conditions=source --env-file-if-exists=.env src/index.ts",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "prisma generate && rm -rf dist && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed"
   },
   "files": [
     "dist",
@@ -15,6 +19,8 @@
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "@qrate/contracts": "workspace:*",
     "@qrate/widget": "workspace:*",
     "@sentry/node": "^10.0.0",
@@ -23,6 +29,7 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.0",
+    "prisma": "7.10.1",
     "tsx": "^4.19.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.0"

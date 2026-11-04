@@ -1,45 +1,108 @@
-// W1에서 스키마만 확정했다. 실제 연결은 W3 첫날(개발 DB 결정, 2026-11-02): Prisma 설치 → docker compose up db →
-// `prisma migrate dev`로 마이그레이션 파일을 레포에 남긴다. 마이그레이션을 시작한 뒤에는 개발 DB에 db push를 쓰지 않는다.
-// W2 서버는 이 스키마를 읽지 않는다 — 저장소 계약(src/repo/types.ts)의 메모리 구현과 시드(seed/)로 돈다.
-// 저장소 계약에는 있지만 여기 없는 것(지식 항목 KnowledgeItem, 테넌트의 allowedOrigins)은 W3 Postgres 구현 때 추가한다.
+// 개발 DB 결정(2026-11-02): W1에서 스키마만 확정, W3 첫날에 Postgres(compose) + Prisma로 연결했다.
+// 스키마 변경은 `prisma migrate dev --name <설명>`으로 마이그레이션 파일(prisma/migrations/)을 남긴다.
+// 마이그레이션을 시작한 뒤에는 개발 DB에 db push를 쓰지 않고, 브랜치 안의 자잘한 마이그레이션은 머지 전 하나로 정리한다.
+//
+// 서버는 저장소 계약(src/repo/types.ts)만 본다. 구현은 둘 — 메모리(src/repo/memory.ts, 테스트·DB 없는 로컬)와
+// Prisma(src/repo/prisma.ts, DATABASE_URL이 있을 때). 두 구현에 같은 계약 테스트(test/repo-contract.ts)를 돌린다.
+// DB 주소는 prisma.config.ts(CLI)와 src/config.ts(서버)가 각각 DATABASE_URL에서 읽는다.
 
 generator client {
-  provider = "prisma-client-js"
+  // Prisma 7: TypeScript 소스를 생성한다(src/generated/prisma, git·lint 제외). tsc가 dist로 함께 컴파일한다.
+  // import 확장자는 .js — NodeNext(tsc)·tsx·vitest 모두 .js → .ts 해석을 한다.
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Tenant {
-  id            String         @id @default(cuid())
-  name          String
+  id             String          @id @default(cuid())
+  name           String
   // 위젯 설치 스니펫의 data-tenant 키. 노출되는 식별자이므로 비밀키가 아니다.
   // 어느 사이트에서 쓸 수 있는지는 테넌트 검증(Origin 검사 + GET /frame의 frame-ancestors, src/origin.ts)이 막는다.
-  apiKey        String         @unique
-  createdAt     DateTime       @default(now())
-  conversations Conversation[]
-  credits       CreditLedger[]
+  apiKey         String          @unique
+  // 위젯을 넣을 수 있는 사이트의 정규형 오리진(scheme://host[:port]). CSP 헤더에 그대로 들어가므로 쓰기 전에 isOriginString으로 검증한다.
+  allowedOrigins String[]
+  createdAt      DateTime        @default(now())
+  conversations  Conversation[]
+  knowledge      KnowledgeItem[]
+  credits        CreditLedger[]
 }
 
+// 답변 근거(FAQ). 문단(blocks) 하나가 인용의 최소 단위다(ADR-0004).
+// id는 시드의 'faq:plans' 같은 안정 식별자이고 테넌트 안에서만 유일하다 — 테넌트마다 같은 id 체계를 쓸 수 있게 복합 키.
+// 프롬프트 캐시 접두사가 요청마다 같아야 하므로 조회 순서는 id 오름차순(코드 단위)으로 고정하는데,
+// Postgres ORDER BY는 DB 콜레이션을 따라 구두점 처리가 다를 수 있어 정렬은 저장소 구현이 JS에서 한다(src/repo/prisma.ts).
+model KnowledgeItem {
+  id        String
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  title     String
+  category  String
+  blocks    String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, id])
+}
+
+// 대화는 첫 턴이 저장될 때 생긴다(저장소 계약 appendTurn). id는 서비스가 미리 만든 UUID(chat/service.ts).
 model Conversation {
-  id        String    @id @default(cuid())
+  id        String    @id
   tenantId  String
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
   createdAt DateTime  @default(now())
   messages  Message[]
+  handoffs  Handoff[]
+
+  // 콘솔의 대화 목록은 "테넌트별 최근순" 조회 → 복합 인덱스.
+  @@index([tenantId, createdAt])
+}
+
+enum MessageRole {
+  user
+  assistant
 }
 
 model Message {
   id             String       @id @default(cuid())
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id])
-  role           String // 'user' | 'assistant' | 'system'
+  // 대화 안의 순서. 질문·답변이 한 트랜잭션에 들어가면 createdAt이 같을 수 있어 시각으로는 순서를 못 정한다 —
+  // 전역 시퀀스가 저장 순서를 그대로 고정한다(메모리 구현의 배열 순서와 같은 뜻). 조회는 항상 이 열로 정렬한다.
+  seq            Int          @default(autoincrement())
+  role           MessageRole
   content        String
+  // 질문은 받은 시각, 답변은 저장 시각(저장소 계약 NewTurn).
   createdAt      DateTime     @default(now())
 
-  // 대화 화면은 항상 "대화별 시간순" 조회 → 복합 인덱스. (왜 단일 인덱스 2개가 아닌가 — 면접 소재)
+  // 대화 화면은 항상 "대화별 순서대로" 조회 → 복합 인덱스. (왜 단일 인덱스 2개가 아닌가 — 면접 소재)
+  @@index([conversationId, seq])
+}
+
+// 모델이 상담원 연결을 요청한 기록(engine/handoff.ts의 request_handoff 도구 → event: handoff).
+// W3 미응답 큐의 입력이다 — 큐의 상태(처리 중·완료)는 콘솔을 붙일 때 추가한다.
+enum HandoffReason {
+  not_in_knowledge
+  needs_human
+  out_of_scope
+  other
+}
+
+model Handoff {
+  id             String        @id @default(cuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  reason         HandoffReason
+  summary        String?
+  createdAt      DateTime      @default(now())
+
   @@index([conversationId, createdAt])
 }
 
