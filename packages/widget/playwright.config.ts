@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { DEMO_ORIGIN, NOT_ALLOWED_DEMO_ORIGIN, SERVER_ORIGIN } from './e2e/servers';
+import { CONSOLE_KEY, DEMO_ORIGIN, NOT_ALLOWED_DEMO_ORIGIN, SERVER_ORIGIN } from './e2e/servers';
 
 // 브라우저 E2E 설정 — 빌드 산출물로만 돈다: 서버 dist(목업 엔진) + 위젯 dist(widget.js, frame/app.js·css) + 데모 정적 서버.
 // 먼저 루트에서 `pnpm build`. 브라우저는 처음 한 번 `pnpm --filter @qrate/widget exec playwright install chromium`.
@@ -23,7 +23,15 @@ export default defineConfig({
       // reuseExistingServer: false — 8787에 이미 서버가 떠 있으면(예: pnpm dev, 실제 모델일 수 있음) 그걸 쓰지 않고 실패한다.
       command: 'node ../../apps/server/dist/index.js',
       url: `${SERVER_ORIGIN}/healthz`,
-      env: { QRATE_ENGINE: 'mock', QRATE_REPO: 'memory', PORT: '8787', QRATE_PUBLIC_ORIGIN: SERVER_ORIGIN },
+      // 콘솔 키는 "상담원 연결 요청이 콘솔 큐에 들어가는지"를 콘솔 API로 확인하는 테스트용(e2e/servers.ts CONSOLE_KEY).
+      env: {
+        QRATE_ENGINE: 'mock',
+        QRATE_REPO: 'memory',
+        PORT: '8787',
+        QRATE_PUBLIC_ORIGIN: SERVER_ORIGIN,
+        QRATE_DEMO_CONSOLE_KEY: CONSOLE_KEY,
+        QRATE_CONSOLE_SECRET: 'e2e-widget-session-secret-0123',
+      },
       reuseExistingServer: false,
     },
     {

@@ -8,3 +8,5 @@ export const DEMO_ORIGIN = 'http://localhost:5173';
  * (net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS)로 localhost 서버 요청을 먼저 막아, 서버·CSP 검사를 볼 수 없다.
  */
 export const NOT_ALLOWED_DEMO_ORIGIN = 'http://localhost:5174';
+/** 서버 환경변수 QRATE_DEMO_CONSOLE_KEY와 같은 값 — 메모리 저장소가 시작 때 해시해 데모 테넌트에 붙인다(콘솔 API 확인용). */
+export const CONSOLE_KEY = 'e2e-widget-console-key';

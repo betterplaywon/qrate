@@ -1,4 +1,4 @@
-import { MAX_MESSAGE_CHARS } from '@qrate/contracts';
+import { MAX_HANDOFF_CONTACT_CHARS, MAX_HANDOFF_MESSAGE_CHARS, MAX_MESSAGE_CHARS } from '@qrate/contracts';
 import type { SourceCitation } from './stream';
 
 // 대화창 화면. 상태는 모르고, main.ts가 시키는 대로 그린다.
@@ -27,11 +27,18 @@ export interface AnswerView {
   finish(state: 'complete' | 'interrupted'): void;
 }
 
+/** 상담원 연결 요청 폼의 제출 결과. ok면 폼이 안내 문구로 바뀌고, 아니면 폼은 남고 문구가 오류로 보인다. */
+export interface HandoffFormHandlers {
+  submit(contact: string, message: string | null): Promise<{ ok: boolean; text: string }>;
+}
+
 export interface ChatView {
   setBusy(busy: boolean): void;
   addUser(text: string): void;
   startAnswer(): AnswerView;
   addNotice(text: string, action?: NoticeAction): void;
+  /** 연락처(이메일)와 남길 말을 받는 폼을 대화에 붙인다. 이미 열려 있으면 그 폼으로 초점만 옮긴다. */
+  showHandoffForm(handlers: HandoffFormHandlers): void;
   focusInput(): void;
 }
 
@@ -89,6 +96,7 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
     handlers.onSubmit(message);
   });
 
+  let activeHandoffForm: HTMLFormElement | null = null;
   const nearBottom = (): boolean => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight <= STICK_TO_BOTTOM_PX;
   const append = (node: HTMLElement): void => {
     const stick = nearBottom();
@@ -187,6 +195,71 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
         notice.append(button);
       }
       append(notice);
+    },
+
+    showHandoffForm(formHandlers) {
+      if (activeHandoffForm) {
+        activeHandoffForm.querySelector('input')?.focus();
+        return;
+      }
+      const form = el('form', 'msg notice handoff-form');
+      form.noValidate = false;
+      form.append(el('span', 'handoff-form-title', '상담원에게 연결해 드릴게요. 답을 받을 이메일을 알려 주세요.'));
+
+      const contactLabel = el('label', 'sr-only', '이메일');
+      contactLabel.htmlFor = 'qrate-contact';
+      const contact = el('input');
+      contact.id = 'qrate-contact';
+      contact.type = 'email';
+      contact.required = true;
+      contact.autocomplete = 'email';
+      contact.maxLength = MAX_HANDOFF_CONTACT_CHARS;
+      contact.placeholder = '이메일 주소';
+
+      const messageLabel = el('label', 'sr-only', '남길 말');
+      messageLabel.htmlFor = 'qrate-handoff-message';
+      const message = el('textarea');
+      message.id = 'qrate-handoff-message';
+      message.rows = 2;
+      message.maxLength = MAX_HANDOFF_MESSAGE_CHARS;
+      message.placeholder = '남길 말 (선택)';
+
+      const buttons = el('div', 'handoff-form-actions');
+      const submit = el('button', 'notice-action', '연결 요청 보내기');
+      submit.type = 'submit';
+      const cancel = el('button', 'notice-action cancel', '취소');
+      cancel.type = 'button';
+      buttons.append(submit, cancel);
+
+      const error = el('span', 'handoff-form-error');
+      error.setAttribute('role', 'alert');
+
+      form.append(contactLabel, contact, messageLabel, message, buttons, error);
+      activeHandoffForm = form;
+      const close = (): void => {
+        form.remove();
+        activeHandoffForm = null;
+      };
+      cancel.addEventListener('click', close);
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (submit.disabled) return;
+        submit.disabled = true;
+        error.textContent = '';
+        void formHandlers.submit(contact.value.trim(), message.value.trim() || null).then((result) => {
+          if (result.ok) {
+            close();
+            const done = el('div', 'msg notice');
+            done.append(el('span', undefined, result.text));
+            append(done);
+            return;
+          }
+          submit.disabled = false;
+          error.textContent = result.text;
+        });
+      });
+      append(form);
+      contact.focus();
     },
 
     focusInput() {
