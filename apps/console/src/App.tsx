@@ -1,28 +1,49 @@
-// 운영 콘솔(W3) — 지금은 정보 구조만 확정한 셸.
-// 운영자가 데스크톱에서 대화 로그·미응답 큐를 오래 다루는 도구이므로
-// 모바일 앱 내 탭이 아닌 "독립 웹 어드민"으로 만든다.
+import type { ConsoleTenant } from '@qrate/contracts';
+import { useLogout, useMe } from './queries';
+import { href, useRoute } from './route';
+import { ConversationDetail } from './views/ConversationDetail';
+import { ConversationList } from './views/ConversationList';
+import { Login } from './views/Login';
+import { Queue } from './views/Queue';
 
-const SECTIONS = [
-  { name: '대화 로그', desc: '테넌트별 대화 목록, 모더레이션 플래그 필터 (W3)' },
-  { name: '미응답 큐', desc: 'AI가 답하지 못했거나 사람 연결이 요청된 대화 (W3)' },
-  { name: '지식 관리', desc: 'FAQ·문서 업로드와 답변 출처 확인 (W2 연동)' },
-  { name: '크레딧·이벤트', desc: '크레딧 잔액, A/B 변형별 이벤트 집계 (W4 연동)' },
-] as const;
+// 운영 콘솔(W3). 세션(me 쿼리) → 로그인 또는 셸(미응답 큐 · 대화 로그). 데이터는 전부 /api/console/* (apps/server/src/http/console.ts).
 
 export function App() {
+  const me = useMe();
+  if (me.isPending) return <p className="status">세션을 확인하는 중…</p>;
+  if (me.isError) return <p className="status error">서버에 연결할 수 없어요. 잠시 뒤 새로고침해 주세요.</p>;
+  if (!me.data) return <Login />;
+  return <Shell tenant={me.data} />;
+}
+
+function Shell({ tenant }: { tenant: ConsoleTenant }) {
+  const route = useRoute();
+  const logout = useLogout();
+
   return (
-    <main style={{ maxWidth: 720, margin: '48px auto', fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 22 }}>Qrate 운영 콘솔</h1>
-      <p style={{ color: '#57606a' }}>
-        W3에서 구현됩니다. 아래는 확정된 정보 구조입니다.
-      </p>
-      <ul style={{ lineHeight: 1.9 }}>
-        {SECTIONS.map((s) => (
-          <li key={s.name}>
-            <strong>{s.name}</strong> — {s.desc}
-          </li>
-        ))}
-      </ul>
-    </main>
+    <div className="shell">
+      <header className="top">
+        <div className="brand">
+          <span className="brand-name">Qrate 콘솔</span>
+          <span className="tenant" data-testid="tenant-name">{tenant.name}</span>
+        </div>
+        <nav className="nav" aria-label="주 메뉴">
+          <a href={href.queue('open')} className={route.name === 'queue' ? 'active' : ''}>
+            미응답 큐
+          </a>
+          <a href={href.conversations()} className={route.name !== 'queue' ? 'active' : ''}>
+            대화 로그
+          </a>
+        </nav>
+        <button type="button" className="ghost" disabled={logout.isPending} onClick={() => logout.mutate()}>
+          로그아웃
+        </button>
+      </header>
+      <main className="main">
+        {route.name === 'queue' && <Queue status={route.status} />}
+        {route.name === 'conversations' && <ConversationList />}
+        {route.name === 'conversation' && <ConversationDetail id={route.id} />}
+      </main>
+    </div>
   );
 }

@@ -36,7 +36,7 @@ SSE 스트리밍 + 크레딧 과금(멱등) + 품질 평가셋 관점에서 처�
 
 ```
 apps/server         Express 5 + TS — 대화 API(SSE 스트리밍)·입력 모더레이션·답변 엔진·저장소(메모리 | Prisma·PostgreSQL, 마이그레이션은 prisma/migrations)
-apps/console        React + Vite — 운영 콘솔 (W3)
+apps/console        React + Vite — 운영 콘솔(로그인 · 대화 로그 · 미응답 큐). 빌드 산출물은 서버가 /console/ 로 서빙
 packages/widget     임베더블 SDK — 런처(IIFE, Shadow DOM) + 대화창 앱(서버 오리진 iframe, postMessage) + 브라우저 E2E(e2e/)
 packages/contracts  서버·위젯이 함께 쓰는 대화 API 계약 — SSE 이벤트 encode/parse, 요청·오류 본문
 scripts/blog        티스토리 발행 파이프라인 (Playwright)
@@ -66,11 +66,12 @@ pnpm --filter @qrate/server db:migrate   # 마이그레이션 적용(스키마�
 pnpm dev                              # API 서버 http://localhost:8787 (대화창 iframe 문서·자산도 여기서 나간다)
 pnpm --filter @qrate/widget build     # 런처 widget.js + 대화창 앱 dist/frame/app.js·app.css
 pnpm --filter @qrate/widget demo      # 데모 http://localhost:5173/demo.html — 허용 사이트 오리진에서 서빙 (file://는 막힌다)
-pnpm --filter @qrate/console dev      # 운영 콘솔 셸
+pnpm --filter @qrate/console dev      # 운영 콘솔 개발 서버 http://localhost:5175/console/ (API는 8787로 프록시)
+                                      # 빌드된 콘솔은 서버가 http://localhost:8787/console/ 로 서빙. 로그인 = 테넌트 키 demo + .env의 QRATE_DEMO_CONSOLE_KEY
 
 pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일 (아래 e2e까지). 저장소 계약 테스트는 메모리 구현에 돌고,
                                       # .env에 QRATE_TEST_DATABASE_URL(전용 DB qrate_test, 마이그레이션 적용 후)을 두면 Postgres 구현에도 돈다
-pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 산출물로 목업 서버·데모를 띄워 런처·대화창·postMessage·CSP 확인
+pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 산출물로 목업 서버·데모를 띄워 런처·대화창·postMessage·CSP, 콘솔 로그인·큐 확인
                                       # 처음 한 번: pnpm --filter @qrate/widget exec playwright install chromium. 8787·5173이 비어 있어야 한다
 docker compose up --build             # Postgres → 마이그레이션·시드(migrate) → 서버 (Docker)
 ```
