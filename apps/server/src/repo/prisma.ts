@@ -1,9 +1,11 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, type Prisma } from '../generated/prisma/client.js';
 import { sortKnowledgeById } from './knowledge-order.js';
+import { decodeCursor, encodeCursor, previewOf } from './listing.js';
 import type { SeedFile } from './seed.js';
 import type {
   Conversation,
+  ConversationPage,
   ConversationRepository,
   KnowledgeItem,
   KnowledgeRepository,
@@ -73,6 +75,44 @@ export class PrismaConversationRepository implements ConversationRepository {
       createdAt: row.createdAt,
       messages: messages.map((m) => ({ role: m.role, content: m.content, createdAt: m.createdAt })),
       handoffs: row.handoffs.map((h) => ({ reason: h.reason, summary: h.summary, createdAt: h.createdAt })),
+    };
+  }
+
+  async listByTenant(tenantId: string, { limit, cursor = null }: { limit: number; cursor?: string | null }): Promise<ConversationPage> {
+    if (limit < 1) throw new RangeError('limit must be >= 1');
+    const after = cursor ? decodeCursor(cursor) : null;
+    // 키셋 페이지네이션: (createdAt, id) 내림차순에서 커서 뒤의 행만. (tenantId, createdAt) 인덱스를 탄다.
+    // id 비교는 DB 콜레이션을 따르지만 대화 id는 소문자 UUID라 하이픈 위치가 같아 코드 단위 비교(메모리 구현)와 순서가 같다.
+    // 한 줄 더 가져와 다음 페이지가 있는지 본다.
+    const rows = await this.prisma.conversation.findMany({
+      where: {
+        tenantId,
+        ...(after
+          ? { OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }] }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      select: {
+        id: true,
+        tenantId: true,
+        createdAt: true,
+        _count: { select: { messages: true, handoffs: true } },
+        messages: { where: { role: 'user' }, orderBy: { seq: 'asc' }, take: 1, select: { content: true } },
+      },
+    });
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((r) => ({
+        id: r.id,
+        tenantId: r.tenantId,
+        createdAt: r.createdAt,
+        messageCount: r._count.messages,
+        handoffCount: r._count.handoffs,
+        preview: previewOf(r.messages[0]?.content),
+      })),
+      nextCursor: rows.length > limit && last ? encodeCursor(last) : null,
     };
   }
 

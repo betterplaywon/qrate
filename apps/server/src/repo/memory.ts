@@ -1,8 +1,11 @@
 import { sortKnowledgeById } from './knowledge-order.js';
+import { compareNewestFirst, decodeCursor, encodeCursor, isAfterCursor, previewOf } from './listing.js';
 import type {
   Conversation,
   ConversationMessage,
+  ConversationPage,
   ConversationRepository,
+  ConversationSummary,
   KnowledgeItem,
   KnowledgeRepository,
   NewMessage,
@@ -54,6 +57,19 @@ export class MemoryConversationRepository implements ConversationRepository {
     };
   }
 
+  async listByTenant(tenantId: string, { limit, cursor = null }: { limit: number; cursor?: string | null }): Promise<ConversationPage> {
+    if (limit < 1) throw new RangeError('limit must be >= 1');
+    const after = cursor ? decodeCursor(cursor) : null;
+    const all = [...this.byId.values()].filter((c) => c.tenantId === tenantId).sort(compareNewestFirst);
+    const rest = after ? all.filter((c) => isAfterCursor(c, after)) : all;
+    const page = rest.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map(toSummary),
+      nextCursor: rest.length > limit && last ? encodeCursor(last) : null,
+    };
+  }
+
   async appendTurn(conversationId: string, tenantId: string, turn: NewTurn): Promise<void> {
     const now = new Date();
     let conversation = this.byId.get(conversationId);
@@ -72,4 +88,15 @@ export class MemoryConversationRepository implements ConversationRepository {
 
 function toMessage(message: NewMessage, now: Date): ConversationMessage {
   return { role: message.role, content: message.content, createdAt: message.createdAt ?? now };
+}
+
+function toSummary(c: Conversation): ConversationSummary {
+  return {
+    id: c.id,
+    tenantId: c.tenantId,
+    createdAt: c.createdAt,
+    messageCount: c.messages.length,
+    handoffCount: c.handoffs.length,
+    preview: previewOf(c.messages.find((m) => m.role === 'user')?.content),
+  };
 }

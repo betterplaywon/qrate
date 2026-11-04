@@ -74,12 +74,36 @@ export interface NewTurn {
   handoff: { reason: HandoffReason; summary: string | null } | null;
 }
 
+/** 콘솔 대화 로그 목록의 한 줄. 메시지 전문은 싣지 않는다 — 상세는 find. */
+export interface ConversationSummary {
+  id: string;
+  tenantId: string;
+  createdAt: Date;
+  messageCount: number;
+  handoffCount: number;
+  /** 첫 질문의 앞부분(PREVIEW_CHARS자). 비어 있으면 질문 없이 끝난 대화 — 지금 구조에선 생기지 않는다. */
+  preview: string;
+}
+
+export const PREVIEW_CHARS = 80;
+
+export interface ConversationPage {
+  items: ConversationSummary[];
+  /** 다음 페이지를 받을 커서. null이면 끝. 값은 불투명하다 — 구현이 만들고 구현만 해석한다. */
+  nextCursor: string | null;
+}
+
 export interface ConversationRepository {
   /**
    * 테넌트 경계: 다른 테넌트의 대화 id로는 찾을 수 없다.
    * lastMessages를 주면 최근 그 수만큼만 싣는다 — 프롬프트 문맥용. 대화가 길어져도 턴마다 전체를 읽지 않게.
    */
   find(id: string, tenantId: string, opts?: { lastMessages?: number }): Promise<Conversation | null>;
+  /**
+   * 테넌트의 대화를 최근 시작순(createdAt 내림차순, 같으면 id 내림차순)으로 limit개. 커서 페이지네이션 —
+   * 오프셋이면 새 대화가 끼어들 때 줄이 밀려 같은 대화가 두 번 보인다. 커서가 깨진 값이면 던진다(InvalidCursorError).
+   */
+  listByTenant(tenantId: string, opts: { limit: number; cursor?: string | null }): Promise<ConversationPage>;
   /**
    * 턴을 끝에 붙인다. 대화가 없으면 이 턴과 함께 만든다 — 대화는 첫 턴이 저장될 때 생기므로,
    * 첫 이벤트 전에 실패하거나 끊긴 요청은 빈 대화를 남기지 않는다.
@@ -92,4 +116,12 @@ export interface Repositories {
   tenants: TenantRepository;
   knowledge: KnowledgeRepository;
   conversations: ConversationRepository;
+}
+
+/** 목록 커서가 이 구현이 만든 값이 아닐 때. HTTP 계층은 400으로 옮긴다. */
+export class InvalidCursorError extends Error {
+  constructor() {
+    super('invalid cursor');
+    this.name = 'InvalidCursorError';
+  }
 }

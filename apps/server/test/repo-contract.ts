@@ -125,6 +125,58 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect((await ctx.repos.conversations.find(id, ctx.tenantId))?.messages).toHaveLength(1);
     });
 
+    it('목록: 테넌트별 최근 시작순, 커서로 이어 받기, 미리보기·개수, 깨진 커서는 거부', async () => {
+      // 다른 테넌트에 대화를 만든다 — 시드 테넌트에는 앞 테스트들의 대화가 섞여 있어 정확한 페이지를 셀 수 없다.
+      const t = ctx.otherTenantId;
+      const base = Date.parse('2026-11-04T10:00:00Z');
+      const ids: string[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const id = randomUUID();
+        ids.push(id);
+        await ctx.repos.conversations.appendTurn(id, t, {
+          question: { role: 'user', content: `질문 ${i}\n` + 'x'.repeat(100), createdAt: new Date(base + i * 1000) },
+          answer: { role: 'assistant', content: `답 ${i}` },
+          handoff: i === 4 ? { reason: 'other', summary: null } : null,
+        });
+      }
+      // 같은 시각에 시작한 두 대화 — id 내림차순(코드 단위)으로 순서가 고정된다
+      const tied: string[] = [randomUUID(), randomUUID()];
+      for (const id of tied) {
+        await ctx.repos.conversations.appendTurn(id, t, {
+          question: { role: 'user', content: '동시 시작', createdAt: new Date(base + 10_000) },
+          answer: null,
+          handoff: null,
+        });
+      }
+      const tiedNewestFirst = [...tied].sort().reverse();
+
+      const list = (opts: { limit: number; cursor?: string | null }) => ctx.repos.conversations.listByTenant(t, opts);
+      const p1 = await list({ limit: 3 });
+      expect(p1.items.map((c) => c.id)).toEqual([...tiedNewestFirst, ids[4]]);
+      expect(p1.nextCursor).toEqual(expect.any(String));
+      expect(p1.items[0]).toMatchObject({ tenantId: t, messageCount: 1, handoffCount: 0, preview: '동시 시작' });
+      expect(p1.items[2]).toMatchObject({ messageCount: 2, handoffCount: 1 });
+      expect(p1.items[2]?.preview).toBe(('질문 4 ' + 'x'.repeat(100)).slice(0, 80)); // 줄바꿈은 공백, 80자에서 자름
+
+      const p2 = await list({ limit: 3, cursor: p1.nextCursor });
+      expect(p2.items.map((c) => c.id)).toEqual([ids[3], ids[2], ids[1]]);
+      const p3 = await list({ limit: 3, cursor: p2.nextCursor });
+      expect(p3.items.map((c) => c.id)).toEqual([ids[0]]);
+      expect(p3.nextCursor).toBeNull();
+
+      // 딱 맞아떨어지는 마지막 페이지에도 다음 커서는 없다
+      const exact = await list({ limit: 7 });
+      expect(exact.items).toHaveLength(7);
+      expect(exact.nextCursor).toBeNull();
+
+      // 테넌트 경계: 시드 테넌트의 목록에는 이 대화들이 없다
+      const others = await ctx.repos.conversations.listByTenant(ctx.tenantId, { limit: 100 });
+      expect(others.items.some((c) => ids.includes(c.id) || tied.includes(c.id))).toBe(false);
+
+      await expect(list({ limit: 3, cursor: 'not-a-cursor' })).rejects.toThrow(/cursor/);
+      await expect(list({ limit: 0 })).rejects.toThrow(/limit/);
+    });
+
     it('돌려준 객체를 바꿔도 저장소는 변하지 않는다', async () => {
       const first = await ctx.repos.knowledge.listByTenant(ctx.tenantId);
       first[0]?.blocks.push('oops');
