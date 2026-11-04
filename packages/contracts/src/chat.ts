@@ -61,6 +61,9 @@ export type ApiErrorCode =
   | 'invalid_limit'
   | 'invalid_cursor'
   | 'invalid_status'
+  /** 상담원 연결 요청(handoff.ts). 연락처가 이메일이 아니거나 너무 긺(400), 공개 엔드포인트의 요율 제한(429). */
+  | 'invalid_contact'
+  | 'too_many_requests'
   | StreamErrorCode;
 
 export interface ApiErrorBody {

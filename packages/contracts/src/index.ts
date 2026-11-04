@@ -42,3 +42,10 @@ export {
   type MessageDto,
   type UpdateHandoffBody,
 } from './console.js';
+export {
+  HANDOFF_PATH,
+  MAX_HANDOFF_CONTACT_CHARS,
+  MAX_HANDOFF_MESSAGE_CHARS,
+  type HandoffRequestBody,
+  type HandoffRequestResponse,
+} from './handoff.js';
