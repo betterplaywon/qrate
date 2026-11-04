@@ -9,12 +9,14 @@
 // 재시도 정책(ADR-0002 질문 4): 자동 재시도는 없다. 서버가 retryable이라고 한 실패만 "다시 보내기" 버튼을 보이고,
 // Retry-After 동안 버튼을 잠근다. 같은 메시지를 다시 보내도 결과가 같은 실패(차단, 재시도 불가)에는 버튼이 없다.
 //
-// 상태(열림·안 읽은 수·대화 id·진행 중)는 FrameApp 하나가 든다. 화면 핸들러와 스트림 처리가 서로를 부르므로 클로저 대신 메서드로 둔다.
+// 앱 상태(열림·안 읽은 수·대화 id·진행 중)는 FrameApp 하나가 든다. 한 턴의 화면 반영(사건 → 말풍선·안내)은 turn.ts의 Turn이 맡고,
+// 앱에 미치는 효과(대화 id, 안 읽은 수, 재시도, 연결 요청)만 콜백으로 돌려받는다.
 
 import { MAX_UNREAD, parseLauncherMessage, toWire, type FrameMessage } from '../protocol';
 import { requestHandoff as postHandoffRequest, type HandoffResult } from './handoff';
-import { streamChat, type ChatEvent } from './stream';
-import { createView, type AnswerView, type ChatView } from './view';
+import { streamChat } from './stream';
+import { Turn } from './turn';
+import { createView, type ChatView } from './view';
 import './frame.css';
 
 interface FrameConfig {
@@ -23,20 +25,11 @@ interface FrameConfig {
   parentOrigin: string;
 }
 
-type Failure = Extract<ChatEvent, { type: 'failed' }>;
-
 function readConfig(): FrameConfig | null {
   const params = new URLSearchParams(location.search);
   const tenant = params.get('t')?.trim();
   const parentOrigin = params.get('o')?.trim();
   return tenant && parentOrigin ? { tenant, parentOrigin } : null;
-}
-
-/** 실패 단계와 재시도 가능 여부 → 안내 문구. */
-function failureText(ev: Failure): string {
-  if (ev.stage === 'connect') return '서버에 연결할 수 없어요.';
-  if (ev.stage === 'response') return ev.retryable ? '지금은 답변할 수 없어요.' : `오류가 발생했어요. (${ev.status ?? '?'})`;
-  return ev.retryable ? '답변이 중단됐어요.' : '답변 중 오류가 발생했어요.';
 }
 
 /** 접수 실패 → 안내 문구. 연락처 문제만 따로 알리고 나머지는 "나중에 다시". */
@@ -109,63 +102,23 @@ class FrameApp {
     });
   }
 
-  private showFailure(ev: Failure, message: string): void {
-    const retry = ev.retryable
-      ? { label: '다시 보내기', disabledForMs: ev.retryAfterMs, run: () => void this.ask(message, { retry: true }) }
-      : undefined;
-    this.view.addNotice(failureText(ev), retry);
-  }
-
   private async ask(message: string, opts: { retry?: boolean } = {}): Promise<void> {
     if (this.inFlight) return;
     this.inFlight = true;
     if (!opts.retry) this.view.addUser(message);
     this.view.setBusy(true);
 
-    let answer: AnswerView | null = null;
+    // 턴은 화면만 그리고, 앱 상태를 바꾸는 일은 여기 콜백으로 돌아온다.
+    const turn = new Turn(this.view, {
+      conversationStarted: (id) => {
+        this.conversationId = id;
+      },
+      answered: () => this.noteAnswered(),
+      offerHandoff: () => this.requestHandoff(),
+      retry: () => void this.ask(message, { retry: true }),
+    });
     try {
-      for await (const ev of streamChat({ message, tenant: this.config.tenant, conversationId: this.conversationId })) {
-        switch (ev.type) {
-          case 'conversation':
-            this.conversationId = ev.id;
-            break;
-          case 'moderation':
-            this.view.addNotice('안내: 메시지가 검토 대상으로 표시되었어요.');
-            break;
-          case 'delta':
-            answer ??= this.view.startAnswer();
-            answer.append(ev.text);
-            break;
-          case 'citation':
-            answer ??= this.view.startAnswer();
-            answer.addCitation(ev.citation);
-            break;
-          case 'handoff':
-            // 모델이 자료에 없는 질문이라고 신호했다. 안내 문장은 답으로 이미 흘러왔으니, 여기서는 사람 연결로 이어 주는 길만 보인다.
-            this.view.addNotice('상담원에게 연결해 드릴까요?', {
-              label: '상담원 연결',
-              disabledForMs: null,
-              run: () => this.requestHandoff(),
-            });
-            break;
-          case 'end':
-            answer?.finish('complete');
-            if (ev.stopReason === 'refusal') {
-              this.view.addNotice('이 질문에는 답변을 드릴 수 없어요. 상담원에게 문의해 주세요.');
-            } else if (ev.stopReason === 'max_tokens') {
-              this.view.addNotice('답변이 길어 잘렸어요.');
-            }
-            this.noteAnswered();
-            break;
-          case 'blocked':
-            this.view.addNotice('해당 메시지는 전송할 수 없어요. 표현을 바꿔 다시 시도해 주세요.');
-            break;
-          case 'failed':
-            answer?.finish('interrupted');
-            this.showFailure(ev, message);
-            break;
-        }
-      }
+      for await (const ev of streamChat({ message, tenant: this.config.tenant, conversationId: this.conversationId })) turn.apply(ev);
     } finally {
       this.inFlight = false;
       this.view.setBusy(false);
