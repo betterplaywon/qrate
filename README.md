@@ -35,7 +35,7 @@ SSE 스트리밍 + 크레딧 과금(멱등) + 품질 평가셋 관점에서 처�
 ## 구조
 
 ```
-apps/server         Express 5 + TS — 대화 API(SSE 스트리밍)·입력 모더레이션·답변 엔진·저장소, (W3~) Prisma/PostgreSQL
+apps/server         Express 5 + TS — 대화 API(SSE 스트리밍)·입력 모더레이션·답변 엔진·저장소(메모리 | Prisma·PostgreSQL, 마이그레이션은 prisma/migrations)
 apps/console        React + Vite — 운영 콘솔 (W3)
 packages/widget     임베더블 SDK — 런처(IIFE, Shadow DOM) + 대화창 앱(서버 오리진 iframe, postMessage) + 브라우저 E2E(e2e/)
 packages/contracts  서버·위젯이 함께 쓰는 대화 API 계약 — SSE 이벤트 encode/parse, 요청·오류 본문
@@ -49,7 +49,7 @@ docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
 
 - [x] W1 기반: 모노레포(pnpm workspace) · CI 게이트(GitHub Actions) · Sentry · Docker · SSE 목업 스트리밍 · 입력 모더레이션(3단계) + 테스트
 - [x] W2 답변 엔진(Claude 스트리밍 · 서버 측 폴백 · 목업 교체) · 지식(FAQ) 전량 주입 + 인용 · 핸드오프 신호(도구 호출) · 테넌트 검증(Origin 검사 · frame-ancestors) · 위젯 iframe 분리(postMessage · 출처 UI) · 브라우저 E2E · Docker 이미지 정리
-- [ ] W3 운영 콘솔(대화 로그 · 미응답 큐 · 핸드오프)
+- [ ] W3 저장소(PostgreSQL · Prisma 마이그레이션 · 메모리·DB 공통 계약 테스트) · 운영 콘솔(대화 로그 · 미응답 큐 · 핸드오프)
 - [ ] W4 크레딧 결제(멱등) · 이벤트 로그 · 간단 A/B
 - [ ] W5 응답 품질 평가셋(30케이스) · 실패 사례 기록
 - [ ] W6 k6 부하 테스트(시뮬레이션 기준 명시) · 문서화
@@ -59,17 +59,20 @@ docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
 ## 실행
 
 ```bash
-pnpm install
+pnpm install                          # 서버 postinstall이 Prisma 클라이언트를 생성한다(apps/server/src/generated, git 제외)
 cp apps/server/.env.example apps/server/.env   # ANTHROPIC_API_KEY를 넣으면 실제 모델, 비우면 목업 엔진
+docker compose up -d db               # PostgreSQL. DATABASE_URL을 비우면 DB 없이 메모리 저장소(시드 파일)로 돈다
+pnpm --filter @qrate/server db:migrate   # 마이그레이션 적용(스키마를 바꿨으면 파일 생성까지). 처음 한 번 db:seed로 데모 테넌트·FAQ 투입
 pnpm dev                              # API 서버 http://localhost:8787 (대화창 iframe 문서·자산도 여기서 나간다)
 pnpm --filter @qrate/widget build     # 런처 widget.js + 대화창 앱 dist/frame/app.js·app.css
 pnpm --filter @qrate/widget demo      # 데모 http://localhost:5173/demo.html — 허용 사이트 오리진에서 서빙 (file://는 막힌다)
 pnpm --filter @qrate/console dev      # 운영 콘솔 셸
 
-pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일 (아래 e2e까지)
+pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일 (아래 e2e까지). 저장소 계약 테스트는 메모리 구현에 돌고,
+                                      # .env에 QRATE_TEST_DATABASE_URL(전용 DB qrate_test, 마이그레이션 적용 후)을 두면 Postgres 구현에도 돈다
 pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 산출물로 목업 서버·데모를 띄워 런처·대화창·postMessage·CSP 확인
                                       # 처음 한 번: pnpm --filter @qrate/widget exec playwright install chromium. 8787·5173이 비어 있어야 한다
-docker compose up --build             # Postgres + 서버 (Docker)
+docker compose up --build             # Postgres → 마이그레이션·시드(migrate) → 서버 (Docker)
 ```
 
 ## AI 워크플로우 (작업 방식)

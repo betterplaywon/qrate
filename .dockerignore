@@ -11,8 +11,11 @@
 **/dist
 **/coverage
 **/test-results
+# Prisma 생성 코드 — 빌드 스테이지가 prisma generate로 다시 만든다
+**/src/generated
 
 # 서버 이미지에 필요 없는 워크스페이스 (Dockerfile은 apps/server, packages/contracts, packages/widget 과 루트 메타파일만 COPY한다)
 apps/console
 scripts
 docs
+docker

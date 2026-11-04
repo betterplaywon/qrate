@@ -1,7 +1,8 @@
-# 로컬 개발·데모용 구성: PostgreSQL + API 서버.
-#   docker compose up --build
-# DB만 띄우고 서버는 pnpm dev로 돌리는 조합도 가능:
-#   docker compose up db
+# 로컬 개발·데모용 구성: PostgreSQL + 마이그레이션·시드 + API 서버.
+#   docker compose up --build        # db → migrate(마이그레이션·시드 적용 뒤 종료) → server
+# DB만 띄우고 서버는 pnpm dev로 돌리는 조합(평소 개발):
+#   docker compose up -d db
+#   pnpm --filter @qrate/server db:migrate   # 스키마 반영(prisma migrate dev), 처음엔 db:seed도
 services:
   db:
     image: postgres:16-alpine
@@ -13,11 +14,27 @@ services:
       - "5432:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
+      # 볼륨을 처음 만들 때만 실행된다 — 저장소 계약 테스트용 qrate_test DB 생성
+      - ./docker/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qrate"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # 마이그레이션 적용 + 시드. 서버 이미지의 빌드 스테이지(Prisma CLI·스키마 엔진·마이그레이션 파일이 있는 곳)를 그대로 쓴다 —
+  # 런타임 이미지에는 CLI가 없다(실행에 필요 없고 이미지를 키운다). 끝나면 종료하고, 서버는 그 뒤에 뜬다.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+      target: build
+    environment:
+      DATABASE_URL: postgresql://qrate:qrate@db:5432/qrate
+    command: ["sh", "-c", "pnpm --filter @qrate/server db:deploy && pnpm --filter @qrate/server db:seed"]
+    depends_on:
+      db:
+        condition: service_healthy
 
   server:
     build:
@@ -32,8 +49,8 @@ services:
     ports:
       - "8787:8787"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   dbdata:

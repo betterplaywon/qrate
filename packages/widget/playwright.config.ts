@@ -19,11 +19,11 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      // node를 직접 실행한다(--env-file 없음)— apps/server/.env의 API 키를 읽지 않는다. 엔진은 목업으로 고정.
+      // node를 직접 실행한다(--env-file 없음)— apps/server/.env의 API 키를 읽지 않는다. 엔진은 목업, 저장소는 메모리로 고정(CI의 DATABASE_URL과 무관).
       // reuseExistingServer: false — 8787에 이미 서버가 떠 있으면(예: pnpm dev, 실제 모델일 수 있음) 그걸 쓰지 않고 실패한다.
       command: 'node ../../apps/server/dist/index.js',
       url: `${SERVER_ORIGIN}/healthz`,
-      env: { QRATE_ENGINE: 'mock', PORT: '8787', QRATE_PUBLIC_ORIGIN: SERVER_ORIGIN },
+      env: { QRATE_ENGINE: 'mock', QRATE_REPO: 'memory', PORT: '8787', QRATE_PUBLIC_ORIGIN: SERVER_ORIGIN },
       reuseExistingServer: false,
     },
     {
