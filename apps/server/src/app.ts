@@ -1,4 +1,12 @@
-import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, FRAME_PATH, type ApiErrorBody, type ApiErrorCode } from '@qrate/contracts';
+import {
+  CHAT_PATH,
+  CONSOLE_API_PATH,
+  CONSOLE_PATH,
+  FRAME_PATH,
+  HANDOFF_PATH,
+  type ApiErrorBody,
+  type ApiErrorCode,
+} from '@qrate/contracts';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { createChatService } from './chat/service.js';
 import { createSessionCodec } from './console/session.js';
@@ -6,6 +14,7 @@ import type { AnswerEngine } from './engine/types.js';
 import { createChatHandler, type UsageLogger } from './http/chat.js';
 import { createConsoleRouter } from './http/console.js';
 import { createFrameHandler } from './http/frame.js';
+import { createHandoffRoute } from './http/handoff.js';
 import { requireOwnOrigin } from './origin.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import type { Repositories } from './repo/types.js';
@@ -41,6 +50,8 @@ export interface AppOptions {
   console?: { secret: string; loginAttempts?: { max: number; windowMs: number } };
   /** 콘솔 앱 정적 파일(index.html·assets/)의 디렉터리 — @qrate/console 빌드 산출물 dist. 없으면 콘솔 페이지는 서빙하지 않는다(API만). */
   consoleAssetsDir?: string;
+  /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
+  handoffRequests?: { max: number; windowMs: number };
 }
 
 /**
@@ -59,6 +70,7 @@ export function createApp({
   reportError = reportToStderr,
   console: consoleOptions,
   consoleAssetsDir,
+  handoffRequests,
 }: AppOptions): express.Express {
   const app = express();
   // Express 기본 `X-Powered-By: Express` 헤더를 끈다. 서버 구현을 알리는 정보일 뿐 기능이 없고,
@@ -87,6 +99,13 @@ export function createApp({
     requireOwnOrigin(publicOrigin),
     express.json({ limit: '32kb' }), // 채팅 입력에 32kb면 충분 — 과대 페이로드 차단
     createChatHandler({ chat, logUsage, reportError }),
+  );
+
+  // 상담원 연결 요청. 대화 API와 같은 Origin 검사 뒤 요율 제한 → 본문 → 처리(http/handoff.ts). 콘솔 큐의 방문자 항목이 된다.
+  app.post(
+    HANDOFF_PATH,
+    requireOwnOrigin(publicOrigin),
+    ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
   );
 
   // 콘솔 페이지(/console/). 자산은 파일 이름에 해시가 있어 오래 캐시하고, index.html은 매번 재검증한다. 화면 상태는 해시 라우팅이라

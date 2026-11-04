@@ -6,7 +6,7 @@
 // 목업 훅([[fail:429]] 등)은 apps/server/src/engine/mock.ts.
 
 import { expect, test as base, type FrameLocator, type Page } from '@playwright/test';
-import { DEMO_ORIGIN, NOT_ALLOWED_DEMO_ORIGIN, SERVER_ORIGIN } from './servers';
+import { CONSOLE_KEY, DEMO_ORIGIN, NOT_ALLOWED_DEMO_ORIGIN, SERVER_ORIGIN } from './servers';
 
 const HOST = '#qrate-host';
 const LAUNCHER = `${HOST} .launcher`;
@@ -154,7 +154,11 @@ test('서버가 재시도 가능하다고 한 실패에만 "다시 보내기"가
   expect(consoleErrors.filter((e) => !e.startsWith('Failed to load resource'))).toEqual([]);
 });
 
-test('모델이 자료에 없는 질문이라고 신호하면 안내 답변 뒤에 상담원 연결 제안이 붙는다', async ({ page, consoleErrors }) => {
+test('모델이 자료에 없는 질문이라고 신호하면 안내 답변 뒤에 상담원 연결 제안이 붙고, 연락처를 보내면 콘솔 큐에 들어간다', async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const frame = await openWidget(page);
   // [[handoff]] → 목업이 안내 문장만 답하고(인용 없음) event: handoff를 보낸다
   await send(frame, '[[handoff]] 카카오톡으로 청구서 알림을 보낼 수 있나요?');
@@ -163,11 +167,61 @@ test('모델이 자료에 없는 질문이라고 신호하면 안내 답변 뒤�
   await expect(answer.locator('.text')).toContainText('안내 자료에 없어요');
   await expect(answer.locator('.sources')).toHaveCount(0);
 
-  // 신호를 받은 대화창은 연결 제안 안내와 버튼을 붙인다. 누르면 지금은 준비 중 안내(실제 연결은 W3)
+  // 신호를 받은 대화창은 연결 제안 안내와 버튼을 붙인다. 누르면 연락처 폼이 열리고, 보내면 접수 안내가 남는다
   const offer = frame.locator('.msg.notice').last();
   await expect(offer).toContainText('상담원에게 연결해 드릴까요?');
   await offer.locator('.notice-action').click();
-  await expect(frame.locator('.msg.notice').last()).toContainText('준비 중');
+  const form = frame.locator('.handoff-form');
+  await expect(form).toBeVisible();
+  await form.locator('#qrate-contact').fill('visitor@example.com');
+  await form.locator('#qrate-handoff-message').fill('전화 주세요');
+  await form.locator('button[type="submit"]').click();
+  await expect(frame.locator('.msg.notice').last()).toContainText('접수됐어요');
+  await expect(form).toHaveCount(0);
+
+  // 접수는 콘솔의 미응답 큐에 방문자 항목으로 들어간다 — 콘솔 API로 확인(로그인은 시드 테넌트 키 + 콘솔 키)
+  const login = await request.post(`${SERVER_ORIGIN}/api/console/login`, {
+    headers: { origin: SERVER_ORIGIN },
+    data: { tenant: 'demo', key: CONSOLE_KEY },
+  });
+  expect(login.status()).toBe(200);
+  const queue = (await (await request.get(`${SERVER_ORIGIN}/api/console/handoffs?status=open`)).json()) as {
+    items: { source: string; contact: string | null; summary: string | null; preview: string }[];
+  };
+  const visitor = queue.items.find((h) => h.source === 'visitor');
+  expect(visitor).toMatchObject({ contact: 'visitor@example.com', summary: '전화 주세요' });
+  expect(visitor?.preview).toContain('카카오톡');
+  expect(consoleErrors).toEqual([]);
+});
+
+test('머리글의 "상담원 연결"은 질문 전에도 접수되고, 그 뒤의 질문은 같은 대화로 이어진다. 취소하면 폼이 사라진다', async ({
+  page,
+  consoleErrors,
+}) => {
+  const frame = await openWidget(page);
+  await frame.locator('.handoff').click();
+  const form = frame.locator('.handoff-form');
+  await expect(form).toBeVisible();
+  await form.locator('.cancel').click();
+  await expect(form).toHaveCount(0);
+
+  await frame.locator('.handoff').click();
+  await frame.locator('#qrate-contact').fill('early@example.com');
+  const [created] = await Promise.all([
+    page.waitForResponse((r) => r.url() === `${SERVER_ORIGIN}/api/handoff` && r.request().method() === 'POST'),
+    frame.locator('.handoff-form button[type="submit"]').click(),
+  ]);
+  expect(created.status()).toBe(201);
+  const { conversationId } = (await created.json()) as { conversationId: string };
+  await expect(frame.locator('.msg.notice').last()).toContainText('접수됐어요');
+
+  // 이어지는 질문은 서버가 만든 그 대화 id로 간다
+  const [chat] = await Promise.all([
+    page.waitForRequest((r) => r.url() === CHAT_URL && r.method() === 'POST'),
+    send(frame, '환불되나요?'),
+  ]);
+  expect(chat.postDataJSON()).toMatchObject({ conversationId });
+  await expect(finishedAnswers(frame)).toHaveCount(1);
   expect(consoleErrors).toEqual([]);
 });
 

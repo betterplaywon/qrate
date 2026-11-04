@@ -10,6 +10,7 @@
 // Retry-After 동안 버튼을 잠근다. 같은 메시지를 다시 보내도 결과가 같은 실패(차단, 재시도 불가)에는 버튼이 없다.
 
 import { MAX_UNREAD, parseLauncherMessage, toWire, type FrameMessage } from '../protocol';
+import { requestHandoff as postHandoffRequest } from './handoff';
 import { streamChat, type ChatEvent } from './stream';
 import { createView, type AnswerView } from './view';
 import './frame.css';
@@ -40,9 +41,26 @@ function main(config: FrameConfig): void {
   let conversationId: string | null = null;
   let inFlight = false;
 
-  // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보인다. 실제 연결은 W3 — 지금은 준비 중 안내.
-  // 모델의 핸드오프 신호(event: handoff)가 붙이는 연결 제안 버튼도 같은 길로 간다.
-  const requestHandoff = (): void => view.addNotice('상담원 연결은 준비 중이에요. 지금은 이 창에서 질문해 주세요.');
+  // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보인다. 누르면 연락처(이메일)와 남길 말을 받아 서버에 접수한다(POST /api/handoff).
+  // 접수는 콘솔의 미응답 큐에 들어가고 운영자가 이메일로 답한다(콘솔 결정 2026-11-04, 핸드오프 A). 모델의 핸드오프 신호(event: handoff)가
+  // 붙이는 연결 제안 버튼도 같은 길로 간다. 질문 전에 눌러도 되고, 그때 서버가 만든 대화 id를 이어받아 다음 질문이 같은 대화로 간다.
+  const requestHandoff = (): void =>
+    view.showHandoffForm({
+      submit: async (contact, message) => {
+        const result = await postHandoffRequest({ tenant: config.tenant, conversationId, contact, message });
+        if (result.ok) {
+          conversationId = result.conversationId;
+          return { ok: true, text: '접수됐어요. 적어 주신 이메일로 답을 드릴게요.' };
+        }
+        const text =
+          result.code === 'invalid_contact'
+            ? '이메일 주소를 확인해 주세요.'
+            : result.status === 429
+              ? '요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.'
+              : '지금은 접수할 수 없어요. 잠시 뒤 다시 시도해 주세요.';
+        return { ok: false, text };
+      },
+    });
 
   const view = createView(root, {
     onSubmit: (message) => void ask(message),
