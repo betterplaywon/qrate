@@ -1,12 +1,26 @@
-import { CONVERSATION_ID_HEADER, encodeChatEvent, type ApiErrorBody, type ChatRequestBody } from '@qrate/contracts';
+import {
+  CONVERSATION_ID_HEADER,
+  MAX_MESSAGE_CHARS,
+  encodeChatEvent,
+  type ApiErrorBody,
+  type ChatRequestBody,
+} from '@qrate/contracts';
 import type { Request, Response } from 'express';
 import type { ChatService } from '../chat/service.js';
-import { asEngineError, type EngineEvent, type HandoffReason, type Usage } from '../engine/types.js';
+import {
+  asEngineError,
+  type EngineError,
+  type EngineErrorCode,
+  type EngineEvent,
+  type HandoffReason,
+  type Usage,
+} from '../engine/types.js';
+import { reportToStderr, type ErrorReporter } from '../report.js';
 import { sseForEngineEvent } from './sse.js';
 
 // POST /api/chat — 대화 유스케이스(chat/service.ts)를 HTTP와 SSE로 옮기는 어댑터.
-// 여기서 정하는 것: 본문 모양 검사(400), 결과 종류 → 상태 코드(404·422), 첫 이벤트 전 실패 → HTTP 상태 + Retry-After,
-// 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 요청 1건의 사용량 로그.
+// 여기서 정하는 것: 본문 모양·길이 검사(400), 결과 종류 → 상태 코드(404·422), 엔진 실패 코드 → 상태 코드(statusFor),
+// 첫 이벤트 전 실패 → HTTP 상태 + Retry-After, 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 요청 1건의 사용량 로그.
 
 /** 요청 1건의 결과 기록. W4에서 이벤트 로그(DB)로 옮기고, 지금은 stdout JSON 한 줄이다. */
 export interface UsageLogEntry {
@@ -47,9 +61,29 @@ type DoneEvent = Extract<EngineEvent, { type: 'done' }>;
 export interface ChatHandlerDeps {
   chat: ChatService;
   logUsage?: UsageLogger;
+  /** 예상 밖의 엔진 실패(인증·잘못된 요청·미분류)의 보고 통로. 요율 제한·일시 장애는 사용량 로그로 충분해 보내지 않는다. */
+  reportError?: ErrorReporter;
 }
 
-export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerDeps) {
+/** 엔진 실패 코드 → 첫 이벤트 전 실패의 HTTP 상태. 엔진은 코드와 재시도 여부만 말하고(engine/types.ts), 상태는 여기서만 정한다. */
+export function statusFor(code: EngineErrorCode): number {
+  switch (code) {
+    case 'rate_limited':
+    case 'upstream_unavailable':
+      return 503;
+    case 'upstream_auth':
+    case 'upstream_error':
+      return 502;
+    case 'upstream_bad_request':
+      return 500;
+    case 'aborted':
+      return 499; // 응답할 상대가 없다 — 실제로 보내지는 않는다
+  }
+}
+
+const REPORTED_CODES: ReadonlySet<EngineErrorCode> = new Set(['upstream_auth', 'upstream_bad_request', 'upstream_error']);
+
+export function createChatHandler({ chat, logUsage = logToStdout, reportError = reportToStderr }: ChatHandlerDeps) {
   return async function handleChat(req: Request, res: Response): Promise<void> {
     const startedAt = Date.now();
     const body = (req.body ?? {}) as ChatBody;
@@ -60,6 +94,11 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
 
     if (!message) {
       res.status(400).json({ error: 'message is required' } satisfies ApiErrorBody);
+      return;
+    }
+    if (message.length > MAX_MESSAGE_CHARS) {
+      // 본문 32kb 상한(app.ts)과 별개로 메시지 자체를 막는다 — 테넌트 키는 공개값이라 긴 입력은 곧 요청당 입력 토큰 비용이다.
+      res.status(400).json({ error: 'message_too_long' } satisfies ApiErrorBody);
       return;
     }
     if (!tenantKey) {
@@ -112,6 +151,11 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
         usage: detail.done?.usage ?? null,
       });
     };
+    const report = (e: EngineError): void => {
+      if (REPORTED_CODES.has(e.code)) {
+        reportError(e, { where: 'engine', code: e.code, tenant: turn.tenantId, conversationId: turn.conversationId });
+      }
+    };
 
     // 첫 이벤트는 SSE 헤더를 보내기 "전에" 기다린다. 여기서 실패하면 HTTP 상태 코드로 답할 수 있어
     // 위젯이 재시도 여부를 상태 코드와 Retry-After로 판단한다. 헤더가 나간 뒤의 실패는 event: error다.
@@ -124,8 +168,9 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
         return;
       }
       const e = asEngineError(err);
+      report(e);
       if (e.retryable) res.setHeader('Retry-After', '2');
-      res.status(e.status).json({ error: e.code, retryable: e.retryable } satisfies ApiErrorBody);
+      res.status(statusFor(e.code)).json({ error: e.code, retryable: e.retryable } satisfies ApiErrorBody);
       finish('error', { errorCode: e.code });
       return;
     }
@@ -159,13 +204,14 @@ export function createChatHandler({ chat, logUsage = logToStdout }: ChatHandlerD
         return;
       }
       const e = asEngineError(err);
+      report(e);
       res.write(encodeChatEvent({ type: 'error', code: e.code, retryable: e.retryable }));
       res.end();
       finish('error', { errorCode: e.code });
       return;
     }
 
-    // 여기 닿았으면 유스케이스가 질문과 답변을 대화에 저장한 뒤다(chat/service.ts).
+    // 여기 닿았으면 유스케이스가 턴을 대화에 저장한 뒤다(chat/service.ts). 저장 실패는 거기서 보고하고 여기로 오지 않는다.
     res.write(encodeChatEvent({ type: 'end' }));
     res.end();
     finish('done', { done });

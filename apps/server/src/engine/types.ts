@@ -3,7 +3,7 @@
 // 왜 인터페이스를 두는가: 실제 모델(Claude)과 목업을 같은 모양으로 바꿔 끼우기 위해서다.
 // CI·테스트는 키 없이 목업으로 돌고, 모델·공급자 교체는 이 계약 뒤에서 일어난다.
 // 인용과 종료 사유는 위젯에 그대로 전달되는 값이라 전송 계약(@qrate/contracts)의 타입을 그대로 쓴다.
-// 나머지(사용량, 실제 모델, 폴백 여부)는 서버 안에서만 쓰는 정보라 여기서 정의한다. (src/sse.ts가 둘을 나눈다)
+// 나머지(사용량, 실제 모델, 폴백 여부)는 서버 안에서만 쓰는 정보라 여기서 정의한다. (http/sse.ts가 둘을 나눈다)
 
 import type { Citation, HandoffReason, StopReason, StreamErrorCode } from '@qrate/contracts';
 
@@ -68,12 +68,14 @@ export interface AnswerEngine {
 /** 전송 계약의 실패 코드 + 서버 안에서만 쓰는 aborted(클라이언트가 끊음 — 위젯에 보낼 일이 없다). */
 export type EngineErrorCode = StreamErrorCode | 'aborted';
 
-/** 엔진 실패를 HTTP 응답으로 옮길 수 있는 형태로 정규화한다. 공급자별 예외는 각 엔진이 여기로 변환한다. */
+/**
+ * 엔진 실패를 전송 계층이 옮길 수 있는 형태로 정규화한다. 공급자별 예외는 각 엔진이 여기로 변환한다.
+ * HTTP 상태는 여기 없다 — 엔진은 "무엇이 실패했고 재시도해도 되는가"만 말하고, 코드 → 상태는 http/chat.ts(statusFor)가 정한다.
+ * 엔진이 전송의 어휘를 알면 콘솔·평가셋처럼 HTTP가 아닌 호출자에게 무의미한 값이 계약에 남는다.
+ */
 export class EngineError extends Error {
   constructor(
     readonly code: EngineErrorCode,
-    /** 첫 이벤트 전에 실패했을 때 위젯에 돌려줄 HTTP 상태. */
-    readonly status: number,
     /** 위젯이 같은 요청을 다시 보내도 되는가 (재시도 정책의 입력). */
     readonly retryable: boolean,
     message: string,
@@ -91,7 +93,7 @@ export function isAbortError(err: unknown): boolean {
 /** 어떤 예외든 EngineError로 만든다. 엔진이 변환하지 못한 것은 upstream_error로 본다. */
 export function asEngineError(err: unknown): EngineError {
   if (err instanceof EngineError) return err;
-  if (isAbortError(err)) return new EngineError('aborted', 499, false, 'client aborted', { cause: err });
+  if (isAbortError(err)) return new EngineError('aborted', false, 'client aborted', { cause: err });
   const message = err instanceof Error ? err.message : String(err);
-  return new EngineError('upstream_error', 502, false, message, { cause: err });
+  return new EngineError('upstream_error', false, message, { cause: err });
 }

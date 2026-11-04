@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createEngine } from './engine/index.js';
+import { reportToStderr, type ErrorReporter } from './report.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from './repo/seed.js';
 
 const config = loadConfig();
@@ -19,12 +20,15 @@ const frameAssetsDir = path.join(
   'dist',
   'frame',
 );
-const app = createApp({ engine, repos, publicOrigin: config.publicOrigin, frameAssetsDir, sentryEnabled });
-
-// Sentry 에러 핸들러는 라우트 등록 "이후", 리스닝 "이전"에 단다.
-if (sentryEnabled) {
-  Sentry.setupExpressErrorHandler(app);
-}
+// 처리 중 예외의 보고 통로. 앱의 마지막 오류 핸들러(app.ts)와 턴 저장·엔진 실패(chat/, http/)가 이 함수를 부른다.
+// Sentry가 켜져 있으면 거기로도 보낸다. 요청 본문·사용자 메시지는 어느 구현에도 넘기지 않는다(src/report.ts).
+const reportError: ErrorReporter = sentryEnabled
+  ? (err, context) => {
+      Sentry.captureException(err, { extra: context });
+      reportToStderr(err, context);
+    }
+  : reportToStderr;
+const app = createApp({ engine, repos, publicOrigin: config.publicOrigin, frameAssetsDir, sentryEnabled, reportError });
 
 app.listen(config.port, () => {
   console.log(`[server] listening on http://localhost:${config.port}`);

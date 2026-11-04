@@ -1,3 +1,4 @@
+import { MAX_MESSAGE_CHARS } from '@qrate/contracts';
 import type { SourceCitation } from './stream';
 
 // 대화창 화면. 상태는 모르고, main.ts가 시키는 대로 그린다.
@@ -69,6 +70,7 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
   const input = el('input');
   input.id = 'qrate-input';
   input.autocomplete = 'off';
+  input.maxLength = MAX_MESSAGE_CHARS; // 서버의 message_too_long(400)과 같은 값 — 넘는 입력은 보내기 전에 막는다
   input.placeholder = '메시지를 입력하세요';
   const send = el('button', 'send', '전송');
   send.type = 'submit';
