@@ -1,16 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isOriginString } from '../origin.js';
-import { MemoryConversationRepository, MemoryKnowledgeRepository, MemoryTenantRepository } from './memory.js';
+import {
+  MemoryConversationRepository,
+  MemoryHandoffRepository,
+  MemoryKnowledgeRepository,
+  MemoryStore,
+  MemoryTenantRepository,
+} from './memory.js';
 import type { KnowledgeItem, Repositories, Tenant } from './types.js';
 
 // 시드 파일: W2의 데이터 원천. 테넌트 1개와 FAQ 목록을 JSON으로 두고 서버 시작 때 메모리 저장소에 올린다.
 // W3에서 Postgres로 옮길 때는 같은 파일을 prisma seed의 입력으로 쓴다.
 
 export type SeedKnowledge = Omit<KnowledgeItem, 'tenantId'>;
+/** 시드 파일의 테넌트에는 비밀이 없다. 콘솔 키 해시는 환경변수(QRATE_DEMO_CONSOLE_KEY)에서 따로 붙인다. */
+export type SeedTenant = Omit<Tenant, 'consoleKeyHash'>;
 
 export interface SeedFile {
-  tenant: Tenant;
+  tenant: SeedTenant;
   knowledge: SeedKnowledge[];
 }
 
@@ -23,12 +31,17 @@ export function loadSeedFile(path: string = DEFAULT_SEED_PATH): SeedFile {
   return parseSeed(raw, path);
 }
 
-export function createRepositoriesFromSeed(seed: SeedFile): Repositories {
+export function createRepositoriesFromSeed(
+  seed: SeedFile,
+  { consoleKeyHash = null }: { consoleKeyHash?: string | null } = {},
+): Repositories {
   const knowledge: KnowledgeItem[] = seed.knowledge.map((k) => ({ ...k, tenantId: seed.tenant.id }));
+  const store = new MemoryStore();
   return {
-    tenants: new MemoryTenantRepository([seed.tenant]),
+    tenants: new MemoryTenantRepository([{ ...seed.tenant, consoleKeyHash }]),
     knowledge: new MemoryKnowledgeRepository(knowledge),
-    conversations: new MemoryConversationRepository(),
+    conversations: new MemoryConversationRepository(store),
+    handoffs: new MemoryHandoffRepository(store),
   };
 }
 

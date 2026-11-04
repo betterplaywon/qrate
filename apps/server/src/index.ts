@@ -1,9 +1,12 @@
 // Sentry가 가장 먼저 로드되어야 한다 — 아래 import 순서는 의도된 것. (src/sentry.ts 참고)
 import { Sentry, sentryEnabled } from './sentry.js';
+import { CONSOLE_API_PATH, CONSOLE_PATH } from '@qrate/contracts';
+import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { loadConfig, type AppConfig } from './config.js';
+import { hashConsoleKey } from './console/key.js';
 import { createEngine } from './engine/index.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import { createPrismaClient, createPrismaRepositories } from './repo/prisma.js';
@@ -15,11 +18,10 @@ const engine = createEngine(config);
 const storage = await createStorage(config);
 // 대화창 앱(app.js·app.css)은 위젯 패키지의 빌드 산출물이다. 워크스페이스 의존성으로 받아 패키지 위치에서 찾는다.
 // 컨테이너에는 pnpm deploy가 @qrate/widget의 dist/를 함께 담는다(apps/server/Dockerfile).
-const frameAssetsDir = path.join(
-  path.dirname(createRequire(import.meta.url).resolve('@qrate/widget/package.json')),
-  'dist',
-  'frame',
-);
+const require = createRequire(import.meta.url);
+const frameAssetsDir = path.join(path.dirname(require.resolve('@qrate/widget/package.json')), 'dist', 'frame');
+// 운영 콘솔 앱도 같은 방식 — @qrate/console의 dist(index.html·assets/)를 /console/ 로 서빙한다.
+const consoleAssetsDir = path.join(path.dirname(require.resolve('@qrate/console/package.json')), 'dist');
 // 처리 중 예외의 보고 통로. 앱의 마지막 오류 핸들러(app.ts)와 턴 저장·엔진 실패(chat/, http/)가 이 함수를 부른다.
 // Sentry가 켜져 있으면 거기로도 보낸다. 요청 본문·사용자 메시지는 어느 구현에도 넘기지 않는다(src/report.ts).
 const reportError: ErrorReporter = sentryEnabled
@@ -28,6 +30,8 @@ const reportError: ErrorReporter = sentryEnabled
       reportToStderr(err, context);
     }
   : reportToStderr;
+// 콘솔 세션 서명 비밀. 환경변수가 없으면 프로세스마다 새로 만든다 — 로컬에선 충분하고, 재시작하면 운영자가 다시 로그인한다.
+const consoleSecret = config.consoleSecret ?? randomBytes(32).toString('base64url');
 const app = createApp({
   engine,
   repos: storage.repos,
@@ -35,6 +39,8 @@ const app = createApp({
   frameAssetsDir,
   sentryEnabled,
   reportError,
+  console: { secret: consoleSecret },
+  consoleAssetsDir,
 });
 
 app.listen(config.port, () => {
@@ -43,8 +49,10 @@ app.listen(config.port, () => {
     `[server] engine=${engine.name} model=${engine.model} thinking=${config.thinking} fallback=${config.fallback ? 'default' : 'off'}`,
   );
   console.log(`[server] storage=${storage.description}`);
+  console.log(`[server] console api=${CONSOLE_API_PATH} session secret=${config.consoleSecret ? 'env' : 'random (재시작하면 세션이 끊긴다 — QRATE_CONSOLE_SECRET)'}`);
   console.log(`[server] publicOrigin=${config.publicOrigin} — 대화 API는 이 오리진의 iframe에서 온 요청만 받는다`);
   console.log(`[server] frame assets=${frameAssetsDir}`);
+  console.log(`[server] console app=${CONSOLE_PATH}/ assets=${consoleAssetsDir}`);
 });
 
 /**
@@ -75,8 +83,10 @@ async function createStorage(cfg: AppConfig): Promise<{ repos: Repositories; des
     // 운영에서 메모리 저장소면 대화가 프로세스 재시작 때 사라진다. 막지는 않는다(목업 엔진과 같은 정책) — 로그로 크게 알린다.
     console.warn('[server] WARNING: memory storage in production — DATABASE_URL이 없어 대화가 재시작 때 사라진다');
   }
+  // 콘솔 로그인 키는 시드 파일에 없다(비밀). 환경변수가 있으면 해시해 붙이고, 없으면 콘솔 로그인이 안 되는 채로 뜬다.
+  const consoleKeyHash = cfg.demoConsoleKey ? hashConsoleKey(cfg.demoConsoleKey) : null;
   return {
-    repos: createRepositoriesFromSeed(seed),
-    description: `memory seed tenant=${seed.tenant.id} knowledge=${seed.knowledge.length}`,
+    repos: createRepositoriesFromSeed(seed, { consoleKeyHash }),
+    description: `memory seed tenant=${seed.tenant.id} knowledge=${seed.knowledge.length} console=${consoleKeyHash ? 'on' : 'off (QRATE_DEMO_CONSOLE_KEY 없음)'}`,
   };
 }

@@ -29,9 +29,13 @@ model Tenant {
   apiKey         String          @unique
   // 위젯을 넣을 수 있는 사이트의 정규형 오리진(scheme://host[:port]). CSP 헤더에 그대로 들어가므로 쓰기 전에 isOriginString으로 검증한다.
   allowedOrigins String[]
+  // 운영 콘솔 로그인 키의 해시(scrypt, src/console/key.ts). 원문은 저장하지 않는다 — 시드는 QRATE_DEMO_CONSOLE_KEY를 해시해 넣는다.
+  // null이면 이 테넌트는 콘솔에 로그인할 수 없다. 콘솔 결정(2026-11-04): 인증 단위는 테넌트, 세션은 서명된 HttpOnly 쿠키.
+  consoleKeyHash String?
   createdAt      DateTime        @default(now())
   conversations  Conversation[]
   knowledge      KnowledgeItem[]
+  handoffs       Handoff[]
   credits        CreditLedger[]
 }
 
@@ -86,8 +90,9 @@ model Message {
   @@index([conversationId, seq])
 }
 
-// 모델이 상담원 연결을 요청한 기록(engine/handoff.ts의 request_handoff 도구 → event: handoff).
-// W3 미응답 큐의 입력이다 — 큐의 상태(처리 중·완료)는 콘솔을 붙일 때 추가한다.
+// 상담원 연결 요청 = 미응답 큐의 항목(콘솔 결정 2026-11-04: 큐에는 이 행만 들어간다).
+// 두 입구 — 모델의 신호(engine/handoff.ts의 request_handoff 도구 → event: handoff, source=model)와
+// 방문자의 "상담원 연결" 버튼(POST /api/handoff, source=visitor, contact에 연락처). 운영자가 콘솔에서 상태를 옮긴다.
 enum HandoffReason {
   not_in_knowledge
   needs_human
@@ -95,14 +100,35 @@ enum HandoffReason {
   other
 }
 
+enum HandoffSource {
+  model
+  visitor
+}
+
+enum HandoffStatus {
+  open
+  in_progress
+  done
+}
+
 model Handoff {
   id             String        @id @default(cuid())
+  // 큐 조회("테넌트의 열린 요청")를 위한 비정규화. 대화의 tenantId와 항상 같다 — 같은 트랜잭션에서 대화를 확인하고 넣는다.
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
   conversationId String
   conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  source         HandoffSource @default(model)
   reason         HandoffReason
+  // 모델 신호면 질문 요약, 방문자 요청이면 방문자가 적은 메모.
   summary        String?
+  // 방문자 요청의 연락처(이메일). 답은 밖(이메일 등)에서 하고 콘솔은 상태만 옮긴다.
+  contact        String?
+  status         HandoffStatus @default(open)
   createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
+  @@index([tenantId, status, createdAt])
   @@index([conversationId, createdAt])
 }
 

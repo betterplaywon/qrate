@@ -1,4 +1,4 @@
-// @qrate/contracts — 서버(apps/server)와 위젯(packages/widget)이 함께 쓰는 대화 API 계약.
+// @qrate/contracts — 서버(apps/server)·위젯(packages/widget)·콘솔(apps/console)이 함께 쓰는 API 계약.
 //
 // 이 패키지는 브라우저·Node 어디서나 도는 순수 TypeScript다(DOM·Node API 없음, 의존성 없음).
 // 소비하는 쪽은 package.json exports의 `source` 조건으로 소스를 바로 읽고(typecheck·테스트·vite 번들),
@@ -22,3 +22,23 @@ export {
   type StopReason,
   type StreamErrorCode,
 } from './chat.js';
+export {
+  CONSOLE_API_PATH,
+  CONSOLE_LIST_LIMIT,
+  CONSOLE_PATH,
+  HANDOFF_STATUSES,
+  isHandoffStatus,
+  type ConsoleLoginBody,
+  type ConsoleSessionResponse,
+  type ConsoleTenant,
+  type ConversationDetailResponse,
+  type ConversationListResponse,
+  type ConversationSummaryDto,
+  type HandoffDto,
+  type HandoffListResponse,
+  type HandoffQueueItemDto,
+  type HandoffSource,
+  type HandoffStatus,
+  type MessageDto,
+  type UpdateHandoffBody,
+} from './console.js';

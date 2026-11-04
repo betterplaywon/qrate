@@ -1,5 +1,5 @@
-# 로컬 개발·데모용 구성: PostgreSQL + 마이그레이션·시드 + API 서버.
-#   docker compose up --build        # db → migrate(마이그레이션·시드 적용 뒤 종료) → server
+# 로컬 개발·데모용 구성: PostgreSQL + 마이그레이션·시드 + API 서버(위젯 대화창·운영 콘솔 /console/ 포함).
+#   QRATE_DEMO_CONSOLE_KEY=<콘솔 키> docker compose up --build   # db → migrate(마이그레이션·시드 적용 뒤 종료) → server
 # DB만 띄우고 서버는 pnpm dev로 돌리는 조합(평소 개발):
 #   docker compose up -d db
 #   pnpm --filter @qrate/server db:migrate   # 스키마 반영(prisma migrate dev), 처음엔 db:seed도
@@ -31,6 +31,7 @@ services:
       target: build
     environment:
       DATABASE_URL: postgresql://qrate:qrate@db:5432/qrate
+      QRATE_DEMO_CONSOLE_KEY: ${QRATE_DEMO_CONSOLE_KEY:-} # 콘솔 로그인 키(해시만 저장). 비우면 시드가 키를 바꾸지 않는다 → 콘솔 로그인 불가
     command: ["sh", "-c", "pnpm --filter @qrate/server db:deploy && pnpm --filter @qrate/server db:seed"]
     depends_on:
       db:
@@ -46,6 +47,7 @@ services:
       DATABASE_URL: postgresql://qrate:qrate@db:5432/qrate
       SENTRY_DSN: ${SENTRY_DSN:-} # 셸 환경변수 또는 레포 루트 .env에서 읽음. 없으면 빈 값 → Sentry 비활성
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-} # 없으면 목업 엔진. 모델 설정(QRATE_*)은 코드 기본값을 쓴다
+      QRATE_CONSOLE_SECRET: ${QRATE_CONSOLE_SECRET:-} # 콘솔 세션 서명 비밀(16자 이상). 비우면 컨테이너마다 무작위 → 재시작하면 다시 로그인
     ports:
       - "8787:8787"
     depends_on:

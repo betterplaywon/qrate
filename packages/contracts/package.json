@@ -2,13 +2,18 @@
   "name": "@qrate/contracts",
   "private": true,
   "type": "module",
-  "description": "서버·위젯·콘솔이 공유하는 대화 API 계약 — SSE 이벤트 형식(encode/parse), 요청·오류 본문",
+  "description": "서버·위젯·콘솔이 공유하는 API 계약 — SSE 이벤트 형식(encode/parse), 요청·오류 본문, 콘솔 API DTO. ./schemas는 zod 스키마(위젯은 쓰지 않는다)",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./schemas": {
+      "source": "./src/schemas.ts",
+      "types": "./dist/schemas.d.ts",
+      "default": "./dist/schemas.js"
     }
   },
   "files": [
@@ -22,5 +27,8 @@
   "devDependencies": {
     "typescript": "^5.9.3",
     "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
   }
 }

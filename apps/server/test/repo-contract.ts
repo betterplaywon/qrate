@@ -32,6 +32,8 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect(tenant?.name).toBeTruthy();
       expect(tenant?.allowedOrigins).toContain('http://localhost:5173');
       expect(await ctx.repos.tenants.findByKey('nope')).toBeNull();
+      expect((await ctx.repos.tenants.findById(ctx.tenantId))?.apiKey).toBe('demo');
+      expect(await ctx.repos.tenants.findById('nope')).toBeNull();
     });
 
     it('지식: 테넌트별로, id 오름차순 고정 (프롬프트 캐시 접두사가 요청마다 같아야 한다)', async () => {
@@ -83,8 +85,16 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       const found = await ctx.repos.conversations.find(id, ctx.tenantId);
       expect(found?.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant']);
       expect(found?.handoffs).toHaveLength(1);
-      expect(found?.handoffs[0]).toMatchObject({ reason: 'not_in_knowledge', summary: '카카오톡 알림 문의' });
+      expect(found?.handoffs[0]).toMatchObject({
+        source: 'model',
+        reason: 'not_in_knowledge',
+        summary: '카카오톡 알림 문의',
+        contact: null,
+        status: 'open',
+      });
+      expect(found?.handoffs[0]?.id).toEqual(expect.any(String));
       expect(found?.handoffs[0]?.createdAt).toBeInstanceOf(Date);
+      expect(found?.handoffs[0]?.updatedAt).toBeInstanceOf(Date);
     });
 
     it('find의 lastMessages는 최근 n개만 싣는다 — 프롬프트 문맥용. 없으면 전부, 0이면 하나도', async () => {
@@ -125,6 +135,133 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect((await ctx.repos.conversations.find(id, ctx.tenantId))?.messages).toHaveLength(1);
     });
 
+    it('목록: 테넌트별 최근 시작순, 커서로 이어 받기, 미리보기·개수, 깨진 커서는 거부', async () => {
+      // 다른 테넌트에 대화를 만든다 — 시드 테넌트에는 앞 테스트들의 대화가 섞여 있어 정확한 페이지를 셀 수 없다.
+      const t = ctx.otherTenantId;
+      const base = Date.parse('2026-11-04T10:00:00Z');
+      const ids: string[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const id = randomUUID();
+        ids.push(id);
+        await ctx.repos.conversations.appendTurn(id, t, {
+          question: { role: 'user', content: `질문 ${i}\n` + 'x'.repeat(100), createdAt: new Date(base + i * 1000) },
+          answer: { role: 'assistant', content: `답 ${i}` },
+          handoff: i === 4 ? { reason: 'other', summary: null } : null,
+        });
+      }
+      // 같은 시각에 시작한 두 대화 — id 내림차순(코드 단위)으로 순서가 고정된다
+      const tied: string[] = [randomUUID(), randomUUID()];
+      for (const id of tied) {
+        await ctx.repos.conversations.appendTurn(id, t, {
+          question: { role: 'user', content: '동시 시작', createdAt: new Date(base + 10_000) },
+          answer: null,
+          handoff: null,
+        });
+      }
+      const tiedNewestFirst = [...tied].sort().reverse();
+
+      const list = (opts: { limit: number; cursor?: string | null }) => ctx.repos.conversations.listByTenant(t, opts);
+      const p1 = await list({ limit: 3 });
+      expect(p1.items.map((c) => c.id)).toEqual([...tiedNewestFirst, ids[4]]);
+      expect(p1.nextCursor).toEqual(expect.any(String));
+      expect(p1.items[0]).toMatchObject({ tenantId: t, messageCount: 1, handoffCount: 0, preview: '동시 시작' });
+      expect(p1.items[2]).toMatchObject({ messageCount: 2, handoffCount: 1 });
+      expect(p1.items[2]?.preview).toBe(('질문 4 ' + 'x'.repeat(100)).slice(0, 80)); // 줄바꿈은 공백, 80자에서 자름
+
+      const p2 = await list({ limit: 3, cursor: p1.nextCursor });
+      expect(p2.items.map((c) => c.id)).toEqual([ids[3], ids[2], ids[1]]);
+      const p3 = await list({ limit: 3, cursor: p2.nextCursor });
+      expect(p3.items.map((c) => c.id)).toEqual([ids[0]]);
+      expect(p3.nextCursor).toBeNull();
+
+      // 딱 맞아떨어지는 마지막 페이지에도 다음 커서는 없다
+      const exact = await list({ limit: 7 });
+      expect(exact.items).toHaveLength(7);
+      expect(exact.nextCursor).toBeNull();
+
+      // 테넌트 경계: 시드 테넌트의 목록에는 이 대화들이 없다
+      const others = await ctx.repos.conversations.listByTenant(ctx.tenantId, { limit: 100 });
+      expect(others.items.some((c) => ids.includes(c.id) || tied.includes(c.id))).toBe(false);
+
+      await expect(list({ limit: 3, cursor: 'not-a-cursor' })).rejects.toThrow(/cursor/);
+      await expect(list({ limit: 0 })).rejects.toThrow(/limit/);
+    });
+
+    it('핸드오프 큐: 모델 신호는 open으로 들어가고, 상태 필터·전이는 테넌트 경계 안에서만', async () => {
+      const t = ctx.otherTenantId;
+      const base = Date.parse('2026-11-04T11:00:00Z');
+      const conv: string[] = [randomUUID(), randomUUID()];
+      for (const [i, id] of conv.entries()) {
+        await ctx.repos.conversations.appendTurn(id, t, {
+          question: { role: 'user', content: `연결 요청 ${i}`, createdAt: new Date(base + i * 1000) },
+          answer: { role: 'assistant', content: '자료에 없어요.' },
+          handoff: { reason: 'not_in_knowledge', summary: `요약 ${i}` },
+        });
+      }
+      const open = await ctx.repos.handoffs.list(t, { status: 'open', limit: 10 });
+      const mine = open.items.filter((h) => conv.includes(h.conversationId));
+      expect(mine.map((h) => h.summary)).toEqual(['요약 1', '요약 0']); // 최근순
+      expect(mine[0]).toMatchObject({ tenantId: t, source: 'model', reason: 'not_in_knowledge', status: 'open', contact: null, preview: '연결 요청 1' });
+
+      const first = mine[0];
+      if (!first) throw new Error('핸드오프가 없다');
+      const moved = await ctx.repos.handoffs.updateStatus(first.id, t, 'in_progress');
+      expect(moved).toMatchObject({ id: first.id, status: 'in_progress', conversationId: first.conversationId });
+      expect(moved?.updatedAt.getTime()).toBeGreaterThanOrEqual(first.updatedAt.getTime());
+      expect((await ctx.repos.handoffs.list(t, { status: 'open', limit: 10 })).items.map((h) => h.id)).not.toContain(first.id);
+      expect((await ctx.repos.handoffs.list(t, { status: 'in_progress', limit: 10 })).items.map((h) => h.id)).toContain(first.id);
+      expect((await ctx.repos.handoffs.list(t, { limit: 10 })).items.map((h) => h.id)).toContain(first.id); // 상태 없음 = 전부
+      // 대화 상세에도 바뀐 상태가 보인다
+      expect((await ctx.repos.conversations.find(first.conversationId, t))?.handoffs[0]?.status).toBe('in_progress');
+
+      // 테넌트 경계: 다른 테넌트로는 못 바꾸고 못 본다
+      expect(await ctx.repos.handoffs.updateStatus(first.id, ctx.tenantId, 'done')).toBeNull();
+      expect(await ctx.repos.handoffs.updateStatus('missing', t, 'done')).toBeNull();
+      expect((await ctx.repos.handoffs.list(ctx.tenantId, { limit: 100 })).items.some((h) => conv.includes(h.conversationId))).toBe(false);
+
+      // 커서로 이어 받기
+      const p1 = await ctx.repos.handoffs.list(t, { limit: 1 });
+      expect(p1.items).toHaveLength(1);
+      expect(p1.nextCursor).toEqual(expect.any(String));
+      const p2 = await ctx.repos.handoffs.list(t, { limit: 1, cursor: p1.nextCursor });
+      expect(p2.items[0]?.id).not.toBe(p1.items[0]?.id);
+      await expect(ctx.repos.handoffs.list(t, { limit: 1, cursor: 'bad' })).rejects.toThrow(/cursor/);
+    });
+
+    it('방문자 요청: 대화가 없어도 접수되고(빈 대화와 함께), 연락처·메모가 남는다. 다른 테넌트의 대화에는 못 붙인다', async () => {
+      const t = ctx.otherTenantId;
+      const fresh = randomUUID();
+      const { id } = await ctx.repos.handoffs.requestByVisitor(fresh, t, { contact: 'visitor@example.com', summary: '전화 주세요' });
+      expect(id).toEqual(expect.any(String));
+      const conversation = await ctx.repos.conversations.find(fresh, t);
+      expect(conversation?.messages).toEqual([]);
+      expect(conversation?.handoffs[0]).toMatchObject({
+        id,
+        source: 'visitor',
+        reason: 'needs_human',
+        contact: 'visitor@example.com',
+        summary: '전화 주세요',
+        status: 'open',
+      });
+      const inQueue = (await ctx.repos.handoffs.list(t, { status: 'open', limit: 50 })).items.find((h) => h.id === id);
+      expect(inQueue).toMatchObject({ conversationId: fresh, preview: '' });
+      expect((await ctx.repos.conversations.listByTenant(t, { limit: 50 })).items.find((c) => c.id === fresh)).toMatchObject({
+        messageCount: 0,
+        handoffCount: 1,
+        preview: '',
+      });
+
+      // 이미 있는 대화에 붙이기 + 테넌트 경계
+      const existing = randomUUID();
+      await ctx.repos.conversations.appendTurn(existing, t, turn('환불 가능한가요?', '7일 이내면 됩니다.'));
+      await ctx.repos.handoffs.requestByVisitor(existing, t, { contact: 'a@b.c', summary: null });
+      expect((await ctx.repos.conversations.find(existing, t))?.handoffs).toHaveLength(1);
+      await expect(ctx.repos.handoffs.requestByVisitor(existing, ctx.tenantId, { contact: 'x@y.z', summary: null })).rejects.toThrow(
+        /another tenant/,
+      );
+      expect((await ctx.repos.conversations.find(existing, t))?.handoffs).toHaveLength(1);
+    });
+
     it('돌려준 객체를 바꿔도 저장소는 변하지 않는다', async () => {
       const first = await ctx.repos.knowledge.listByTenant(ctx.tenantId);
       first[0]?.blocks.push('oops');
@@ -135,7 +272,16 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       await ctx.repos.conversations.appendTurn(id, ctx.tenantId, turn('q', 'a'));
       const found = await ctx.repos.conversations.find(id, ctx.tenantId);
       found?.messages.push({ role: 'user', content: 'ghost', createdAt: new Date() });
-      found?.handoffs.push({ reason: 'other', summary: null, createdAt: new Date() });
+      found?.handoffs.push({
+        id: 'ghost',
+        source: 'model',
+        reason: 'other',
+        summary: null,
+        contact: null,
+        status: 'open',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
       const again = await ctx.repos.conversations.find(id, ctx.tenantId);
       expect(again?.messages).toHaveLength(2);
       expect(again?.handoffs).toEqual([]);

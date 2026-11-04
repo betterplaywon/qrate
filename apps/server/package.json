@@ -21,10 +21,14 @@
     "@anthropic-ai/sdk": "^1.3.0",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "@qrate/console": "workspace:*",
     "@qrate/contracts": "workspace:*",
     "@qrate/widget": "workspace:*",
     "@sentry/node": "^10.0.0",
-    "express": "^5.1.0"
+    "cookie": "2.0.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "8.7.3",
+    "jose": "6.2.15"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

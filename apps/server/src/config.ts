@@ -29,6 +29,10 @@ export interface AppConfig {
   repo: RepoKind;
   /** Postgres 연결 문자열. 비밀번호가 들어 있으니 어디에도 로그로 남기지 않는다. */
   databaseUrl: string | undefined;
+  /** 메모리 저장소일 때 데모 테넌트의 콘솔 로그인 키(시작 때 해시). Postgres에서는 시드가 넣은 해시를 쓴다. 값은 로그에 남기지 않는다. */
+  demoConsoleKey: string | undefined;
+  /** 콘솔 세션 토큰의 서명 비밀(16자 이상). 없으면 index.ts가 프로세스마다 무작위로 만든다 — 재시작하면 세션이 끊긴다. */
+  consoleSecret: string | undefined;
 }
 
 const THINKING_SETTINGS = ['off', 'low', 'medium', 'high'] as const satisfies readonly ThinkingSetting[];
@@ -55,7 +59,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxTokens: parsePositiveInt(env.QRATE_MAX_TOKENS, defaultMaxTokens),
     repo: parseEnum(env.QRATE_REPO, REPO_KINDS, 'auto'),
     databaseUrl: env.DATABASE_URL ? env.DATABASE_URL : undefined,
+    demoConsoleKey: env.QRATE_DEMO_CONSOLE_KEY ? env.QRATE_DEMO_CONSOLE_KEY : undefined,
+    consoleSecret: parseConsoleSecret(env.QRATE_CONSOLE_SECRET),
   };
+}
+
+/** 짧은 비밀은 조용히 받지 않는다 — 오타로 'secret' 같은 값이 들어가면 세션 위조가 쉬워진다. 시작 시점에 실패시킨다. */
+function parseConsoleSecret(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (raw.length < 16) throw new Error('QRATE_CONSOLE_SECRET은 16자 이상이어야 함');
+  return raw;
 }
 
 function parseEnum<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {

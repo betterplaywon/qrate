@@ -220,6 +220,7 @@ describe('대화 유스케이스 — createChatService', () => {
     const { chat, reports } = makeService({
       conversations: {
         find: async () => null,
+        listByTenant: async () => ({ items: [], nextCursor: null }),
         appendTurn: async () => {
           throw new Error('db down');
         },

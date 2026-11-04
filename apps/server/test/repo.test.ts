@@ -39,6 +39,15 @@ describe('시드 로더', () => {
   });
 });
 
+describe('메모리 저장소의 콘솔 키', () => {
+  it('시드 파일에는 키가 없고, 시작 때 받은 해시를 테넌트에 붙인다. 없으면 null(콘솔 로그인 불가)', async () => {
+    const seed = loadSeedFile(DEFAULT_SEED_PATH);
+    expect((await createRepositoriesFromSeed(seed).tenants.findByKey('demo'))?.consoleKeyHash).toBeNull();
+    const repos = createRepositoriesFromSeed(seed, { consoleKeyHash: 'scrypt$salt$hash' });
+    expect((await repos.tenants.findByKey('demo'))?.consoleKeyHash).toBe('scrypt$salt$hash');
+  });
+});
+
 // 메모리 구현은 테넌트의 존재를 확인하지 않으므로(FK 없음) 다른 테넌트 id는 아무 문자열이어도 된다.
 describeRepositoryContract('메모리', async () => {
   const seed = loadSeedFile(DEFAULT_SEED_PATH);

@@ -1,15 +1,19 @@
-import { CHAT_PATH, FRAME_PATH, type ApiErrorBody, type ApiErrorCode } from '@qrate/contracts';
+import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, FRAME_PATH, type ApiErrorBody, type ApiErrorCode } from '@qrate/contracts';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { createChatService } from './chat/service.js';
+import { createSessionCodec } from './console/session.js';
 import type { AnswerEngine } from './engine/types.js';
 import { createChatHandler, type UsageLogger } from './http/chat.js';
+import { createConsoleRouter } from './http/console.js';
 import { createFrameHandler } from './http/frame.js';
 import { requireOwnOrigin } from './origin.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import type { Repositories } from './repo/types.js';
 
 // 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
-//   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, 사용량 로그
+//   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, 사용량 로그,
+//             운영 콘솔 API(console.ts — 로그인·세션 쿠키·대화 로그·미응답 큐)
+//   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
 //   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장. Express를 모른다
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
 //   repo/     저장소 계약과 구현(메모리; W3에서 Postgres)
@@ -30,7 +34,20 @@ export interface AppOptions {
   logUsage?: UsageLogger;
   /** 처리 중 예외(턴 저장 실패, 예상 밖 엔진 실패, 라우트 예외)의 보고 통로. index.ts가 Sentry를 꽂고, 테스트는 가로챈다. 기본은 stderr. */
   reportError?: ErrorReporter;
+  /**
+   * 운영 콘솔 API. secret은 세션 토큰의 서명 비밀(QRATE_CONSOLE_SECRET, 16자 이상). 없으면 콘솔 API를 올리지 않는다(/api/console/* → 404).
+   * loginAttempts는 IP당 로그인 시도 제한(기본 10회/분) — 테스트가 줄여서 쓴다.
+   */
+  console?: { secret: string; loginAttempts?: { max: number; windowMs: number } };
+  /** 콘솔 앱 정적 파일(index.html·assets/)의 디렉터리 — @qrate/console 빌드 산출물 dist. 없으면 콘솔 페이지는 서빙하지 않는다(API만). */
+  consoleAssetsDir?: string;
 }
+
+/**
+ * 콘솔 문서의 CSP. 대화창과 같은 default-src 'self'(번들은 /console/assets/의 파일, 인라인 없음) +
+ * frame-ancestors 'none'(콘솔은 어디에도 iframe으로 들어가지 않는다 — 클릭재킹 방지) + base-uri 'none'.
+ */
+export const CONSOLE_CSP = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 export function createApp({
   engine,
@@ -40,6 +57,8 @@ export function createApp({
   sentryEnabled = false,
   logUsage,
   reportError = reportToStderr,
+  console: consoleOptions,
+  consoleAssetsDir,
 }: AppOptions): express.Express {
   const app = express();
   // Express 기본 `X-Powered-By: Express` 헤더를 끈다. 서버 구현을 알리는 정보일 뿐 기능이 없고,
@@ -69,6 +88,35 @@ export function createApp({
     express.json({ limit: '32kb' }), // 채팅 입력에 32kb면 충분 — 과대 페이로드 차단
     createChatHandler({ chat, logUsage, reportError }),
   );
+
+  // 콘솔 페이지(/console/). 자산은 파일 이름에 해시가 있어 오래 캐시하고, index.html은 매번 재검증한다. 화면 상태는 해시 라우팅이라
+  // SPA 폴백이 필요 없다. 로그인 전에도 문서는 내려간다 — 데이터는 전부 세션이 있어야 하는 API에서 온다.
+  if (consoleAssetsDir) {
+    app.use(
+      CONSOLE_PATH,
+      express.static(consoleAssetsDir, {
+        index: 'index.html',
+        maxAge: '1y',
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Content-Security-Policy', CONSOLE_CSP);
+          }
+        },
+      }),
+    );
+  }
+
+  // 운영 콘솔 API. 세션 쿠키 + (상태를 바꾸는 요청은) 같은 Origin 검사. 콘솔 페이지 자체는 같은 서버가 /console/ 로 서빙한다.
+  if (consoleOptions) {
+    const sessions = createSessionCodec(consoleOptions.secret);
+    app.use(
+      CONSOLE_API_PATH,
+      createConsoleRouter({ repos, publicOrigin, sessions, ...(consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {}) }),
+    );
+  }
 
   // 계약 밖의 실패도 계약의 오류 본문(JSON)으로 답한다. Express 기본 핸들러에 맡기면 HTML 페이지가 나가고,
   // 기본 핸들러는 오류 객체를 통째로 찍는데 body-parser의 오류 객체에는 요청 본문이 들어 있어 사용자 메시지가 로그에 남는다.
