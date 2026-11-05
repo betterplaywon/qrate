@@ -5,8 +5,9 @@ import type {
   HandoffDto,
   HandoffQueueItemDto,
   MessageDto,
+  TopUpDto,
 } from '@qrate/contracts';
-import type { Conversation, ConversationSummary, CreditEntry, HandoffQueueItem, HandoffRecord } from '../../repo/types.js';
+import type { Conversation, ConversationSummary, CreditEntry, HandoffQueueItem, HandoffRecord, TopUp } from '../../repo/types.js';
 
 // 저장소 타입 → 콘솔 API 응답(DTO). 날짜는 ISO 8601 문자열로.
 
@@ -48,4 +49,17 @@ export function toDetailDto(c: Conversation): ConversationDetailResponse {
 
 export function toCreditDto(e: CreditEntry): CreditEntryDto {
   return { id: e.id, delta: e.delta, reason: e.reason, idempotencyKey: e.idempotencyKey, createdAt: e.createdAt.toISOString() };
+}
+
+export function toTopUpDto(t: TopUp): TopUpDto {
+  return {
+    id: t.id,
+    packageId: t.packageId,
+    credits: t.credits,
+    amount: t.amount,
+    provider: t.provider,
+    status: t.status,
+    createdAt: t.createdAt.toISOString(),
+    settledAt: t.settledAt ? t.settledAt.toISOString() : null,
+  };
 }

@@ -1,3 +1,4 @@
+import { MOCK_SIGNATURE_HEADER } from '@qrate/contracts';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { PaymentResult } from '../repo/types.js';
@@ -6,7 +7,6 @@ import type { PaymentProvider, WebhookRequest, WebhookVerification } from './pro
 // 모의 결제 제공자. 서명된 웹훅을 만드는 쪽(signEvent, 제공자 역할)과 검증하는 쪽(verifyWebhook)을 함께 갖는다 — 둘이 같은 프로세스라
 // 비밀을 밖으로 나눌 필요가 없다. 서명 모양은 Stripe와 같다: 헤더 t=<unix초>,v1=<hex>, 값은 HMAC-SHA256(비밀, "<t>." + 원문 바이트).
 
-export const MOCK_SIGNATURE_HEADER = 'qrate-mock-signature';
 /** 서명 시각이 지금에서 이만큼(초) 넘게 벗어나면 거부한다. 가로챈 웹훅을 나중에 다시 보내는 재전송의 창을 좁힌다. */
 export const SIGNATURE_TOLERANCE_SEC = 300;
 

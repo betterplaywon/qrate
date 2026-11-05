@@ -1,5 +1,6 @@
+import { MOCK_SIGNATURE_HEADER } from '@qrate/contracts';
 import { describe, expect, it } from 'vitest';
-import { MOCK_SIGNATURE_HEADER, createMockProvider, signMockPayload } from '../src/billing/mock.js';
+import { createMockProvider, signMockPayload } from '../src/billing/mock.js';
 import type { WebhookRequest } from '../src/billing/provider.js';
 
 // 모의 제공자의 웹훅 서명. 위조·변조·재전송은 모두 'signature' 하나로 거절되고, 서명이 맞은 뒤에만 본문을 읽는다.

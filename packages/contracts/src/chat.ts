@@ -66,6 +66,17 @@ export type ApiErrorCode =
   | 'too_many_requests'
   /** 테넌트의 크레딧이 0 이하(402). 모델을 부르기 전에 막는다 — 운영자가 충전해야 풀린다. */
   | 'insufficient_credits'
+  /**
+   * 충전(console.ts의 top-ups). 멱등 키 없음·형식(400), 같은 키에 다른 상품(422), 모르는 상품(400), 결제 제공자 없음(503),
+   * 시뮬레이션 결과 값(400). 웹훅(payments.ts): 서명 불일치(401), 서명은 맞지만 본문 모양이 다름(400).
+   */
+  | 'invalid_idempotency_key'
+  | 'idempotency_key_reused'
+  | 'invalid_package'
+  | 'payments_unavailable'
+  | 'invalid_result'
+  | 'invalid_signature'
+  | 'invalid_webhook'
   | StreamErrorCode;
 
 export interface ApiErrorBody {

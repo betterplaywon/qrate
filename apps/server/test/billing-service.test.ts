@@ -1,5 +1,6 @@
+import { MOCK_SIGNATURE_HEADER } from '@qrate/contracts';
 import { describe, expect, it, vi } from 'vitest';
-import { MOCK_SIGNATURE_HEADER, createMockProvider } from '../src/billing/mock.js';
+import { createMockProvider } from '../src/billing/mock.js';
 import type { PaymentProviders } from '../src/billing/provider.js';
 import { createBillingService } from '../src/billing/service.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';

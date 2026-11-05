@@ -10,6 +10,8 @@ export type ThinkingSetting = 'off' | 'low' | 'medium' | 'high';
 export type EngineKind = 'auto' | 'mock' | 'claude';
 /** auto = DATABASE_URL이 있으면 postgres(Prisma), 없으면 memory(시드 파일). 테스트와 E2E는 memory를 명시한다. */
 export type RepoKind = 'auto' | 'memory' | 'postgres';
+/** 충전을 받을 결제 제공자. auto = 운영(NODE_ENV=production)이면 none, 그 밖에서는 mock. 토스 어댑터가 붙으면 toss가 늘어난다. */
+export type PaymentProviderSetting = 'auto' | 'mock' | 'none';
 
 export interface AppConfig {
   port: number;
@@ -33,19 +35,27 @@ export interface AppConfig {
   demoConsoleKey: string | undefined;
   /** 콘솔 세션 토큰의 서명 비밀(16자 이상). 없으면 index.ts가 프로세스마다 무작위로 만든다 — 재시작하면 세션이 끊긴다. */
   consoleSecret: string | undefined;
+  /**
+   * auto를 푼 값. 결제 없이 크레딧을 채우는 모의 결제가 운영에 기본으로 열리지 않게 auto는 운영에서 none이다.
+   * none이면 충전 요청은 503, 모의 웹훅은 404, 결제 시뮬레이션 경로는 없다.
+   */
+  paymentProvider: 'mock' | 'none';
+  /** 모의 제공자의 웹훅 서명 비밀(16자 이상). 없으면 index.ts가 프로세스마다 무작위로 만든다 — 서명하는 쪽과 받는 쪽이 같은 프로세스라 동작한다. */
+  mockPaymentSecret: string | undefined;
 }
 
 const THINKING_SETTINGS = ['off', 'low', 'medium', 'high'] as const satisfies readonly ThinkingSetting[];
 const ENGINE_KINDS = ['auto', 'mock', 'claude'] as const satisfies readonly EngineKind[];
 const REPO_KINDS = ['auto', 'memory', 'postgres'] as const satisfies readonly RepoKind[];
+const PAYMENT_PROVIDER_SETTINGS = ['auto', 'mock', 'none'] as const satisfies readonly PaymentProviderSetting[];
 
 // D5 결정(2026-11-02): 기본 Sonnet 5.5 + 사고 끔. 환경변수 한 줄로 교체한다.
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
-/** 짧은 비밀은 조용히 받지 않는다 — 오타로 'secret' 같은 값이 들어가면 세션 위조가 쉬워진다. 시작 시점에 실패시킨다. */
-function parseConsoleSecret(raw: string | undefined): string | undefined {
+/** 짧은 비밀은 조용히 받지 않는다 — 오타로 'secret' 같은 값이 들어가면 세션·웹훅 위조가 쉬워진다. 시작 시점에 실패시킨다. */
+function parseSecret(name: string, raw: string | undefined): string | undefined {
   if (!raw) return undefined;
-  if (raw.length < 16) throw new Error('QRATE_CONSOLE_SECRET은 16자 이상이어야 함');
+  if (raw.length < 16) throw new Error(`${name}은 16자 이상이어야 함`);
   return raw;
 }
 
@@ -63,6 +73,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const thinking = parseEnum(env.QRATE_THINKING, THINKING_SETTINGS, 'off');
   // 사고를 켜면 사고 토큰도 max_tokens 안에서 소비되므로 여유를 더 둔다.
   const defaultMaxTokens = thinking === 'off' ? 1024 : 4096;
+  const paymentSetting = parseEnum(env.QRATE_PAYMENT_PROVIDER, PAYMENT_PROVIDER_SETTINGS, 'auto');
   return {
     port,
     // 값이 틀리면(http(s)가 아님 등) 여기서 던져 서버가 시작되지 않는다. 조용히 기본값으로 가면 Origin 검사가 전부 403이 된다.
@@ -76,6 +87,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     repo: parseEnum(env.QRATE_REPO, REPO_KINDS, 'auto'),
     databaseUrl: env.DATABASE_URL ? env.DATABASE_URL : undefined,
     demoConsoleKey: env.QRATE_DEMO_CONSOLE_KEY ? env.QRATE_DEMO_CONSOLE_KEY : undefined,
-    consoleSecret: parseConsoleSecret(env.QRATE_CONSOLE_SECRET),
+    consoleSecret: parseSecret('QRATE_CONSOLE_SECRET', env.QRATE_CONSOLE_SECRET),
+    paymentProvider: paymentSetting === 'auto' ? (env.NODE_ENV === 'production' ? 'none' : 'mock') : paymentSetting,
+    mockPaymentSecret: parseSecret('QRATE_MOCK_PAYMENT_SECRET', env.QRATE_MOCK_PAYMENT_SECRET),
   };
 }

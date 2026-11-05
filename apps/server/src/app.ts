@@ -1,5 +1,7 @@
-import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, FRAME_PATH, HANDOFF_PATH } from '@qrate/contracts';
+import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, FRAME_PATH, HANDOFF_PATH, PAYMENT_WEBHOOK_ROUTE } from '@qrate/contracts';
 import express from 'express';
+import type { PaymentProviders } from './billing/provider.js';
+import { createBillingService } from './billing/service.js';
 import { createChatService } from './chat/service.js';
 import { createSessionCodec } from './console/session.js';
 import type { AnswerEngine } from './engine/types.js';
@@ -9,6 +11,7 @@ import { consoleStatic } from './http/console/static.js';
 import { createErrorHandler, notFound } from './http/errors.js';
 import { createFrameHandler } from './http/frame.js';
 import { createHandoffRoute } from './http/handoff.js';
+import { createWebhookRoute } from './http/payments.js';
 import { requireOwnOrigin } from './origin.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import type { Repositories } from './repo/types.js';
@@ -16,9 +19,11 @@ import type { Repositories } from './repo/types.js';
 // 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
 //   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, 사용량 로그,
 //             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts),
-//             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, static 페이지 서빙)
+//             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, top-ups 충전, static 페이지 서빙),
+//             결제 제공자 웹훅(payments.ts)
 //   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
 //   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장. Express를 모른다
+//   billing/  충전 유스케이스 — 결제 제공자 경계(provider)·모의 제공자(mock)·이벤트 판정(settlement, 순수)·충전 요청과 웹훅(service). Express를 모른다
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
 //   repo/     저장소 계약과 구현(메모리; W3에서 Postgres)
 //   origin.ts 오리진 규칙(설정 해석·시드 검증·Origin 검사가 함께 쓴다)
@@ -47,6 +52,8 @@ export interface AppOptions {
   consoleAssetsDir?: string;
   /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
   handoffRequests?: { max: number; windowMs: number };
+  /** 설정된 결제 제공자. 없으면 충전 요청은 503, 웹훅은 404(index.ts가 QRATE_PAYMENT_PROVIDER로 고른다). 테스트는 고정 비밀의 mock을 넣는다. */
+  payments?: PaymentProviders;
 }
 
 export function createApp({
@@ -60,12 +67,14 @@ export function createApp({
   console: consoleOptions,
   consoleAssetsDir,
   handoffRequests,
+  payments = {},
 }: AppOptions): express.Express {
   const app = express();
   // Express 기본 `X-Powered-By: Express` 헤더를 끈다. 서버 구현을 알리는 정보일 뿐 기능이 없고,
   // 알려진 취약점이 있는 버전을 고르는 데 쓰일 수 있다. (PR #9 컨테이너 점검에서 확인)
   app.disable('x-powered-by');
   const chat = createChatService({ engine, repos, reportError });
+  const billing = createBillingService({ repos, providers: payments, reportError });
 
   // CORS 헤더는 없다 (W1의 전체 허용 `*` 제거 — 테넌트 검증 단계).
   // 대화 API를 부르는 브라우저 문서는 이 서버 오리진의 iframe 하나뿐이라(ADR-0003 하이브리드) 같은 오리진 요청이고,
@@ -97,12 +106,15 @@ export function createApp({
     ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
   );
 
+  // 결제 제공자 웹훅. 서명이 원문 바이트에 걸려 있어 이 경로만 raw 파서를 쓴다(http/payments.ts). 서버 간 호출이라 Origin 검사가 없다.
+  app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));
+
   // 콘솔 페이지(/console/, http/console/static.ts)와 콘솔 API(http/console/router.ts). 페이지는 로그인 전에도 내려가고 데이터는 API에서 온다.
   if (consoleAssetsDir) app.use(CONSOLE_PATH, consoleStatic(consoleAssetsDir));
   if (consoleOptions) {
     const sessions = createSessionCodec(consoleOptions.secret);
     const loginAttempts = consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {};
-    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, ...loginAttempts }));
+    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, ...loginAttempts, billing, providers: payments }));
   }
 
   // 계약 밖의 실패도 계약의 오류 본문(JSON)으로 답한다(http/errors.ts). 라우터들 뒤에 있어야 한다.
