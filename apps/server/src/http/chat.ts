@@ -17,8 +17,8 @@ type DoneEvent = Extract<EngineEvent, { type: 'done' }>;
 export interface ChatHandlerDeps {
   chat: ChatService;
   /**
-   * 엔진을 부른 요청마다 chat_request 사건 정확히 한 건. 거절(422·402)은 남기지 않는다 — 모델을 부르지 않아 비용이 0이고
-   * /api/chat에는 요율 제한이 없어, 남기면 공개 키만으로 행을 무제한으로 만들 수 있다. app.ts가 기본값(저장소 통로)을 넣는다.
+   * 엔진을 부른 요청마다 chat_request 사건 정확히 한 건. 거절(422·402)은 남기지 않는다 — 모델을 부르지 않아 비용이 0이고,
+   * 남기면 공개 키만으로 행을 쌓을 수 있다(app.ts의 IP당 요율 제한은 IP 하나의 속도만 누른다). app.ts가 기본값(저장소 통로)을 넣는다.
    */
   recordEvent: EventSink;
   /** 예상 밖의 엔진 실패(인증·잘못된 요청·미분류)의 보고 통로. 요율 제한·일시 장애는 chat_request 사건으로 충분해 보내지 않는다. */

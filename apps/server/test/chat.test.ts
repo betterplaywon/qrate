@@ -25,6 +25,8 @@ const OWN_ORIGIN = 'http://widget.test';
 // 대화창 자산은 위젯 빌드 산출물이라 테스트에서는 임시 디렉터리에 가짜 app.js를 두고 서빙 규칙(경로·캐시)만 본다.
 const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-frame-'));
 writeFileSync(path.join(frameAssetsDir, 'app.js'), '/* test bundle */');
+// 한 앱에 대화 요청을 수십 건 보내는 계약 테스트라 IP당 한도(기본 20회/분)를 넉넉히 둔다. 한도 자체는 chat-rate-limit.test.ts가 본다.
+const ROOMY_CHAT_LIMIT = { max: 1_000, windowMs: 60_000 };
 
 beforeAll(async () => {
   const app = createApp({
@@ -34,6 +36,7 @@ beforeAll(async () => {
     frameAssetsDir,
     recordEvent: (event) => recorded.push(event),
     reportError: (err, context) => void reports.push({ err, context }),
+    chatRequests: ROOMY_CHAT_LIMIT,
   });
   await new Promise<void>((resolve) => {
     server = app.listen(0, () => resolve());
@@ -333,7 +336,14 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
 
   it('공개 키로 422·402를 20건씩 반복해도 사건 저장소는 그대로다 — 충전 뒤 답한 요청 1건만 남는다', async () => {
     const repos = createRepositoriesFromSeed({ ...seed, initialCredits: 0 });
-    const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, reportError: () => undefined });
+    const app = createApp({
+      engine: new MockEngine(0),
+      repos,
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      reportError: () => undefined,
+      chatRequests: ROOMY_CHAT_LIMIT,
+    });
     const { url, close } = await serve(app);
     const everything = { from: new Date(0), to: new Date(Date.now() + 3_600_000) };
     const send = async (message: string): Promise<number> => {

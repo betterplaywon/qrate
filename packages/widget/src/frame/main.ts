@@ -9,11 +9,14 @@
 //
 // 재시도 정책(ADR-0002 질문 4): 자동 재시도는 없다. 서버가 retryable이라고 한 실패만 "다시 보내기" 버튼을 보이고,
 // Retry-After 동안 버튼을 잠근다. 같은 메시지를 다시 보내도 결과가 같은 실패(차단, 재시도 불가)에는 버튼이 없다.
+// 같은 Retry-After 동안 입력창도 잠근다(composer.ts). 버튼과 입력창은 같은 때 풀린다.
 //
-// 앱 상태(열림·안 읽은 수·대화 id·진행 중)는 FrameApp 하나가 든다. 한 턴의 화면 반영(사건 → 말풍선·안내)은 turn.ts의 Turn이 맡고,
-// 앱에 미치는 효과(대화 id, 안 읽은 수, 재시도, 연결 요청)만 콜백으로 돌려받는다.
+// 앱 상태(열림·안 읽은 수·대화 id)는 FrameApp 하나가 들고, 입력창 상태(진행 중·잠금)는 그 안의 Composer가 든다.
+// 한 턴의 화면 반영(사건 → 말풍선·안내)은 turn.ts의 Turn이 맡고, 앱에 미치는 효과(대화 id, 안 읽은 수, 재시도, 연결 요청, 기다리기)만
+// 콜백으로 돌려받는다.
 
 import { MAX_UNREAD, parseLauncherMessage, toWire, type FrameMessage } from '../protocol';
+import { Composer } from './composer';
 import { sendWidgetEvent } from './events';
 import { requestHandoff as postHandoffRequest, type HandoffResult } from './handoff';
 import { streamChat } from './stream';
@@ -43,12 +46,12 @@ function handoffFailureText(result: Extract<HandoffResult, { ok: false }>): stri
 
 class FrameApp {
   private readonly view: ChatView;
+  private readonly composer: Composer;
   private visible = false;
   /** widget_open은 페이지 로드당 첫 열림에 한 번. 다시 열기는 세지 않는다. */
   private openReported = false;
   private unread = 0;
   private conversationId: string | null = null;
-  private inFlight = false;
 
   constructor(
     private readonly config: FrameConfig,
@@ -58,6 +61,12 @@ class FrameApp {
       onSubmit: (message) => void this.ask(message),
       onClose: () => this.send({ type: 'close' }),
       onHandoff: () => this.requestHandoff(),
+    });
+    this.composer = new Composer({
+      render: (state) => this.view.setComposer(state),
+      unlocked: () => {
+        if (this.visible) this.view.focusInput();
+      },
     });
 
     // 런처가 보낸 메시지만 받는다: 보낸 문서의 오리진, 보낸 창, 메시지 형식을 모두 확인한다(../protocol.ts).
@@ -111,10 +120,9 @@ class FrameApp {
   }
 
   private async ask(message: string, opts: { retry?: boolean } = {}): Promise<void> {
-    if (this.inFlight) return;
-    this.inFlight = true;
+    if (this.composer.isBusy()) return;
     if (!opts.retry) this.view.addUser(message);
-    this.view.setBusy(true);
+    this.composer.setBusy(true);
 
     // 턴은 화면만 그리고, 앱 상태를 바꾸는 일은 여기 콜백으로 돌아온다.
     const turn = new Turn(this.view, {
@@ -124,12 +132,12 @@ class FrameApp {
       answered: () => this.noteAnswered(),
       offerHandoff: () => this.requestHandoff(),
       retry: () => void this.ask(message, { retry: true }),
+      waitBeforeSending: (ms) => this.composer.lockFor(ms),
     });
     try {
       for await (const ev of streamChat({ message, tenant: this.config.tenant, conversationId: this.conversationId })) turn.apply(ev);
     } finally {
-      this.inFlight = false;
-      this.view.setBusy(false);
+      this.composer.setBusy(false);
       if (this.visible) this.view.focusInput();
     }
   }

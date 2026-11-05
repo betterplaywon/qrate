@@ -77,6 +77,8 @@ pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 
 docker compose up --build             # Postgres → 마이그레이션·시드(migrate) → 서버 (Docker)
 ```
 
+배포 전 할 일: 리버스 프록시 뒤에 두면 Express `trust proxy`를 프록시 홉 수로 설정해야 IP당 요율 제한(대화 API 분당 20회 · 상담원 연결 20회 · 위젯 사건 30회 · 콘솔 로그인 10회)이 방문자별로 센다. 지금은 설정하지 않아서 프록시 뒤에서는 모든 요청이 프록시 IP 하나로 세지고, `X-Forwarded-For`가 처음 올 때 제한마다 express-rate-limit 경고(`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`)가 로그에 한 번 남는다. IPv6는 주소 하나가 아니라 /56 대역 하나로 센다(express-rate-limit 기본값, 주소를 바꿔 가며 우회하는 것을 막는다).
+
 ## AI 워크플로우 (작업 방식)
 
 구현은 AI 에이전트가, **설계·리뷰·설명 책임은 사람이** 맡는다.

@@ -95,6 +95,11 @@ describe('streamChat — 실패 단계', () => {
     expect(events).toEqual([{ type: 'failed', stage: 'response', status: 503, code: 'rate_limited', retryable: true, retryAfterMs: 2000 }]);
   });
 
+  it('대화 API의 요율 제한(429 too_many_requests, 본문에 retryable 없음)은 상태 코드로 재시도 가능이 되고 Retry-After를 읽는다', async () => {
+    const { events } = await collect(Response.json({ error: 'too_many_requests' }, { status: 429, headers: { 'Retry-After': '37' } }));
+    expect(events).toEqual([{ type: 'failed', stage: 'response', status: 429, code: 'too_many_requests', retryable: true, retryAfterMs: 37_000 }]);
+  });
+
   it('본문이 계약의 오류 본문이 아니면(프록시 오류 페이지) 상태 코드로 짐작한다', async () => {
     const { events } = await collect(new Response('<html>502</html>', { status: 502 }));
     expect(events).toEqual([{ type: 'failed', stage: 'response', status: 502, code: null, retryable: false, retryAfterMs: null }]);

@@ -182,6 +182,50 @@ test('서버가 재시도 가능하다고 한 실패에만 "다시 보내기"가
   expect(consoleErrors.filter((e) => !e.startsWith('Failed to load resource'))).toEqual([]);
 });
 
+test('서버가 Retry-After로 기다리라고 하면 그동안 입력창과 전송 버튼도 잠기고, 풀리면 입력창에 초점이 돌아온다', async ({
+  page,
+  consoleErrors,
+}) => {
+  // 서버의 요율 제한(IP당 20회/분)을 실제로 채우면 같은 서버를 쓰는 뒤 테스트가 그 창에 걸린다. 대화 요청 하나만 서버의 429 모양으로 대신 답한다
+  await page.route(
+    CHAT_URL,
+    (route) =>
+      route.fulfill({
+        status: 429,
+        headers: { 'Retry-After': '3' },
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'too_many_requests' }),
+      }),
+    { times: 1 },
+  );
+  const frame = await openWidget(page);
+  const input = frame.locator('#qrate-input');
+  const sendButton = frame.locator('.send');
+
+  await send(frame, '요금제가 뭐가 있나요?');
+  const notice = frame.locator('.msg.notice').last();
+  await expect(notice).toContainText('요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.');
+  await expect(input).toBeDisabled();
+  const lockedAt = Date.now();
+  await expect(input).toHaveAttribute('placeholder', '잠시 뒤 다시 보낼 수 있어요.');
+  await expect(sendButton).toBeDisabled();
+  await expect(notice.locator('.notice-action')).toBeDisabled();
+  // 기다리라는 말을 들은 방문자도 사람에게는 연결할 수 있다
+  await expect(frame.locator('.handoff')).toBeEnabled();
+
+  // Retry-After(3초)가 지나면 "다시 보내기"와 입력창이 함께 풀린다
+  await expect(input).toBeEnabled();
+  expect(Date.now() - lockedAt).toBeGreaterThan(2000);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveAttribute('placeholder', '메시지를 입력하세요');
+  await expect(notice.locator('.notice-action')).toBeEnabled();
+
+  // 가로채기는 한 번뿐이라 다음 질문은 서버로 가서 답을 받는다
+  await send(frame, '환불되나요?');
+  await expect(finishedAnswers(frame)).toHaveCount(1);
+  expect(consoleErrors.filter((e) => !e.startsWith('Failed to load resource'))).toEqual([]);
+});
+
 test('모델이 자료에 없는 질문이라고 신호하면 안내 답변 뒤에 상담원 연결 제안이 붙고, 연락처를 보내면 콘솔 큐에 들어간다', async ({
   page,
   request,
