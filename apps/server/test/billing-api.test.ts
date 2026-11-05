@@ -135,6 +135,22 @@ describe('충전 요청 — 콘솔의 재시도는 같은 주문이 된다', () 
     expect(list.items[0]?.id).toBe(created.id);
   });
 
+  it('그 사이 결제가 끝나도 같은 키 재요청의 본문은 처음 201 본문과 같다 — 지금 상태는 목록이 보여 준다', async () => {
+    const { cookie } = withMock;
+    const key = randomUUID();
+    const first = await requestTopUp(withMock, cookie, 'credits_100', key);
+    const created = (await first.json()) as TopUpDto;
+    expect((await simulate(withMock, cookie, created.id, 'paid')).status).toBe(200);
+
+    const retry = await requestTopUp(withMock, cookie, 'credits_100', key);
+    expect(retry.status).toBe(201);
+    expect(retry.headers.get(IDEMPOTENT_REPLAYED_HEADER)).toBe('true');
+    expect(await retry.json()).toEqual(created);
+
+    const list = (await (await fetch(`${withMock.url}/api/console/top-ups`, { headers: { cookie } })).json()) as TopUpListResponse;
+    expect(list.items.find((t) => t.id === created.id)?.status).toBe('paid');
+  });
+
   it('키 없음·형식 틀림은 400 invalid_idempotency_key, 모르는 상품·금액을 보낸 본문은 400 invalid_package', async () => {
     const { cookie } = withMock;
     for (const key of [null, 'short', 'has space in key', 'x'.repeat(129), 'dotted.key.value'] as const) {

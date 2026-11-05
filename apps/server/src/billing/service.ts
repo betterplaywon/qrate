@@ -45,7 +45,10 @@ export function createBillingService({ repos, providers, reportError, now = () =
         provider,
       });
       if (created) return { status: 'created', topUp };
-      return topUp.packageId === packageId ? { status: 'replayed', topUp } : { status: 'key_reused' };
+      if (topUp.packageId !== packageId) return { status: 'key_reused' };
+      // 재요청에는 처음 응답과 같은 주문을 준다. 그 사이 결제가 끝났어도 그렇다 — 처음 응답은 늘 만든 직후의 주문이고,
+      // 그 뒤에 바뀌는 것은 상태와 시각뿐이라 저장 없이 되살릴 수 있다. 지금 상태는 목록 조회가 맡는다.
+      return { status: 'replayed', topUp: { ...topUp, status: 'pending', settledAt: null, updatedAt: topUp.createdAt } };
     },
 
     async receiveWebhook(name, req) {
