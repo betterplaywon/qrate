@@ -71,7 +71,6 @@ export const api = {
         .json<HandoffQueueItemDto>(),
     ),
   topUps: (cursor: string | null) => run(client.get('top-ups', { searchParams: search({ cursor }) }).json<TopUpListResponse>()),
-  /** 같은 key로 다시 보내면 서버는 처음 만든 주문을 그대로 돌려준다(201 + Idempotent-Replayed). */
   createTopUp: (body: CreateTopUpBody, key: string) =>
     run(client.post('top-ups', { json: body, headers: { [IDEMPOTENCY_KEY_HEADER]: key } }).json<TopUpDto>()),
   simulatePayment: (id: string, body: SimulatePaymentBody) =>

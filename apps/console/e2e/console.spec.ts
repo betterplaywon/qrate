@@ -98,7 +98,6 @@ test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화
   expect(consoleErrors).toEqual([]);
 });
 
-/** 결제 제공자 역할: 모의 제공자 형식(t=<unix초>,v1=HMAC-SHA256("<t>." + 원문))으로 서명한다. 서버 코드를 가져오지 않고 계약대로 따로 만든다. */
 function signWebhook(rawBody: string, secret = MOCK_PAYMENT_SECRET): string {
   const t = Math.floor(Date.now() / 1000);
   return `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex')}`;
@@ -114,7 +113,7 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   await expect(balance).toHaveText(/^\d+$/);
   const start = Number(await balance.textContent());
 
-  // 첫 충전 요청은 서버까지 가서 처리된 뒤 응답이 끊긴다(네트워크 재시도 상황). 같은 상품으로 다시 누르면 같은 멱등 키가 간다.
+  // 첫 충전 요청은 서버가 처리한 뒤 응답만 끊는다(네트워크 재시도 상황).
   let dropped = false;
   await page.route('**/api/console/top-ups', async (route) => {
     if (route.request().method() !== 'POST' || dropped) return route.continue();
@@ -151,7 +150,6 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   await expect(result).toHaveText('이미 처리된 주문이라 상태가 바뀌지 않았어요.');
   await expect(orders.first().getByTestId('top-up-status')).toHaveText('결제 완료');
 
-  // 제공자 쪽에서 웹훅 원문을 직접 보낸다 — raw 본문·서명 검증·HTTP 상태를 브라우저 밖 경로로 지난다.
   const list = (await (await page.request.get('/api/console/top-ups')).json()) as TopUpListResponse;
   const order = list.items[0];
   if (!order) throw new Error('주문이 없다');
@@ -163,7 +161,7 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   const event = (id: string, amount = order.amount) =>
     JSON.stringify({ id, type: 'payment.paid', created: Math.floor(Date.now() / 1000), data: { orderId: order.id, amount } });
 
-  const redelivered = event(`evt_${order.id}_paid`); // 결제 성공(테스트) 버튼과 같은 이벤트 id
+  const redelivered = event(`evt_${order.id}_paid`);
   const again = await webhook(redelivered, signWebhook(redelivered));
   expect(again.status()).toBe(200);
   expect(again.headers()['idempotent-replayed']).toBe('true');
@@ -183,6 +181,5 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   await expect(balance).toHaveText(String(start + 100));
   await expect(page.getByTestId('credit-entry').filter({ hasText: '충전' })).toHaveCount(1);
 
-  // 일부러 끊은 첫 요청 하나만 브라우저가 네트워크 오류로 기록한다
   expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET/.test(e))).toEqual([]);
 });

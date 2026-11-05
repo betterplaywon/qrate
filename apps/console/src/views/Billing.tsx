@@ -5,8 +5,6 @@ import { CREDIT_REASON_LABEL, formatTime } from '../labels';
 import { useCredits } from '../queries';
 import { TopUps } from './TopUps';
 
-// 크레딧 — 잔액(원장 합계), 충전(TopUps.tsx), 원장 최근순.
-
 function Entry({ entry }: { entry: CreditEntryDto }) {
   const sign = entry.delta > 0 ? '+' : '';
   return (

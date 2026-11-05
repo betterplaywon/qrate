@@ -4,10 +4,10 @@ import type { NewTopUp, Settlement, SettleResult, TopUp, TopUpPage, TopUpReposit
 import { appendCredit } from './credits.js';
 import { NEWEST_FIRST, afterCursor } from './cursor.js';
 
-// 충전 주문과 제공자 이벤트. 동시성은 제약 셋이 맡는다(READ COMMITTED):
+// 동시성은 제약 셋이 맡는다(READ COMMITTED):
 //   주문 (tenantId, requestKey) UNIQUE — 같은 키 요청이 동시에 와도 INSERT 하나만 들어가고 나머지는 ON CONFLICT DO NOTHING.
 //   이벤트 (provider, eventId) PK — 같은 이벤트는 먼저 INSERT한 쪽의 커밋을 기다린 뒤 0행이 되어 상태 전이에 닿지 않는다.
-//   조건부 UPDATE(WHERE status IN from) — 행 잠금이자 CAS. 뒤에 온 쪽은 커밋된 새 상태로 WHERE를 다시 평가해 0행이 된다.
+//   조건부 UPDATE(WHERE status IN from) — 행 잠금이자 CAS. 뒤에 온 쪽은 커밋된 새 상태로 WHERE를 다시 평가한다.
 
 function toTopUp(t: Prisma.CreditTopUpGetPayload<object>): TopUp {
   return {
@@ -63,7 +63,6 @@ export class PrismaTopUpRepository implements TopUpRepository {
     const { provider, eventId, result } = s.event;
     const eventKey = { provider_eventId: { provider, eventId } };
     return this.prisma.$transaction(async (tx) => {
-      // outcome은 일단 applied로 넣고 CAS가 실패하면 고친다. 같은 트랜잭션이라 밖에서는 최종 값만 보인다.
       const claimed = await tx.paymentEvent.createMany({
         data: { provider, eventId, result, topUpId: s.topUpId, outcome: 'applied' },
         skipDuplicates: true,

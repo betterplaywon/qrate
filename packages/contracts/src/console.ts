@@ -139,7 +139,6 @@ export type SettleOutcome = 'applied' | 'stale';
 
 /**
  * 충전 상품표. 금액(원)은 클라이언트가 보내지 않고 서버가 이 표에서만 가져와 주문에 굳힌다 — 웹훅의 금액은 그 값과 대조한다.
- * 가격은 테스트 모드 기본값(크레딧당 100원).
  */
 export const TOP_UP_PACKAGES = [
   { id: 'credits_100', credits: 100, amount: 10_000 },

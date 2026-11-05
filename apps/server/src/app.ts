@@ -52,7 +52,6 @@ export interface AppOptions {
   consoleAssetsDir?: string;
   /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
   handoffRequests?: { max: number; windowMs: number };
-  /** 설정된 결제 제공자. 없으면 충전 요청은 503, 웹훅은 404(index.ts가 QRATE_PAYMENT_PROVIDER로 고른다). 테스트는 고정 비밀의 mock을 넣는다. */
   payments?: PaymentProviders;
 }
 
@@ -106,7 +105,6 @@ export function createApp({
     ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
   );
 
-  // 결제 제공자 웹훅. 서명이 원문 바이트에 걸려 있어 이 경로만 raw 파서를 쓴다(http/payments.ts). 서버 간 호출이라 Origin 검사가 없다.
   app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));
 
   // 콘솔 페이지(/console/, http/console/static.ts)와 콘솔 API(http/console/router.ts). 페이지는 로그인 전에도 내려가고 데이터는 API에서 온다.

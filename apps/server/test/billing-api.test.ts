@@ -23,9 +23,6 @@ import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
 
-// 충전과 결제 웹훅을 실제 HTTP로 통과시킨다. 콘솔 재시도·웹훅 재배달·순서 뒤바뀜·위조가 어느 경우에도 원장을 한 번만 움직이는지,
-// 그리고 각 경우의 상태 코드·헤더가 계약(@qrate/contracts의 console.ts·payments.ts)과 같은지.
-
 const OWN_ORIGIN = 'http://console.test';
 const CONSOLE_KEY = 'demo-console-key';
 const SECRET = 'test-secret-0123456789abcdef';
@@ -37,7 +34,6 @@ const mock = createMockProvider(MOCK_SECRET);
 
 interface Running {
   url: string;
-  /** 데모 테넌트로 로그인한 세션 쿠키. 로그인은 앱마다 한 번 — 로그인 요율 제한(IP당 10회/분)에 걸리지 않게. */
   cookie: string;
   repos: Repositories;
   reports: { err: unknown; context?: Record<string, unknown> }[];
@@ -108,7 +104,6 @@ function postWebhook(run: Running, rawBody: Buffer, headers: Record<string, stri
   });
 }
 
-/** 새 주문 하나. */
 async function newTopUp(run: Running, cookie: string, packageId = 'credits_100'): Promise<TopUpDto> {
   const res = await requestTopUp(run, cookie, packageId, randomUUID());
   expect(res.status).toBe(201);
@@ -137,7 +132,7 @@ describe('충전 요청 — 콘솔의 재시도는 같은 주문이 된다', () 
     const list = (await (await fetch(`${withMock.url}/api/console/top-ups`, { headers: { cookie } })).json()) as TopUpListResponse;
     expect(list.provider).toBe('mock');
     expect(list.items.filter((t) => t.id === created.id)).toHaveLength(1);
-    expect(list.items[0]?.id).toBe(created.id); // 최근순
+    expect(list.items[0]?.id).toBe(created.id);
   });
 
   it('키 없음·형식 틀림은 400 invalid_idempotency_key, 모르는 상품·금액을 보낸 본문은 400 invalid_package', async () => {

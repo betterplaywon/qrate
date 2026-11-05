@@ -34,13 +34,11 @@ const reportError: ErrorReporter = sentryEnabled
   : reportToStderr;
 // 콘솔 세션 서명 비밀. 환경변수가 없으면 프로세스마다 새로 만든다 — 로컬에선 충분하고, 재시작하면 운영자가 다시 로그인한다.
 const consoleSecret = config.consoleSecret ?? randomBytes(32).toString('base64url');
-// 결제 제공자. 모의 제공자는 서명하는 쪽(결제 시뮬레이션)과 받는 쪽이 이 프로세스라 비밀이 없으면 무작위로 둬도 동작한다.
 const payments: PaymentProviders =
   config.paymentProvider === 'mock'
     ? { mock: createMockProvider(config.mockPaymentSecret ?? randomBytes(32).toString('base64url')) }
     : {};
 if (config.paymentProvider === 'mock' && process.env.NODE_ENV === 'production') {
-  // 막지는 않는다(메모리 저장소·목업 엔진과 같은 정책) — 데모 배포에서 일부러 켤 수 있다. 로그로 크게 알린다.
   console.warn('[server] WARNING: mock payments in production — 결제 없이 크레딧을 채우는 테스트 버튼이 열린다(QRATE_PAYMENT_PROVIDER)');
 }
 const app = createApp({

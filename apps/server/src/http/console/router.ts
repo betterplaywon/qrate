@@ -44,7 +44,6 @@ export interface ConsoleRouterOptions {
   /** 로그인 시도 제한(IP당 고정 창). 기본 10회/분. 테스트가 줄여서 쓴다. */
   loginAttempts?: { max: number; windowMs: number };
   billing: BillingService;
-  /** 모의 제공자가 있을 때만 결제 시뮬레이션 경로를 연다. */
   providers: PaymentProviders;
 }
 

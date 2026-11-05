@@ -106,7 +106,6 @@ export function useCreateTopUp() {
   });
 }
 
-/** 결제 결과 흉내(모의 제공자). 끝나면 주문 목록과 잔액·원장을 다시 읽는다. */
 export function useSimulatePayment() {
   const client = useQueryClient();
   return useMutation({

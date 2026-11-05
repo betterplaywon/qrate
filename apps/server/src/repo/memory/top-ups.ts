@@ -3,9 +3,8 @@ import type { NewTopUp, Settlement, SettleResult, TopUp, TopUpPage, TopUpReposit
 import { appendCredit } from './credits.js';
 import type { MemoryStore } from './store.js';
 
-// 충전 주문과 제공자 이벤트. 쓰기 메서드는 await 없이 한 동기 구간에서 끝난다 — JS 스레드 하나라 그 사이에 다른 요청이 끼지 못해
-// Postgres 구현의 트랜잭션·유니크 인덱스와 같은 결과가 난다. 잠금 흉내는 두지 않는다.
-
+// 쓰기 메서드는 await 없이 한 동기 구간에서 끝난다 — 그 사이에 다른 요청이 끼지 못해 Postgres의 트랜잭션·유니크 인덱스와 같은 결과가 난다.
+// await을 넣으면 이 원자성이 깨진다.
 export class MemoryTopUpRepository implements TopUpRepository {
   constructor(private readonly store: MemoryStore) {}
 
@@ -48,7 +47,6 @@ export class MemoryTopUpRepository implements TopUpRepository {
       return { outcome: prior.outcome, replayed: true, topUp: { ...topUp } };
     }
     const topUp = this.store.topUps.get(s.topUpId);
-    // Postgres에서는 PaymentEvent의 FK가 같은 일을 한다.
     if (!topUp) throw new Error(`unknown top-up: ${s.topUpId}`);
     const moves = topUp.tenantId === s.tenantId && s.from.includes(topUp.status);
     if (moves) {

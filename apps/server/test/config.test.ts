@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
-// 결제 제공자 설정. 결제 없이 크레딧을 채우는 모의 결제가 운영에 기본으로 열리지 않는지.
-
 describe('QRATE_PAYMENT_PROVIDER', () => {
   it('auto(기본)는 운영(NODE_ENV=production)에서 none, 그 밖에서 mock', () => {
     expect(loadConfig({ NODE_ENV: 'production' }).paymentProvider).toBe('none');

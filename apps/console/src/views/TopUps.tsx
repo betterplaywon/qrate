@@ -9,9 +9,6 @@ import { QueryBoundary } from '../components/QueryBoundary';
 import { TOP_UP_STATUS_LABEL, formatTime, formatWon } from '../labels';
 import { useCreateTopUp, useSimulatePayment, useTopUps } from '../queries';
 
-// 충전 — 상품을 골라 충전 요청(주문)을 만들면 결제는 제공자 쪽에서 일어나고 결과는 웹훅으로 온다. 잔액은 웹훅이 결제 완료를 알릴 때만 오른다.
-// 모의 제공자일 때는 결제 결과를 버튼으로 흉내 낸다(서버가 서명한 웹훅을 웹훅과 같은 처리에 넣는다). 같은 버튼을 다시 누르면 같은 이벤트의 재배달이다.
-
 function requestErrorMessage(error: unknown): string | null {
   if (!error) return null;
   if (error instanceof ApiError && error.status === 503) return '이 서버에는 결제 제공자가 없어 충전할 수 없어요.';
@@ -27,7 +24,7 @@ function simulateMessage(r: SimulatePaymentResponse, sent: PaymentResult): strin
 
 function TopUpForm() {
   const create = useCreateTopUp();
-  // 멱등 키: 제출할 때 만들고, 실패해서 같은 상품으로 다시 누르면 같은 키를 쓴다(서버는 같은 주문을 돌려준다). 성공하면 비운다.
+  // 성공할 때까지 같은 상품의 재제출은 같은 멱등 키로 보낸다 — 응답만 끊긴 요청을 다시 보내도 주문은 하나다.
   const attempt = useRef<{ packageId: string; key: string } | null>(null);
   const form = useForm<CreateTopUpInput>({ resolver: zodResolver(createTopUpSchema), defaultValues: { packageId: 'credits_100' } });
   const busy = form.formState.isSubmitting || create.isPending;

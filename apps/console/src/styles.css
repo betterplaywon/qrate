@@ -401,7 +401,6 @@ input:focus-visible {
   font-size: 15px;
 }
 
-/* 충전 */
 .top-up-form {
   display: grid;
   gap: 10px;

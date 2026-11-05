@@ -2,13 +2,10 @@ import { IDEMPOTENT_REPLAYED_HEADER, type ApiErrorBody, type WebhookAckBody } fr
 import express, { type RequestHandler } from 'express';
 import type { BillingService } from '../billing/service.js';
 
-// 결제 제공자 웹훅(POST /api/payments/:provider/webhook). 계약은 @qrate/contracts/payments.ts.
-// 서명은 원문 바이트에 걸려 있어 JSON 파서를 두지 않고 받은 그대로 넘긴다. 서버 간 호출이라 세션·Origin 검사는 없고,
-// 서명 확인 전에는 HMAC 한 번이 전부라 요율 제한도 두지 않는다.
-
+// 요율 제한은 두지 않는다 — 서명 확인 전에 드는 비용은 HMAC 한 번이다.
 export function createWebhookRoute(billing: BillingService): RequestHandler[] {
   const handler: RequestHandler = async (req, res) => {
-    // 본문이 없으면 파서가 req.body를 채우지 않는다. 빈 원문은 서명 검증에서 걸린다.
+    // 본문이 없으면 파서가 req.body를 채우지 않는다.
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const result = await billing.receiveWebhook(String(req.params.provider), { rawBody, headers: req.headers });
     switch (result.status) {

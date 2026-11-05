@@ -16,7 +16,7 @@ export default defineConfig({
   use: { baseURL: SERVER_ORIGIN, trace: 'retain-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    // node를 직접 실행한다(--env-file 없음) — apps/server/.env를 읽지 않는다. 엔진 목업·저장소 메모리·콘솔 키·세션 비밀·모의 결제 비밀은 여기서 고정.
+    // node를 직접 실행한다(--env-file 없음) — apps/server/.env를 읽지 않는다.
     command: 'node ../server/dist/index.js',
     url: `${SERVER_ORIGIN}/healthz`,
     env: {

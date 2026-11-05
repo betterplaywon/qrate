@@ -10,7 +10,6 @@ export type ThinkingSetting = 'off' | 'low' | 'medium' | 'high';
 export type EngineKind = 'auto' | 'mock' | 'claude';
 /** auto = DATABASE_URL이 있으면 postgres(Prisma), 없으면 memory(시드 파일). 테스트와 E2E는 memory를 명시한다. */
 export type RepoKind = 'auto' | 'memory' | 'postgres';
-/** 충전을 받을 결제 제공자. auto = 운영(NODE_ENV=production)이면 none, 그 밖에서는 mock. 토스 어댑터가 붙으면 toss가 늘어난다. */
 export type PaymentProviderSetting = 'auto' | 'mock' | 'none';
 
 export interface AppConfig {
@@ -35,12 +34,7 @@ export interface AppConfig {
   demoConsoleKey: string | undefined;
   /** 콘솔 세션 토큰의 서명 비밀(16자 이상). 없으면 index.ts가 프로세스마다 무작위로 만든다 — 재시작하면 세션이 끊긴다. */
   consoleSecret: string | undefined;
-  /**
-   * auto를 푼 값. 결제 없이 크레딧을 채우는 모의 결제가 운영에 기본으로 열리지 않게 auto는 운영에서 none이다.
-   * none이면 충전 요청은 503, 모의 웹훅은 404, 결제 시뮬레이션 경로는 없다.
-   */
   paymentProvider: 'mock' | 'none';
-  /** 모의 제공자의 웹훅 서명 비밀(16자 이상). 없으면 index.ts가 프로세스마다 무작위로 만든다 — 서명하는 쪽과 받는 쪽이 같은 프로세스라 동작한다. */
   mockPaymentSecret: string | undefined;
 }
 

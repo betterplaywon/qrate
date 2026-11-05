@@ -5,8 +5,6 @@ import type { PaymentProviders } from '../src/billing/provider.js';
 import { createBillingService } from '../src/billing/service.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 
-// 충전 유스케이스 — 콘솔의 충전 요청과 제공자의 웹훅. 저장소는 메모리, 제공자는 고정 비밀의 모의 제공자.
-
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const TENANT = seed.tenant.id;
 const NOW = new Date('2026-11-05T03:00:00Z');

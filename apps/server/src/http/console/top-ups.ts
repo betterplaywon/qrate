@@ -14,9 +14,6 @@ import { toTopUpDto } from './dto.js';
 import { parseListQuery, withCursorErrors } from './query.js';
 import { tenantIdOf } from './session.js';
 
-// 콘솔의 충전(/api/console/top-ups). 계약은 @qrate/contracts/console.ts. router.ts가 세션·Origin·본문 미들웨어를 넘긴다.
-// 재요청 응답은 상태·본문이 첫 요청과 같고 Idempotent-Replayed 헤더로만 구분한다 — 재시도한 클라이언트가 두 응답을 같은 것으로 다루게.
-
 export interface TopUpRoutesOptions {
   repos: Repositories;
   billing: BillingService;
@@ -70,7 +67,6 @@ export function createTopUpRoutes({ repos, billing, providers, session, ownOrigi
     }
   });
 
-  // 결제 시뮬레이션 — 모의 제공자가 서명한 웹훅을 웹훅 경로와 같은 receiveWebhook에 넣는다. 서명 검증도 그대로 지난다.
   const { mock } = providers;
   if (mock) {
     router.post('/:id/simulate', session, ownOrigin, json, async (req, res) => {
@@ -95,7 +91,6 @@ export function createTopUpRoutes({ repos, billing, providers, session, ownOrigi
         res.json({ outcome: result.reason, replayed: false, topUp: toTopUpDto(topUp) } satisfies SimulatePaymentResponse);
         return;
       }
-      // 방금 같은 비밀로 서명한 웹훅이 거절됐다면 프로그래밍 오류다. 오류 핸들러(500 + 보고)로 보낸다.
       throw new Error(`mock webhook not accepted: ${result.status}`);
     });
   }

@@ -158,10 +158,8 @@ model CreditLedger {
   @@index([tenantId, createdAt])
 }
 
-// 충전 주문과 결제 제공자 이벤트(W4). 웹훅은 적어도 한 번 배달이라 같은 결과가 여러 번, 순서가 뒤바뀌어 온다.
-// 원장이 한 번만 움직이게 하는 제약은 넷이다 — 주문의 (tenantId, requestKey) UNIQUE(콘솔 재시도), 이벤트의 (provider, eventId) PK(재배달),
-// 주문 상태의 조건부 UPDATE(순서 뒤바뀜, src/billing/settlement.ts의 전이 표), 원장의 topup:<주문 id> 키(마지막 방어선).
-// 상태 순서가 곧 순위다(pending < failed < paid). 상태는 앞으로만 간다.
+// 충전 주문과 결제 제공자 이벤트(W4). 원장이 한 번만 움직이게 하는 제약은 넷이다 — 주문 (tenantId, requestKey) UNIQUE(콘솔 재시도),
+// 이벤트 (provider, eventId) PK(재배달), 주문 상태의 조건부 UPDATE(순서 뒤바뀜, src/billing/settlement.ts), 원장 topup:<주문 id> 키(마지막 방어선).
 enum TopUpStatus {
   pending
   failed
@@ -177,22 +175,19 @@ enum PaymentResult {
   failed
 }
 
-// 이벤트가 주문 상태를 옮겼으면 applied, 이미 그 이상이라 그대로였으면 stale. 재배달에는 처음 기록한 값을 돌려준다.
 enum SettleOutcome {
   applied
   stale
 }
 
-// id가 제공자에게 넘기는 orderId다. credits·amount는 주문 때 상품표에서 복사해 굳힌다 — 웹훅의 금액은 이 값과 대조한다.
 model CreditTopUp {
   id         String              @id @default(cuid())
   tenantId   String
   tenant     Tenant              @relation(fields: [tenantId], references: [id])
-  // 콘솔이 만든 Idempotency-Key. 테넌트마다 따로다(다른 테넌트가 같은 값을 보낼 수 있다).
   requestKey String
   packageId  String
   credits    Int
-  amount     Int // 원
+  amount     Int // 원(KRW)
   provider   PaymentProviderName
   status     TopUpStatus         @default(pending)
   settledAt  DateTime?
@@ -204,8 +199,6 @@ model CreditTopUp {
   @@index([tenantId, createdAt])
 }
 
-// 받은 제공자 이벤트. 알려진 주문에 금액이 맞은 이벤트만 기록한다(모르는 주문·금액 불일치는 판정이 결정적이라 기록 없이도 같은 응답).
-// 이벤트 id는 제공자 하나의 이름 공간이라 테넌트를 넣지 않는다 — 테넌트는 주문을 읽어야 안다.
 model PaymentEvent {
   provider   PaymentProviderName
   eventId    String

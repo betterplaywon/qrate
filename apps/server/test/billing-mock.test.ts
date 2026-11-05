@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { createMockProvider, signMockPayload } from '../src/billing/mock.js';
 import type { WebhookRequest } from '../src/billing/provider.js';
 
-// 모의 제공자의 웹훅 서명. 위조·변조·재전송은 모두 'signature' 하나로 거절되고, 서명이 맞은 뒤에만 본문을 읽는다.
-
 const SECRET = 'mock-secret-0123456789abcdef';
 const NOW = new Date('2026-11-05T03:00:00Z');
 const T = Math.floor(NOW.getTime() / 1000);

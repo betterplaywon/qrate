@@ -13,7 +13,6 @@ export class MemoryStore {
   /** 테넌트별 원장. 잔액은 합계다. */
   readonly credits = new Map<string, CreditEntry[]>();
   readonly topUps = new Map<string, TopUp>();
-  /** 받은 제공자 이벤트. 키는 `<provider>:<eventId>`. */
   readonly paymentEvents = new Map<string, PaymentEventRecord>();
   private creditCounter = 0;
   private topUpCounter = 0;
@@ -23,7 +22,6 @@ export class MemoryStore {
     return `c${Date.now().toString(36).padStart(9, '0')}${(this.creditCounter++).toString(36).padStart(6, '0')}`;
   }
 
-  /** 충전 주문 id. 원장 id와 같은 이유로 시각 + 카운터. */
   nextTopUpId(): string {
     return `t${Date.now().toString(36).padStart(9, '0')}${(this.topUpCounter++).toString(36).padStart(6, '0')}`;
   }
