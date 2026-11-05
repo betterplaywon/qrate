@@ -3,8 +3,9 @@ import { LoadMore } from '../components/LoadMore';
 import { QueryBoundary } from '../components/QueryBoundary';
 import { CREDIT_REASON_LABEL, formatTime } from '../labels';
 import { useCredits } from '../queries';
+import { TopUps } from './TopUps';
 
-// 크레딧 — 잔액(원장 합계)과 원장 최근순. 충전은 다음 PR(결제 제공자)에서 붙는다.
+// 크레딧 — 잔액(원장 합계), 충전(TopUps.tsx), 원장 최근순.
 
 function Entry({ entry }: { entry: CreditEntryDto }) {
   const sign = entry.delta > 0 ? '+' : '';
@@ -42,6 +43,8 @@ export function Billing() {
           잔액 <strong data-testid="credit-balance">{balance}</strong> 크레딧
           <span className="muted"> · 답변 한 번에 1크레딧. 0이 되면 위젯이 "운영자에게 알려 달라"고 안내해요.</span>
         </p>
+        <TopUps />
+        <h3 className="subhead">원장</h3>
         {items.length === 0 ? (
           <p className="status">원장이 비어 있어요.</p>
         ) : (

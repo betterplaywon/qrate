@@ -395,3 +395,61 @@ input:focus-visible {
 .delta.plus {
   color: var(--ok);
 }
+
+.subhead {
+  margin: 20px 0 10px;
+  font-size: 15px;
+}
+
+/* 충전 */
+.top-up-form {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  margin-bottom: 12px;
+}
+
+.packages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.packages legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.package {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.notice {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+
+.pill.top-up-pending {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.pill.top-up-failed {
+  background: var(--bg);
+  color: var(--danger);
+}
+
+.pill.top-up-paid {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
