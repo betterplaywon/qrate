@@ -11,7 +11,7 @@ function fakeView(): { view: ChatView; calls: Call[]; notices: { text: string; a
   const notices: { text: string; action?: NoticeAction }[] = [];
   let bubbles = 0;
   const view: ChatView = {
-    setBusy: (busy) => void calls.push(`busy:${busy}`),
+    setComposer: (state) => void calls.push(`composer:${state}`),
     addUser: (text) => void calls.push(`user:${text}`),
     startAnswer: (): AnswerView => {
       const n = ++bubbles;
@@ -41,6 +41,7 @@ function fakeEffects(): { effects: TurnEffects; fired: string[] } {
       answered: () => void fired.push('answered'),
       offerHandoff: () => void fired.push('offerHandoff'),
       retry: () => void fired.push('retry'),
+      waitBeforeSending: (ms) => void fired.push(`wait:${ms}`),
     },
   };
 }
@@ -91,11 +92,30 @@ describe('Turn — 사건을 화면에 반영한다', () => {
     expect(calls).toEqual(['start:1', 'append:1:부분', 'finish:1:interrupted', 'notice:답변이 중단됐어요.']);
     expect(notices[0]?.action).toMatchObject({ label: '다시 보내기', disabledForMs: 2000 });
     notices[0]?.action?.run();
-    expect(fired).toEqual(['retry']);
+    expect(fired).toEqual(['wait:2000', 'retry']);
 
     const fatal = fakeView();
-    new Turn(fatal.view, fakeEffects().effects).apply({ type: 'failed', stage: 'response', status: 502, code: 'upstream_error', retryable: false, retryAfterMs: null });
+    const fatalEffects = fakeEffects();
+    new Turn(fatal.view, fatalEffects.effects).apply({ type: 'failed', stage: 'response', status: 502, code: 'upstream_error', retryable: false, retryAfterMs: null });
     expect(fatal.notices).toEqual([{ text: '오류가 발생했어요. (502)' }]);
+    expect(fatalEffects.fired).toEqual([]);
+  });
+
+  it('Retry-After가 붙은 실패는 버튼과 같은 시간만큼 새 메시지도 기다리게 한다. Retry-After가 없으면 기다리지 않는다', () => {
+    const limited = fakeEffects();
+    new Turn(fakeView().view, limited.effects).apply({
+      type: 'failed',
+      stage: 'response',
+      status: 429,
+      code: 'too_many_requests',
+      retryable: true,
+      retryAfterMs: 37000,
+    });
+    expect(limited.fired).toEqual(['wait:37000']);
+
+    const lost = fakeEffects();
+    new Turn(fakeView().view, lost.effects).apply({ type: 'failed', stage: 'connect', status: null, code: null, retryable: true, retryAfterMs: null });
+    expect(lost.fired).toEqual([]);
   });
 
   it('차단·경고 안내, 실패 문구 표', () => {

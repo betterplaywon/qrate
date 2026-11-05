@@ -208,6 +208,12 @@ body {
   border-radius: 8px;
 }
 
+.composer input:disabled {
+  color: var(--qrate-muted);
+  background: #f6f8fa;
+  cursor: default;
+}
+
 .send {
   padding: 8px 12px;
   font-size: 13px;

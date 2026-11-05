@@ -1,4 +1,5 @@
 import { MAX_HANDOFF_CONTACT_CHARS, MAX_HANDOFF_MESSAGE_CHARS, MAX_MESSAGE_CHARS } from '@qrate/contracts';
+import type { ComposerState } from './composer';
 import type { SourceCitation } from './stream';
 
 // 대화창 화면. 상태는 모르고, main.ts가 시키는 대로 그린다.
@@ -33,7 +34,8 @@ export interface HandoffFormHandlers {
 }
 
 export interface ChatView {
-  setBusy(busy: boolean): void;
+  /** busy면 전송만 막고(다음 질문은 미리 쓸 수 있다), locked면 입력란까지 막는다. */
+  setComposer(state: ComposerState): void;
   addUser(text: string): void;
   startAnswer(): AnswerView;
   addNotice(text: string, action?: NoticeAction): void;
@@ -41,6 +43,13 @@ export interface ChatView {
   showHandoffForm(handlers: HandoffFormHandlers): void;
   focusInput(): void;
 }
+
+/** 잠긴 동안에는 입력란이 왜 막혔는지를 자리 표시 문구로 말한다. */
+const PLACEHOLDER: Record<ComposerState, string> = {
+  ready: '메시지를 입력하세요',
+  busy: '메시지를 입력하세요',
+  locked: '잠시 뒤 다시 보낼 수 있어요.',
+};
 
 /** 사용자가 위로 스크롤해 읽는 중이면 새 조각이 와도 끌어내리지 않는다. 이 거리 안이면 바닥에 있는 것으로 본다. */
 const STICK_TO_BOTTOM_PX = 40;
@@ -78,7 +87,7 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
   input.id = 'qrate-input';
   input.autocomplete = 'off';
   input.maxLength = MAX_MESSAGE_CHARS; // 서버의 message_too_long(400)과 같은 값 — 넘는 입력은 보내기 전에 막는다
-  input.placeholder = '메시지를 입력하세요';
+  input.placeholder = PLACEHOLDER.ready;
   const send = el('button', 'send', '전송');
   send.type = 'submit';
   form.append(label, input, send);
@@ -111,8 +120,10 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
   };
 
   return {
-    setBusy(busy) {
-      send.disabled = busy;
+    setComposer(state) {
+      input.disabled = state === 'locked';
+      input.placeholder = PLACEHOLDER[state];
+      send.disabled = state !== 'ready';
     },
 
     addUser(text) {
