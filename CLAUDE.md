@@ -4,10 +4,11 @@
 
 ## 시작
 
-- 비자명한 작업은 `/pstack:poteto-mode`로 시작한다(플러그인 pstack, `.claude/settings.json`). 세션당 한 번 플러그인의 Claude Code 어댑터(`docs/harness/claude-code.md`)를 읽는다.
-- 이 레포에서의 이름 매핑: `/deslop` → `/simplify`. `control-ui`·`control-cli` → `verify-qrate` 스킬(`.claude/skills/verify-qrate`, 실제 앱을 띄워 증거를 남긴다). Bugbot 없음 → 머지 전 `interrogate`(또는 `/code-review`)가 그 자리. Cursor `/loop` → Claude Code `/loop`. cloud agent → `isolation: "worktree"`.
+- 플러그인 pstack(Claude Code 포트 `pstack@pstack-claude`, `.claude/settings.json`)이 세션 시작 때 라우팅 규칙을 넣는다. 파일 여럿을 건드리거나, 설계 선택이 있거나, 원인 모를 버그·성능 문제면 `pstack:poteto-mode` 스킬이 플레이북을 고른다. 작은 일은 바로 한다. 사용자가 `/pstack:poteto-mode …`로 직접 시작해도 된다.
+- 플러그인 파일은 `~/.claude/plugins/cache/pstack-claude/pstack/<버전>/`에 있다. `pstack:poteto-agent` 서브에이전트 브리프에는 그 안의 `skills/poteto-mode/SKILL.md` 절대 경로를 넣는다. 역할별 모델은 `~/.claude/pstack-models.md`(CLAUDE.local.md가 include한다. 재설정은 `/pstack:setup-pstack`).
+- 이 레포에서의 이름 매핑: 드라이버 스킬은 프로젝트 `verify`(`.claude/skills/verify`, 실제 앱을 띄워 증거를 남긴다), 없으면 Claude Code 내장 `run`. Bugbot 자리는 머지 전 `interrogate`(또는 `thermos`, `/code-review`). Cursor cloud agent 자리는 worktree. 플레이북의 PR 제목·본문·머지·worktree 단계는 `.agents/playbooks/qrate-pr.md`가 이 레포 규칙으로 덧씌운다.
 - 답변·보고·PR 본문·커밋 메시지·결정 기록은 한국어로 쓴다. 코드 식별자·명령·경로는 그대로 둔다.
-- 모델 계열이 Claude 하나뿐이라 "다른 계열의 검토"는 다른 모델(세션 모델 ↔ opus)로 대신한다(`~/.claude/rules/pstack-models.md`).
+- 모델 계열이 Claude 하나뿐이라 "다른 모델의 검토"는 세션 모델 ↔ opus로 한다.
 
 ## 게이트(CI verify와 같다)
 
@@ -16,17 +17,17 @@
 ## 브랜치·커밋·PR
 
 - 브랜치 `<type>/<짧은-설명>`, 커밋 `type(scope): 제목`(scope는 모듈), PR 제목 `<대단위> - <소규모>`. 어휘와 예시는 `.github/pull_request_template.md` 머리말.
-- main에 직접 커밋·push하지 않는다. push한 이력은 다시 쓰지 않는다(강제 push 금지). main이 앞서면 `git merge origin/main`으로 따라잡는다.
-- 머지는 merge commit(`gh pr merge <번호> --merge`). 머지된 원격 브랜치는 GitHub이 지운다.
+- main에 직접 커밋·push하지 않는다. push한 이력은 다시 쓰지 않는다(강제 push 금지, `--force-with-lease`도 금지). main이 앞서면 `git merge origin/main`으로 따라잡는다. 스택 PR의 부모가 머지돼도 자식은 rebase가 아니라 merge로 따라간다.
+- 머지는 merge commit: `gh pr merge <번호> --merge --match-head-commit <검증한 head SHA>`. squash·rebase 머지는 레포 설정이 막는다. 머지된 원격 브랜치는 GitHub이 지운다.
 - PR 본문은 템플릿 5항목을 그대로 쓴다. pstack의 Why / What changed / Scope / Blast Radius / Verification은 각각 1 배경 / 2 변경 내용 / 범위 밖 / 5 리뷰어가 볼 것 / 4 검증에 넣는다. 수치는 실측만 쓰고 추정·시뮬레이션은 그렇게 표기한다.
-- 같은 폴더에서 브랜치를 바꿔 작업한다(미커밋 변경은 이름 붙여 stash). 코드를 쓰는 서브에이전트를 둘 이상 동시에 돌릴 때만 worktree를 쓰고, 끝나면 지운다.
+- 메인 세션은 같은 폴더에서 브랜치를 바꿔 작업한다(미커밋 변경은 이름 붙여 stash). 코드를 쓰는 서브에이전트에게는 각자 worktree를 주고, 끝나면 지운다.
 - 커밋은 변경 이유 단위로 나누고, 각 커밋이 혼자 게이트를 통과하게 한다. PR은 draft가 아니라 ready로 연다.
 
 ## 자율 범위
 
 **묻지 않고 한다.** 이미 내려진 설계 결정 안의 구현, 버그 수정, 리팩토링, 테스트, 문서 뼈대, 도구·CI 수정, 커밋·push·PR 생성, 리뷰 코멘트 처리, CI 재실행, 아래 조건을 만족하는 머지.
 
-**머지 조건.** CI verify 녹색 + 코드를 쓰지 않은 에이전트(다른 모델)가 실제 표면에서 검증해 PASS + 사람이 머지하는 경로를 건드리지 않음. 사람이 머지하는 경로(결제·크레딧, 콘솔 인증, 모더레이션, Origin 검사·CSP, 요율 제한, 스키마·마이그레이션, Docker·compose, CI, 에이전트 장치 자체)를 건드린 PR은 merge-ready로 보고하고 멈춘다(훅이 막는다).
+**머지 조건(pstack Shipping 플레이북의 착륙 권한).** CI verify 녹색 + 코드를 쓰지 않은 에이전트(다른 모델)가 실제 표면에서 검증해 PASS + 사람이 머지하는 경로를 건드리지 않음. 사람이 머지하는 경로(결제·크레딧, 콘솔 인증, 모더레이션, Origin 검사·CSP, 요율 제한, 스키마·마이그레이션, Docker·compose, CI, 에이전트 장치 자체)를 건드린 PR은 merge-ready로 보고하고 멈춘다(훅이 막는다).
 
 **멈추고 사용자에게.** 아직 내려지지 않은 아키텍처·제품 결정(묻기 전에 개념과 옵션별 트레이드오프 설명 자료부터), 결제·인증·보안·되돌리기 어려운 변경, GitHub 설정, 비밀값·키, 데이터·브랜치 삭제, 배포, 외부 발행(블로그 등), 비용이 드는 외부 호출. 되돌릴 수 있는 일은 묻지 말고 하고, 결과를 보고한다.
 
@@ -35,7 +36,7 @@
 ## 보고
 
 - 매 실행의 마지막 답변이 보고서다. 목표를 내 말로, 한 일, 검증 증거(명령과 출력, 스크린샷 경로), 선택과 이유, 열린 결정, 그리고 결정 기록을 다른 모델이 교차 검토한 Attention.
-- 긴 실행·자율 실행은 `/pstack:show-me-your-work` 결정 기록을 `.audit/<작업>.tsv`에 남긴다. 증거는 `.audit/evidence/`. 사용자는 `/pstack:ketchup`으로 따라잡는다.
+- 긴 실행·자율 실행은 `/pstack:show-me-your-work` 결정 기록을 `.audit/<작업>.tsv`에 남긴다. 할 일 목록 도구가 없으면 `.audit/<작업>.todo.md`. 증거는 `.audit/evidence/`. 사용자는 `/pstack:ketchup`으로 따라잡는다.
 - 실행이 멈추면 Stop 훅이 알림을 띄우고 마지막 답변을 `.audit/reports/<날짜>.md`에 덧붙인다.
 - AI 코드에서 실제로 발견한 문제만 `docs/reviews.md`에 적는다((AI) 표시). 없는 사례를 만들지 않는다.
 
@@ -60,6 +61,7 @@
 | `.env`·비밀값 읽기·출력 금지 | 같은 훅 + `permissions.deny` |
 | DB 리셋·`db push`·볼륨 삭제·외부 발행·이름으로 kill 금지 | 같은 훅 |
 | PR 제목 형식, 공개 파일 금칙어 | 같은 훅(목록은 로컬 파일) |
+| PR 제목·본문·머지 방식·worktree 규칙이 pstack 플레이북 단계에 적용 | `.agents/playbooks/qrate-pr.md`(앵커는 `check-playbooks.mjs`가 검사) |
 | 테스트·빌드·E2E | CI verify(필수 체크) |
 | 보고 파일·알림·세션 시작 요약 | `.claude/hooks/on-stop.mjs`, `on-notify.mjs`, `session-start.mjs` |
-| 언어, PR 본문 구성, 자율 범위, 사람 몫 문서, 코드 규칙 | 이 문서만 |
+| 언어, 자율 범위, 사람 몫 문서, 코드 규칙 | 이 문서만 |
