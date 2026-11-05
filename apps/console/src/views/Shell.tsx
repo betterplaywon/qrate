@@ -1,0 +1,40 @@
+import type { ConsoleTenant } from '@qrate/contracts';
+import { useLogout } from '../queries';
+import { href, useRoute } from '../route';
+import { ConversationDetail } from './ConversationDetail';
+import { ConversationList } from './ConversationList';
+import { Queue } from './Queue';
+
+// 로그인 뒤의 틀 — 머리글(테넌트·메뉴·로그아웃)과 해시 라우팅에 따른 화면 하나.
+
+export function Shell({ tenant }: { tenant: ConsoleTenant }) {
+  const route = useRoute();
+  const logout = useLogout();
+
+  return (
+    <div className="shell">
+      <header className="top">
+        <div className="brand">
+          <span className="brand-name">Qrate 콘솔</span>
+          <span className="tenant" data-testid="tenant-name">{tenant.name}</span>
+        </div>
+        <nav className="nav" aria-label="주 메뉴">
+          <a href={href.queue('open')} className={route.name === 'queue' ? 'active' : ''}>
+            미응답 큐
+          </a>
+          <a href={href.conversations()} className={route.name !== 'queue' ? 'active' : ''}>
+            대화 로그
+          </a>
+        </nav>
+        <button type="button" className="ghost" disabled={logout.isPending} onClick={() => logout.mutate()}>
+          로그아웃
+        </button>
+      </header>
+      <main className="main">
+        {route.name === 'queue' && <Queue status={route.status} />}
+        {route.name === 'conversations' && <ConversationList />}
+        {route.name === 'conversation' && <ConversationDetail id={route.id} />}
+      </main>
+    </div>
+  );
+}

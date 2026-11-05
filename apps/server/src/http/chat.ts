@@ -75,6 +75,14 @@ export function statusFor(code: EngineErrorCode): number {
 
 const REPORTED_CODES: ReadonlySet<EngineErrorCode> = new Set(['upstream_auth', 'upstream_bad_request', 'upstream_error']);
 
+/** 스키마 위반 → 계약의 오류 코드. 메시지 문제가 테넌트 문제보다 먼저고, 너무 긴 메시지는 따로 알린다(위젯이 안내 문구를 나눈다). */
+function chatBodyError(issues: readonly { path: PropertyKey[]; code: string }[]): ApiErrorCode {
+  const message = issues.filter((i) => i.path[0] === 'message');
+  if (message.some((i) => i.code === 'too_big')) return 'message_too_long';
+  if (message.length > 0) return 'message is required';
+  return 'tenant is required';
+}
+
 export function createChatHandler({ chat, logUsage = logToStdout, reportError = reportToStderr }: ChatHandlerDeps) {
   return async function handleChat(req: Request, res: Response): Promise<void> {
     const startedAt = Date.now();
@@ -198,12 +206,4 @@ export function createChatHandler({ chat, logUsage = logToStdout, reportError = 
     res.end();
     finish('done', { done });
   };
-}
-
-/** 스키마 위반 → 계약의 오류 코드. 메시지 문제가 테넌트 문제보다 먼저고, 너무 긴 메시지는 따로 알린다(위젯이 안내 문구를 나눈다). */
-function chatBodyError(issues: readonly { path: PropertyKey[]; code: string }[]): ApiErrorCode {
-  const message = issues.filter((i) => i.path[0] === 'message');
-  if (message.some((i) => i.code === 'too_big')) return 'message_too_long';
-  if (message.length > 0) return 'message is required';
-  return 'tenant is required';
 }

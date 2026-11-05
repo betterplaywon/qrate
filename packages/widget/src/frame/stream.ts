@@ -56,6 +56,12 @@ export interface StreamOptions {
 /** Retry-After 상한. 서버는 지금 2초를 보낸다. 엉뚱하게 큰 값에 버튼이 오래 잠기지 않게 자른다. */
 const MAX_RETRY_AFTER_MS = 60_000;
 
+/** Retry-After는 초(정수) 또는 HTTP 날짜다. 서버는 초를 보낸다. 날짜 형식은 지금 쓰지 않아 null로 둔다. */
+export function parseRetryAfter(raw: string | null): number | null {
+  if (raw === null || !/^\d+$/.test(raw.trim())) return null;
+  return Math.min(Number(raw.trim()) * 1000, MAX_RETRY_AFTER_MS);
+}
+
 export async function* streamChat(
   req: ChatRequestBody,
   opts: StreamOptions = {},
@@ -164,10 +170,4 @@ export async function* streamChat(
   // 서버 계약상 정상 종료에는 항상 [DONE]이 온다. 없이 끝났다면 중간에 끊긴 것이다.
   if (opts.signal?.aborted) return;
   yield lost;
-}
-
-/** Retry-After는 초(정수) 또는 HTTP 날짜다. 서버는 초를 보낸다. 날짜 형식은 지금 쓰지 않아 null로 둔다. */
-export function parseRetryAfter(raw: string | null): number | null {
-  if (raw === null || !/^\d+$/.test(raw.trim())) return null;
-  return Math.min(Number(raw.trim()) * 1000, MAX_RETRY_AFTER_MS);
 }

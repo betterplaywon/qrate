@@ -51,6 +51,45 @@ export interface ChatServiceDeps {
   reportError?: ErrorReporter;
 }
 
+/**
+ * 이벤트를 그대로 흘려보내며 답변과 핸드오프 신호를 모으고, 끝까지 받았을 때만 턴을 저장한다 — 저장 단위는 턴이다.
+ * 질문을 먼저 저장하면 실패한 턴의 질문이 대화에 남고, 위젯이 같은 질문을 다시 보내면("다시 보내기") 두 번 들어간다.
+ * 그래서 실패·중단한 턴은 대화에 아무것도 남기지 않는다. 그 턴의 기록은 사용량 로그(http/chat.ts)가 맡는다.
+ * 끊긴 부분 답은 다음 턴의 문맥을 오염시킬 수 있어 저장하지 않는다 — 실패·중단은 예외로 빠져나가므로 저장 줄에 닿지 않는다.
+ * 공백뿐인 답(도구 호출 전에 줄바꿈만 낸 경우)은 답이 없는 것으로 본다. 저장하면 다음 턴부터 API가 빈 텍스트 블록을 거부한다.
+ */
+async function* recordTurn(
+  events: AsyncIterable<EngineEvent>,
+  save: (turn: TurnRecord) => Promise<void>,
+): AsyncGenerator<EngineEvent, void, undefined> {
+  let answer = '';
+  let handoff: TurnRecord['handoff'] = null;
+  for await (const ev of events) {
+    if (ev.type === 'delta') answer += ev.text;
+    if (ev.type === 'handoff') handoff = { reason: ev.reason, summary: ev.summary };
+    yield ev;
+  }
+  await save({ answer: answer.trim(), handoff });
+}
+
+/**
+ * 프롬프트 문맥은 완결된 턴(user → assistant 쌍)만으로 만든다. API는 첫 메시지가 user여야 하고, 창(lastMessages)이 쌍 사이에서
+ * 잘리면 assistant로 시작할 수 있어 그 앞을 버린다.
+ * 답 없이 끝난 턴(정책 거절)의 질문은 기록으로는 남지만 문맥에서는 뺀다 — 거절된 내용을 매 턴 다시 보내면
+ * 분류기가 같은 내용을 다시 보고 입력 토큰도 매번 낸다.
+ */
+function toHistory(messages: { role: HistoryTurn['role']; content: string }[]): HistoryTurn[] {
+  const out: HistoryTurn[] = [];
+  for (let i = 0; i < messages.length; i += 1) {
+    const question = messages[i];
+    const answer = messages[i + 1];
+    if (question?.role !== 'user' || answer?.role !== 'assistant') continue;
+    out.push({ role: 'user', text: question.content }, { role: 'assistant', text: answer.content });
+    i += 1;
+  }
+  return out;
+}
+
 export function createChatService({ engine, repos, reportError = reportToStderr }: ChatServiceDeps): ChatService {
   return {
     engine,
@@ -110,43 +149,4 @@ interface TurnRecord {
   /** 답변 전문. 비어 있으면 답 없이 끝난 턴(정책 거절)이다. */
   answer: string;
   handoff: { reason: HandoffReason; summary: string | null } | null;
-}
-
-/**
- * 이벤트를 그대로 흘려보내며 답변과 핸드오프 신호를 모으고, 끝까지 받았을 때만 턴을 저장한다 — 저장 단위는 턴이다.
- * 질문을 먼저 저장하면 실패한 턴의 질문이 대화에 남고, 위젯이 같은 질문을 다시 보내면("다시 보내기") 두 번 들어간다.
- * 그래서 실패·중단한 턴은 대화에 아무것도 남기지 않는다. 그 턴의 기록은 사용량 로그(http/chat.ts)가 맡는다.
- * 끊긴 부분 답은 다음 턴의 문맥을 오염시킬 수 있어 저장하지 않는다 — 실패·중단은 예외로 빠져나가므로 저장 줄에 닿지 않는다.
- * 공백뿐인 답(도구 호출 전에 줄바꿈만 낸 경우)은 답이 없는 것으로 본다. 저장하면 다음 턴부터 API가 빈 텍스트 블록을 거부한다.
- */
-async function* recordTurn(
-  events: AsyncIterable<EngineEvent>,
-  save: (turn: TurnRecord) => Promise<void>,
-): AsyncGenerator<EngineEvent, void, undefined> {
-  let answer = '';
-  let handoff: TurnRecord['handoff'] = null;
-  for await (const ev of events) {
-    if (ev.type === 'delta') answer += ev.text;
-    if (ev.type === 'handoff') handoff = { reason: ev.reason, summary: ev.summary };
-    yield ev;
-  }
-  await save({ answer: answer.trim(), handoff });
-}
-
-/**
- * 프롬프트 문맥은 완결된 턴(user → assistant 쌍)만으로 만든다. API는 첫 메시지가 user여야 하고, 창(lastMessages)이 쌍 사이에서
- * 잘리면 assistant로 시작할 수 있어 그 앞을 버린다.
- * 답 없이 끝난 턴(정책 거절)의 질문은 기록으로는 남지만 문맥에서는 뺀다 — 거절된 내용을 매 턴 다시 보내면
- * 분류기가 같은 내용을 다시 보고 입력 토큰도 매번 낸다.
- */
-function toHistory(messages: { role: HistoryTurn['role']; content: string }[]): HistoryTurn[] {
-  const out: HistoryTurn[] = [];
-  for (let i = 0; i < messages.length; i += 1) {
-    const question = messages[i];
-    const answer = messages[i + 1];
-    if (question?.role !== 'user' || answer?.role !== 'assistant') continue;
-    out.push({ role: 'user', text: question.content }, { role: 'assistant', text: answer.content });
-    i += 1;
-  }
-  return out;
 }

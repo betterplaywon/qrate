@@ -1,18 +1,12 @@
-import {
-  CHAT_PATH,
-  CONSOLE_API_PATH,
-  CONSOLE_PATH,
-  FRAME_PATH,
-  HANDOFF_PATH,
-  type ApiErrorBody,
-  type ApiErrorCode,
-} from '@qrate/contracts';
-import express, { type NextFunction, type Request, type Response } from 'express';
+import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, FRAME_PATH, HANDOFF_PATH } from '@qrate/contracts';
+import express from 'express';
 import { createChatService } from './chat/service.js';
 import { createSessionCodec } from './console/session.js';
 import type { AnswerEngine } from './engine/types.js';
 import { createChatHandler, type UsageLogger } from './http/chat.js';
-import { createConsoleRouter } from './http/console.js';
+import { createConsoleRouter } from './http/console/router.js';
+import { consoleStatic } from './http/console/static.js';
+import { createErrorHandler, notFound } from './http/errors.js';
 import { createFrameHandler } from './http/frame.js';
 import { createHandoffRoute } from './http/handoff.js';
 import { requireOwnOrigin } from './origin.js';
@@ -21,7 +15,8 @@ import type { Repositories } from './repo/types.js';
 
 // 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
 //   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, 사용량 로그,
-//             운영 콘솔 API(console.ts — 로그인·세션 쿠키·대화 로그·미응답 큐)
+//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts),
+//             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, static 페이지 서빙)
 //   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
 //   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장. Express를 모른다
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
@@ -53,12 +48,6 @@ export interface AppOptions {
   /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
   handoffRequests?: { max: number; windowMs: number };
 }
-
-/**
- * 콘솔 문서의 CSP. 대화창과 같은 default-src 'self'(번들은 /console/assets/의 파일, 인라인 없음) +
- * frame-ancestors 'none'(콘솔은 어디에도 iframe으로 들어가지 않는다 — 클릭재킹 방지) + base-uri 'none'.
- */
-export const CONSOLE_CSP = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 export function createApp({
   engine,
@@ -108,65 +97,17 @@ export function createApp({
     ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
   );
 
-  // 콘솔 페이지(/console/). 자산은 파일 이름에 해시가 있어 오래 캐시하고, index.html은 매번 재검증한다. 화면 상태는 해시 라우팅이라
-  // SPA 폴백이 필요 없다. 로그인 전에도 문서는 내려간다 — 데이터는 전부 세션이 있어야 하는 API에서 온다.
-  if (consoleAssetsDir) {
-    app.use(
-      CONSOLE_PATH,
-      express.static(consoleAssetsDir, {
-        index: 'index.html',
-        maxAge: '1y',
-        immutable: true,
-        setHeaders: (res, filePath) => {
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          if (filePath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-cache');
-            res.setHeader('Content-Security-Policy', CONSOLE_CSP);
-          }
-        },
-      }),
-    );
-  }
-
-  // 운영 콘솔 API. 세션 쿠키 + (상태를 바꾸는 요청은) 같은 Origin 검사. 콘솔 페이지 자체는 같은 서버가 /console/ 로 서빙한다.
+  // 콘솔 페이지(/console/, http/console/static.ts)와 콘솔 API(http/console/router.ts). 페이지는 로그인 전에도 내려가고 데이터는 API에서 온다.
+  if (consoleAssetsDir) app.use(CONSOLE_PATH, consoleStatic(consoleAssetsDir));
   if (consoleOptions) {
     const sessions = createSessionCodec(consoleOptions.secret);
-    app.use(
-      CONSOLE_API_PATH,
-      createConsoleRouter({ repos, publicOrigin, sessions, ...(consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {}) }),
-    );
+    const loginAttempts = consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {};
+    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, ...loginAttempts }));
   }
 
-  // 계약 밖의 실패도 계약의 오류 본문(JSON)으로 답한다. Express 기본 핸들러에 맡기면 HTML 페이지가 나가고,
-  // 기본 핸들러는 오류 객체를 통째로 찍는데 body-parser의 오류 객체에는 요청 본문이 들어 있어 사용자 메시지가 로그에 남는다.
-  app.use((_req, res) => {
-    res.status(404).json({ error: 'not_found' } satisfies ApiErrorBody);
-  });
-  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
-    const failure = bodyParserFailure(err);
-    if (failure) {
-      res.status(failure.status).json({ error: failure.code } satisfies ApiErrorBody);
-      return;
-    }
-    // 라우트가 던진 예외. Express 5는 async 핸들러의 거절도 여기로 보낸다. 본문은 넘기지 않는다.
-    reportError(err, { where: 'express', method: req.method, path: req.path });
-    if (res.headersSent) {
-      res.end();
-      return;
-    }
-    res.status(500).json({ error: 'internal_error' } satisfies ApiErrorBody);
-  });
+  // 계약 밖의 실패도 계약의 오류 본문(JSON)으로 답한다(http/errors.ts). 라우터들 뒤에 있어야 한다.
+  app.use(notFound);
+  app.use(createErrorHandler(reportError));
 
   return app;
-}
-
-/**
- * express.json(body-parser)의 실패인가. type과 4xx status가 함께 있으면 클라이언트 쪽 문제다 —
- * 32kb 초과는 413 그대로, 그 밖(JSON 아님, 문자셋·인코딩 미지원)은 400으로 답한다.
- */
-function bodyParserFailure(err: unknown): { status: number; code: ApiErrorCode } | null {
-  if (typeof err !== 'object' || err === null) return null;
-  const { type, status } = err as { type?: unknown; status?: unknown };
-  if (typeof type !== 'string' || typeof status !== 'number' || status < 400 || status >= 500) return null;
-  return type === 'entity.too.large' ? { status: 413, code: 'payload_too_large' } : { status: 400, code: 'invalid_json' };
 }

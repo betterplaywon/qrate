@@ -1,41 +1,31 @@
 import type { ConsoleLoginBody, ConsoleTenant, HandoffQueueItemDto, HandoffStatus } from '@qrate/contracts';
-import { MutationCache, QueryCache, QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from './api';
+import { ME_KEY } from './queryClient';
 
 // 서버 상태는 전부 react-query가 든다 — 화면 컴포넌트에는 useEffect로 데이터를 끌어오는 코드가 없다.
-// 세션(me)도 하나의 쿼리다: 값이 null이면 로그인 화면. 어느 요청이든 401이 오면 me를 null로 바꿔 화면이 로그인으로 돌아간다.
+// 세션(me)도 하나의 쿼리다: 값이 null이면 로그인 화면. 401 처리는 queryClient.ts.
 
 export const keys = {
-  me: ['me'] as const,
+  me: ME_KEY,
   conversations: ['conversations'] as const,
   conversation: (id: string) => ['conversation', id] as const,
   handoffs: (status: HandoffStatus) => ['handoffs', status] as const,
 };
 
-const signOutOn401 = (err: unknown): void => {
-  if (err instanceof ApiError && err.status === 401) queryClient.setQueryData<ConsoleTenant | null>(keys.me, null);
-};
-
-export const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  queryCache: new QueryCache({ onError: signOutOn401 }),
-  mutationCache: new MutationCache({ onError: signOutOn401 }),
-});
+/** 세션 조회. 401은 오류가 아니라 "로그인 필요"(null)다. */
+async function fetchMe(): Promise<ConsoleTenant | null> {
+  try {
+    return (await api.me()).tenant;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
+  }
+}
 
 /** 현재 세션의 테넌트. null = 로그인 필요. 로그인·로그아웃이 값을 직접 바꾸므로 다시 묻지 않는다. */
 export function useMe() {
-  return useQuery<ConsoleTenant | null>({
-    queryKey: keys.me,
-    queryFn: () =>
-      api
-        .me()
-        .then((r) => r.tenant)
-        .catch((err: unknown) => {
-          if (err instanceof ApiError && err.status === 401) return null;
-          throw err;
-        }),
-    staleTime: Infinity,
-  });
+  return useQuery<ConsoleTenant | null>({ queryKey: keys.me, queryFn: fetchMe, staleTime: Infinity });
 }
 
 export function useLogin() {
