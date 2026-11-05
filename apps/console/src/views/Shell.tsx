@@ -4,6 +4,7 @@ import { href, useRoute } from '../route';
 import { Billing } from './Billing';
 import { ConversationDetail } from './ConversationDetail';
 import { ConversationList } from './ConversationList';
+import { Metrics } from './Metrics';
 import { Queue } from './Queue';
 
 // 로그인 뒤의 틀 — 머리글(테넌트·메뉴·로그아웃)과 해시 라우팅에 따른 화면 하나.
@@ -26,6 +27,9 @@ export function Shell({ tenant }: { tenant: ConsoleTenant }) {
           <a href={href.conversations()} className={route.name === 'conversations' || route.name === 'conversation' ? 'active' : ''}>
             대화 로그
           </a>
+          <a href={href.metrics()} className={route.name === 'metrics' ? 'active' : ''} data-testid="nav-metrics">
+            지표
+          </a>
           <a href={href.billing()} className={route.name === 'billing' ? 'active' : ''} data-testid="nav-billing">
             크레딧
           </a>
@@ -38,6 +42,7 @@ export function Shell({ tenant }: { tenant: ConsoleTenant }) {
         {route.name === 'queue' && <Queue status={route.status} />}
         {route.name === 'conversations' && <ConversationList />}
         {route.name === 'conversation' && <ConversationDetail id={route.id} />}
+        {route.name === 'metrics' && <Metrics />}
         {route.name === 'billing' && <Billing />}
       </main>
     </div>

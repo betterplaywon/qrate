@@ -452,3 +452,70 @@ input:focus-visible {
   background: var(--ok-soft);
   color: var(--ok);
 }
+
+/* 지표 */
+.metrics-window {
+  margin: 0 0 12px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.metric h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.metric-values {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+}
+
+.metric-values dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.metric-values dd,
+.metric-value {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-empty {
+  margin: 0;
+  padding: 6px 0;
+  color: var(--muted);
+}
+
+.metric-def {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: keep-all;
+}
+
+.metric-line {
+  margin: 16px 0 0;
+}
+
+.metric-line strong {
+  font-variant-numeric: tabular-nums;
+}
