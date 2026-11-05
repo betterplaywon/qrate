@@ -36,7 +36,7 @@ describe('대화 유스케이스 — createChatService', () => {
       status: 'unknown_tenant',
     });
     const blocked = await chat.start({ tenantKey: 'demo', message: '씨발 환불해줘', conversationId: null, signal });
-    expect(blocked).toEqual({ status: 'blocked', reasons: ['block:profanity'] });
+    expect(blocked).toEqual({ status: 'blocked', tenantId: seed.tenant.id, reasons: ['block:profanity'] });
     expect(engine.requests).toHaveLength(0);
   });
 
@@ -265,6 +265,7 @@ describe('대화 유스케이스 — createChatService', () => {
     const chat = createChatService({ engine, repos });
     expect(await chat.start({ tenantKey: 'demo', message: '요금제가 뭐가 있나요?', conversationId: null, signal })).toEqual({
       status: 'insufficient_credits',
+      tenantId: seed.tenant.id,
     });
     expect(engine.requests).toHaveLength(0);
     expect(await chat.start({ tenantKey: 'nope', message: '안녕', conversationId: null, signal })).toEqual({ status: 'unknown_tenant' });

@@ -7,7 +7,7 @@ import { moderateInput, type ModerationResult } from './moderation.js';
 
 // 대화 한 턴의 유스케이스. HTTP를 모른다 — 입력은 이미 모양이 검사된 값이고, 결과는 상태 코드가 아니라 종류(status)로 돌려준다.
 // 순서가 곧 비용 순서다: 테넌트 확인 → 모더레이션(토큰을 한 글자라도 내보내기 전) → 대화 이어 가기 → 지식 선택 → 엔진 호출.
-// 전송(SSE 헤더, 첫 이벤트 전 실패의 HTTP 상태, Retry-After, 사용량 로그)은 http/chat.ts가 맡는다.
+// 전송(SSE 헤더, 첫 이벤트 전 실패의 HTTP 상태, Retry-After, chat_request 사건)은 http/chat.ts가 맡는다.
 
 /** 프롬프트에 넣는 이전 메시지 수 상한. 길어질수록 입력 토큰과 TTFT가 늘어난다. */
 const HISTORY_MESSAGES = 10;
@@ -25,9 +25,10 @@ export interface ChatTurnInput {
 
 export type ChatTurn =
   | { status: 'unknown_tenant' }
-  | { status: 'blocked'; reasons: string[] }
+  /** 거절 결과도 tenantId를 싣는다 — 호출자가 거절을 그 테넌트의 chat_request 사건으로 남긴다(http/chat.ts). */
+  | { status: 'blocked'; tenantId: string; reasons: string[] }
   /** 테넌트의 크레딧이 0 이하. 모델을 부르기 전에 막는다(비용 0). 운영자가 충전해야 풀린다. */
-  | { status: 'insufficient_credits' }
+  | { status: 'insufficient_credits'; tenantId: string }
   | {
       status: 'accepted';
       tenantId: string;
@@ -41,7 +42,7 @@ export type ChatTurn =
     };
 
 export interface ChatService {
-  /** 사용량 로그에 남길 엔진 식별. */
+  /** chat_request 사건에 남길 엔진 식별. */
   readonly engine: Pick<AnswerEngine, 'name' | 'model'>;
   start(input: ChatTurnInput): Promise<ChatTurn>;
 }
@@ -56,7 +57,7 @@ export interface ChatServiceDeps {
 /**
  * 이벤트를 그대로 흘려보내며 답변과 핸드오프 신호를 모으고, 끝까지 받았을 때만 턴을 저장한다 — 저장 단위는 턴이다.
  * 질문을 먼저 저장하면 실패한 턴의 질문이 대화에 남고, 위젯이 같은 질문을 다시 보내면("다시 보내기") 두 번 들어간다.
- * 그래서 실패·중단한 턴은 대화에 아무것도 남기지 않는다. 그 턴의 기록은 사용량 로그(http/chat.ts)가 맡는다.
+ * 그래서 실패·중단한 턴은 대화에 아무것도 남기지 않는다. 그 턴의 기록은 chat_request 사건(http/chat.ts)이 맡는다.
  * 끊긴 부분 답은 다음 턴의 문맥을 오염시킬 수 있어 저장하지 않는다 — 실패·중단은 예외로 빠져나가므로 저장 줄에 닿지 않는다.
  * 공백뿐인 답(도구 호출 전에 줄바꿈만 낸 경우)은 답이 없는 것으로 본다. 저장하면 다음 턴부터 API가 빈 텍스트 블록을 거부한다.
  */
@@ -107,11 +108,11 @@ export function createChatService({ engine, repos, reportError = reportToStderr 
       if (!tenant) return { status: 'unknown_tenant' };
 
       const moderation = moderateInput(message);
-      if (moderation.level === 'block') return { status: 'blocked', reasons: moderation.reasons };
+      if (moderation.level === 'block') return { status: 'blocked', tenantId: tenant.id, reasons: moderation.reasons };
 
       // 크레딧(W4 결정): 턴당 1. 잔액이 0 이하면 모델을 부르지 않는다. 차감은 답이 끝난 뒤 턴 저장과 같은 트랜잭션에서(아래 charge).
       // 동시에 들어온 두 턴이 모두 통과해 잔액이 음수가 될 수 있다 — 위젯은 한 번에 한 턴만 보내고, 다음 턴부터 막히므로 받아들인다(ADR-0007).
-      if ((await repos.credits.balance(tenant.id)) <= 0) return { status: 'insufficient_credits' };
+      if ((await repos.credits.balance(tenant.id)) <= 0) return { status: 'insufficient_credits', tenantId: tenant.id };
       // 이 턴의 차감 멱등 키. 턴마다 새 값이라 중복 차감은 없고, 같은 턴이 두 번 저장되는 일이 있어도 한 번만 빠진다.
       const turnId = randomUUID();
 
@@ -137,7 +138,7 @@ export function createChatService({ engine, repos, reportError = reportToStderr 
         events: recordTurn(events, async ({ answer, handoff }) => {
           // 질문은 받은 시각으로, 답변은 저장 시각으로. 구현이 이 한 호출을 한 트랜잭션으로 쓴다 — 차감도 그 안에서.
           // 저장이 실패해도 답은 이미 전달됐다 — 스트림은 정상으로 끝내고 실패는 운영자에게만 알린다.
-          // 예외를 흘리면 http 계층이 상류(모델) 오류로 보고하고, 이미 과금된 호출의 사용량 기록까지 잃는다.
+          // 예외를 흘리면 http 계층이 상류(모델) 오류로 보고하고, 이미 과금된 호출의 사용량 기록(chat_request 사건)까지 잃는다.
           try {
             await repos.conversations.appendTurn(conversationId, tenant.id, {
               question: { role: 'user', content: message, createdAt: receivedAt },

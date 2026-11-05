@@ -9,6 +9,7 @@ import { createMockProvider } from './billing/mock.js';
 import type { PaymentProviders } from './billing/provider.js';
 import { isDevelopmentEnv, loadConfig } from './config.js';
 import { createEngine } from './engine/index.js';
+import { createEventSink } from './events/sink.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import { createRepositories } from './repo/create.js';
 
@@ -50,6 +51,8 @@ const app = createApp({
   frameAssetsDir,
   sentryEnabled,
   reportError,
+  // 사건 JSON을 stdout에도 한 줄씩 — 개발 중 보기용. verify·E2E 서버는 NODE_ENV 없이 떠서 켜지고, 컨테이너(production)는 끈다.
+  recordEvent: createEventSink({ repo: storage.repos.events, reportError, echo: process.env.NODE_ENV !== 'production' }),
   console: { secret: consoleSecret },
   consoleAssetsDir,
   payments,
