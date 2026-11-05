@@ -473,6 +473,10 @@ input:focus-visible {
   align-content: start;
 }
 
+.metric-wide {
+  grid-column: 1 / -1;
+}
+
 .metric h3 {
   margin: 0;
   font-size: 14px;
@@ -507,6 +511,44 @@ input:focus-visible {
 .metric-def {
   margin: 0;
   font-size: 12px;
+  color: var(--muted);
+  word-break: keep-all;
+}
+
+.greeting-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.greeting-table th,
+.greeting-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.greeting-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.greeting-table th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.greeting-table tbody th {
+  font-weight: 600;
+}
+
+.greeting-text {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--muted);
   word-break: keep-all;
 }

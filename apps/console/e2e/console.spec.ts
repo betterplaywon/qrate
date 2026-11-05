@@ -1,11 +1,11 @@
 // 운영 콘솔 E2E — 실제 Chromium에서 로그인(쿠키 세션) → 대화 로그 → 미응답 큐 상태 변경 → 크레딧 잔액·원장 → 로그아웃,
 // 그리고 충전(모의 결제 제공자): 끊긴 요청의 재시도 · 결제 결과 흉내 · 같은 이벤트 재배달 · 늦은 실패 · 웹훅 원문 재전송과 위조,
-// 지표 화면(TTFT·자동 해결률·위젯 열림).
+// 지표 화면(TTFT·자동 해결률·위젯 열림·인사말 A/B).
 // 대화는 대화 API(POST /api/chat, 목업 엔진)로 만든다. 목업 훅 [[handoff]]가 모델 신호를 낸다(apps/server/src/engine/mock.ts).
 // 단위 테스트가 못 보는 것만 본다: 브라우저가 HttpOnly 쿠키를 실어 주는지, CSP 아래에서 번들이 도는지, 화면 흐름.
 
 import { expect, test as base, type Page } from '@playwright/test';
-import { MOCK_SIGNATURE_HEADER, paymentWebhookPath, type TopUpListResponse } from '@qrate/contracts';
+import { MOCK_SIGNATURE_HEADER, paymentWebhookPath, type ConsoleMetricsResponse, type TopUpListResponse } from '@qrate/contracts';
 import { createHmac } from 'node:crypto';
 import { CONSOLE_KEY, MOCK_PAYMENT_SECRET, SERVER_ORIGIN } from './servers';
 
@@ -239,5 +239,63 @@ test('지표: 답한 질문·위젯 열림·질문 없는 연결 요청이 하�
   await expect(page.getByTestId('metric-ttft-p95')).toHaveText(/^[\d,]+ms$/);
   await expect(page.getByTestId('metric-resolution-rate')).toHaveText(/^\d+(\.\d)?%$/);
 
+  expect(consoleErrors).toEqual([]);
+});
+
+test('지표: 인사말 A/B — 변형 id를 실은 열림·첫 질문은 그 행의 노출·첫 질문을 하나씩 늘리고, 변형 없는 사건은 실험 밖 수를 늘린다', async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
+  await page.goto('/console/');
+  await login(page, CONSOLE_KEY);
+  await page.getByTestId('nav-metrics').click();
+  await expect(page).toHaveURL(/#\/metrics$/);
+
+  // 변형 id·문구는 하드코딩하지 않는다 — 지금 실험의 정의를 지표 API가 정의 순서로 돌려준다
+  const { greeting } = (await (await page.request.get('/api/console/metrics')).json()) as ConsoleMetricsResponse;
+  const variants = greeting?.variants ?? [];
+  expect(variants.length).toBeGreaterThan(1);
+  for (const v of variants) {
+    await expect(page.getByTestId(`metric-greeting-${v.id}`)).toContainText(v.label);
+    await expect(page.getByTestId(`metric-greeting-${v.id}`)).toContainText(v.text);
+  }
+  const target = variants[0]?.id ?? '';
+
+  const count = async (testId: string): Promise<number> => {
+    const locator = page.getByTestId(testId);
+    await expect(locator).toHaveText(/^\d+$/);
+    return Number(await locator.textContent());
+  };
+  const read = async () => ({
+    exposures: await count(`metric-greeting-exposures-${target}`),
+    firstQuestions: await count(`metric-greeting-first-questions-${target}`),
+    outsideOpens: await count('metric-greeting-outside-opens'),
+    outsideQuestions: await count('metric-greeting-outside-questions'),
+  });
+  const before = await read();
+
+  for (const body of [
+    { type: 'widget_open', variant: target },
+    { type: 'first_question', variant: target },
+    { type: 'widget_open' },
+    { type: 'first_question' },
+  ]) {
+    const res = await request.post('/api/events', {
+      headers: { origin: SERVER_ORIGIN, 'content-type': 'application/json' },
+      data: { tenant: 'demo', ...body },
+    });
+    expect(res.status()).toBe(202);
+  }
+
+  await page.reload();
+  await expect(page.getByTestId(`metric-greeting-exposures-${target}`)).toHaveText(String(before.exposures + 1));
+  expect(await read()).toEqual({
+    exposures: before.exposures + 1,
+    firstQuestions: before.firstQuestions + 1,
+    outsideOpens: before.outsideOpens + 1,
+    outsideQuestions: before.outsideQuestions + 1,
+  });
+  await expect(page.getByTestId(`metric-greeting-rate-${target}`)).toHaveText(/^\d+(\.\d)?%$/);
   expect(consoleErrors).toEqual([]);
 });
