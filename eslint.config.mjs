@@ -4,7 +4,8 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   {
     // docs/는 글과 로컬 전용 도구(.git/info/exclude)가 있는 곳이라 lint 대상이 아니다 — 로컬 `pnpm lint`가 CI와 같은 결과를 내게.
-    ignores: ['**/dist/**', '**/node_modules/**', '**/.auth/**', 'docs/**', '**/src/generated/**', '.pnpmfile.cjs'],
+    // .audit·.claude/worktrees는 에이전트의 로컬 작업물(설계 스케치, 서브에이전트 worktree)이라 git에 없다. 보지 않으면 커밋 전 lint가 남의 사본에서 막힌다.
+    ignores: ['**/dist/**', '**/node_modules/**', '**/.auth/**', 'docs/**', '**/src/generated/**', '.pnpmfile.cjs', '.audit/**', '.claude/worktrees/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
