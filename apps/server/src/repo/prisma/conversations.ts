@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import { decodeCursor, encodeCursor, previewOf } from '../listing.js';
-import type { Conversation, ConversationPage, ConversationRepository, NewTurn } from '../types.js';
+import type { Conversation, ConversationOutcome, ConversationPage, ConversationRepository, NewTurn, TimeWindow } from '../types.js';
 import { appendCredit } from './credits.js';
 import { NEWEST_FIRST, afterCursor } from './cursor.js';
 import { toHandoffRecord } from './handoffs.js';
@@ -91,5 +91,14 @@ export class PrismaConversationRepository implements ConversationRepository {
       // 차감은 같은 트랜잭션에서. 같은 키가 이미 있으면 들어가지 않는다(ON CONFLICT DO NOTHING) — 턴은 그대로 저장된다.
       if (turn.charge) await appendCredit(tx, tenantId, turn.charge);
     });
+  }
+
+  async outcomes(tenantId: string, { from, to }: TimeWindow): Promise<ConversationOutcome[]> {
+    // (tenantId, createdAt) 인덱스. 메시지·핸드오프는 행을 읽지 않고 센다.
+    const rows = await this.prisma.conversation.findMany({
+      where: { tenantId, createdAt: { gte: from, lt: to } },
+      select: { _count: { select: { messages: { where: { role: 'assistant' } }, handoffs: true } } },
+    });
+    return rows.map((r) => ({ answered: r._count.messages > 0, handedOff: r._count.handoffs > 0 }));
   }
 }

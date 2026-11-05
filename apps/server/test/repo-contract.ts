@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { decideSettlement } from '../src/billing/settlement.js';
-import type { AppEvent, NewTopUp, NewTurn, PaymentResult, Repositories, SettleResult } from '../src/repo/types.js';
+import type { AppEvent, ConversationOutcome, NewTopUp, NewTurn, PaymentResult, Repositories, SettleResult } from '../src/repo/types.js';
 
 // 저장소 계약 테스트 — 메모리(repo.test.ts)와 Postgres(repo-postgres.test.ts) 두 구현이 똑같이 통과해야 한다.
 // 구현별로만 뜻이 있는 것(FK, 트랜잭션 되돌리기, 프로세스가 바뀌어도 남는지)은 각 파일이 더한다.
@@ -468,6 +468,48 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       const empty = { from: at('2002-01-01T00:00:00Z'), to: at('2002-01-08T00:00:00Z') };
       expect(await ctx.repos.events.ttftSamples(t, empty)).toEqual([]);
       expect(await ctx.repos.events.counts(t, empty)).toEqual([]);
+    });
+
+    it('대화 결과: 창 [from, to) 안에 시작한 이 테넌트의 대화마다 답이 있는지·연결 요청이 있는지(출처·상태 무관)', async () => {
+      // 2001년 2월 고정 시각 — 대화 createdAt은 첫 질문을 받은 시각이라 넘긴 값으로 정해진다
+      const at = (iso: string): Date => new Date(iso);
+      const window = { from: at('2001-02-01T00:00:00Z'), to: at('2001-02-08T00:00:00Z') };
+      const t = ctx.tenantId;
+      const startedAt = (iso: string, answer: string | null, handoff: NewTurn['handoff'] = null): NewTurn => ({
+        ...turn('q', answer, handoff),
+        question: { role: 'user', content: 'q', createdAt: at(iso) },
+      });
+      const facts = (outcomes: ConversationOutcome[]): string[] => outcomes.map((o) => `answered=${o.answered} handedOff=${o.handedOff}`).sort();
+      const append = (tenantId: string, next: NewTurn): Promise<void> => ctx.repos.conversations.appendTurn(randomUUID(), tenantId, next);
+
+      await append(t, startedAt('2001-02-01T00:00:00Z', '답')); // from 정각은 들어간다
+      await append(t, startedAt('2001-02-02T00:00:00Z', '안내', { reason: 'not_in_knowledge', summary: null }));
+      await append(t, startedAt('2001-02-03T00:00:00Z', null)); // 정책 거절만
+      const visited = randomUUID();
+      await ctx.repos.conversations.appendTurn(visited, t, startedAt('2001-02-04T00:00:00Z', '답'));
+      const { id: visitorHandoff } = await ctx.repos.handoffs.requestByVisitor(visited, t, { contact: 'v@example.com', summary: null });
+      await ctx.repos.handoffs.updateStatus(visitorHandoff, t, 'done');
+      await append(t, startedAt('2001-01-31T23:59:59.999Z', '답')); // from 직전
+      await append(t, startedAt('2001-02-08T00:00:00Z', '답')); // to 정각은 빠진다
+      await append(ctx.otherTenantId, startedAt('2001-02-05T00:00:00Z', null));
+
+      expect(facts(await ctx.repos.conversations.outcomes(t, window))).toEqual(
+        facts([
+          { answered: true, handedOff: false },
+          { answered: true, handedOff: true },
+          { answered: false, handedOff: false },
+          { answered: true, handedOff: true },
+        ]),
+      );
+      expect(await ctx.repos.conversations.outcomes(ctx.otherTenantId, window)).toEqual([{ answered: false, handedOff: false }]);
+
+      // 질문 전에 연결만 요청한 대화(메시지 없음)도 하나로 센다. 생성 시각을 넘길 수 없어 지금 주변의 넓은 창에서 전후를 비교한다
+      const around = { from: new Date(Date.now() - 3_600_000), to: new Date(Date.now() + 3_600_000) };
+      const before = await ctx.repos.conversations.outcomes(ctx.otherTenantId, around);
+      await ctx.repos.handoffs.requestByVisitor(randomUUID(), ctx.otherTenantId, { contact: 'early@example.com', summary: null });
+      expect(facts(await ctx.repos.conversations.outcomes(ctx.otherTenantId, around))).toEqual(
+        facts([...before, { answered: false, handedOff: true }]),
+      );
     });
 
     it('돌려준 객체를 바꿔도 저장소는 변하지 않는다', async () => {

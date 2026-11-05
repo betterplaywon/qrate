@@ -1,7 +1,7 @@
 import { compareNewestFirst, decodeCursor, encodeCursor, isAfterCursor } from '../listing.js';
-import type { Conversation, ConversationPage, ConversationRepository, NewTurn } from '../types.js';
+import type { Conversation, ConversationOutcome, ConversationPage, ConversationRepository, NewTurn, TimeWindow } from '../types.js';
 import { appendCredit } from './credits.js';
-import { newHandoff, toMessage, toSummary } from './records.js';
+import { inWindow, newHandoff, toMessage, toSummary } from './records.js';
 import { MemoryStore } from './store.js';
 
 /** 최근 n개. n이 없으면 전부, 0이면 하나도. */
@@ -60,5 +60,11 @@ export class MemoryConversationRepository implements ConversationRepository {
     }
     // 차감은 턴과 함께. 같은 키가 이미 있으면 건너뛴다(중복 차감 없음).
     if (turn.charge) appendCredit(this.store, tenantId, turn.charge);
+  }
+
+  async outcomes(tenantId: string, window: TimeWindow): Promise<ConversationOutcome[]> {
+    return [...this.byId.values()]
+      .filter((c) => c.tenantId === tenantId && inWindow(c.createdAt, window))
+      .map((c) => ({ answered: c.messages.some((m) => m.role === 'assistant'), handedOff: c.handoffs.length > 0 }));
   }
 }

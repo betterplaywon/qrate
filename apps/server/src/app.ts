@@ -27,7 +27,7 @@ import type { Repositories } from './repo/types.js';
 //   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장. Express를 모른다
 //   billing/  충전 유스케이스 — 결제 제공자 경계(provider)·모의 제공자(mock)·이벤트 판정(settlement, 순수)·충전 요청과 웹훅(service). Express를 모른다
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
-//   events/   이벤트 로그 — 사건 기록 통로(sink). Express를 모른다
+//   events/   이벤트 로그 — 사건 기록 통로(sink), 콘솔 지표 정의(metrics, 순수 계산). Express를 모른다
 //   repo/     저장소 계약과 구현(메모리; W3에서 Postgres)
 //   origin.ts 오리진 규칙(설정 해석·시드 검증·Origin 검사가 함께 쓴다)
 //   report.ts 예외 보고 통로(reportError). index.ts가 Sentry를 꽂는다

@@ -253,6 +253,16 @@ export interface ConversationRepository {
    * id가 다른 테넌트의 대화면 실패한다(테넌트 경계는 쓰기에서도 지킨다).
    */
   appendTurn(conversationId: string, tenantId: string, turn: NewTurn): Promise<void>;
+  /** createdAt이 창 안인 테넌트의 대화마다 하나. 순서 없음. 해결 판정은 여기서 하지 않는다(events/metrics.ts). */
+  outcomes(tenantId: string, window: TimeWindow): Promise<ConversationOutcome[]>;
+}
+
+/** 자동 해결률 계산에 필요한 대화 한 건의 사실. */
+export interface ConversationOutcome {
+  /** assistant 메시지가 1개 이상. */
+  answered: boolean;
+  /** Handoff 행이 1개 이상(출처·상태 무관). */
+  handedOff: boolean;
 }
 
 // 이벤트 로그(W4 ③). 사건 등록표는 아래 판별 유니온 하나다 — 종류를 더하면 여기 한 변형이 늘고, 쓰는 곳·DB 쓰기·위젯 화이트리스트가 따라온다.

@@ -1,4 +1,5 @@
 import type {
+  ConsoleMetricsResponse,
   ConversationDetailResponse,
   ConversationSummaryDto,
   CreditEntryDto,
@@ -7,6 +8,7 @@ import type {
   MessageDto,
   TopUpDto,
 } from '@qrate/contracts';
+import type { ConsoleMetrics } from '../../events/metrics.js';
 import type { Conversation, ConversationSummary, CreditEntry, HandoffQueueItem, HandoffRecord, TopUp } from '../../repo/types.js';
 
 // 저장소 타입 → 콘솔 API 응답(DTO). 날짜는 ISO 8601 문자열로.
@@ -62,4 +64,8 @@ export function toTopUpDto(t: TopUp): TopUpDto {
     createdAt: t.createdAt.toISOString(),
     settledAt: t.settledAt ? t.settledAt.toISOString() : null,
   };
+}
+
+export function toMetricsDto(m: ConsoleMetrics): ConsoleMetricsResponse {
+  return { ...m, window: { from: m.window.from.toISOString(), to: m.window.to.toISOString() } };
 }
