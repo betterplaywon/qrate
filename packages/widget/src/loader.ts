@@ -6,10 +6,11 @@
 //   - 런처(이 파일): 고객 사이트 문서 안의 Shadow DOM. 버튼과 패널 틀만 그린다. 호스트 CSS가 깨뜨리지 못하고, 서버를 직접 부르지 않는다.
 //   - 대화창: 서버 오리진의 iframe(GET /frame?t=테넌트). 대화 내용과 API 호출은 전부 그 안에서 일어나 호스트 스크립트가 손댈 수 없다.
 //     어느 사이트가 iframe으로 넣을 수 있는지는 서버가 /frame 응답의 CSP frame-ancestors로 정하고 브라우저가 강제한다.
-//   - 둘 사이는 postMessage(src/protocol.ts)로 열림·닫힘·안 읽은 수만 주고받는다.
+//   - 둘 사이는 postMessage(src/protocol.ts)로 열림·닫힘·안 읽은 수와 서버가 배정한 인사말 변형만 주고받는다.
+//   - 이 사이트의 localStorage에는 그 인사말 변형 id 하나만 둔다(키 qrate.greeting.<테넌트>). 다시 와도 같은 인사말을 보게.
 // IIFE 번들(vite.config.ts) — 호스트의 빌드 설정과 무관하게 로드된다.
 
-import { FRAME_PATH } from '@qrate/contracts';
+import { FRAME_PATH, VARIANT_ID_PATTERN } from '@qrate/contracts';
 import { parseFrameMessage, toWire, type LauncherMessage } from './protocol';
 
 interface LauncherConfig {
@@ -66,6 +67,31 @@ function readConfig(): LauncherConfig | null {
   }
 }
 
+/** 같은 사이트에 테넌트가 둘이어도 섞이지 않게 테넌트로 나눈다. 실험 구분은 키가 아니라 값(변형 id 안의 실험 id)이 한다. */
+const variantKey = (tenant: string): string => `qrate.greeting.${tenant}`;
+
+/**
+ * 지난 페이지 로드에 서버가 배정한 인사말 변형 id. 런처는 값의 뜻을 모르고, 맞는지는 서버가 판정한다.
+ * 저장소가 막혔거나(사이트 데이터 차단 등에서 접근이 예외를 던진다) 형식이 틀리면(호스트 스크립트가 바꿀 수 있다) null.
+ */
+function storedVariant(tenant: string): string | null {
+  try {
+    const value = localStorage.getItem(variantKey(tenant));
+    return value !== null && VARIANT_ID_PATTERN.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 마지막에 쓴 값이 이긴다. 탭 여럿이 동시에 첫 방문이어도 어느 값이든 서버가 배정한 유효한 값이다. */
+function rememberVariant(tenant: string, variant: string): void {
+  try {
+    localStorage.setItem(variantKey(tenant), variant);
+  } catch {
+    // 막힌 저장소 — 다음 페이지 로드에 새로 배정된다.
+  }
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -106,6 +132,9 @@ function mount(config: LauncherConfig): void {
     f.title = '상담 창';
     // o = 이 사이트의 오리진. 서버가 테넌트의 허용 목록과 대조한 뒤에야 대화창을 내려주고, 대화창은 그 값으로만 postMessage를 보낸다.
     const query = new URLSearchParams({ t: config.tenant, o: location.origin });
+    // v = 지난 페이지 로드에 서버가 배정한 인사말 변형. 대화창은 해석하지 않고 서버에 그대로 넘긴다.
+    const variant = storedVariant(config.tenant);
+    if (variant) query.set('v', variant);
     f.src = `${config.serverOrigin}${FRAME_PATH}?${query}`;
     panel.append(f);
     return f;
@@ -156,6 +185,9 @@ function mount(config: LauncherConfig): void {
         break;
       case 'unread':
         if (!open) setUnread(msg.count);
+        break;
+      case 'greeting':
+        rememberVariant(config.tenant, msg.variant);
         break;
     }
   });
