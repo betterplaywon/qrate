@@ -32,7 +32,6 @@ export const handoffRequestSchema = z.object({
     .transform((v) => v || null),
 });
 
-/** POST /api/events 본문. 출력에 tenant·type만 있다 — 본문의 다른 값이 사건에 옮겨질 길이 없다. 모르는 키는 버린다. */
 export const widgetEventSchema = z.object({
   tenant: z.string().min(1),
   type: z.enum(WIDGET_EVENT_TYPES),

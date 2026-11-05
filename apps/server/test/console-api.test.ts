@@ -347,7 +347,6 @@ describe('대화 로그·미응답 큐', () => {
   });
 });
 
-// 자기 앱을 띄운다 — 빈 저장소에서 시작해 절대값을 단언하고, 위 앱의 로그인 시도 제한(IP당 10회)을 쓰지 않는다.
 describe('지표 — GET /api/console/metrics', () => {
   let metricsServer: Server;
   let url: string;
@@ -394,7 +393,6 @@ describe('지표 — GET /api/console/metrics', () => {
   it('대화·연결 요청·위젯 열림이 각 원천에서 집계된다', async () => {
     await (await post('/api/chat', { tenant: 'demo', message: '환불 정책 알려줘' })).text();
     await (await post('/api/chat', { tenant: 'demo', message: '[[handoff]] 카카오톡 알림 되나요?' })).text();
-    // 질문 없이 상담원 연결만 요청한 대화 — 분모에는 든다
     expect((await post('/api/handoff', { tenant: 'demo', contact: 'v@example.com' })).status).toBe(201);
     expect((await post('/api/events', { tenant: 'demo', type: 'widget_open' })).status).toBe(202);
 

@@ -189,7 +189,7 @@ export interface SimulatePaymentResponse {
   topUp: TopUpDto;
 }
 
-/** 지표 집계 창의 길이(일). 서버 계산과 콘솔 문구가 같은 값을 쓴다. 창은 [응답 시각 − 7×24h, 응답 시각). */
+/** 지표 집계 창의 길이(일). 창은 [응답 시각 − 7×24h, 응답 시각). */
 export const METRICS_WINDOW_DAYS = 7;
 
 export interface ConsoleMetricsResponse {

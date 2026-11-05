@@ -109,7 +109,6 @@ test('처음 열면 대화창 문서가 widget_open 사건을 한 번 보내고,
   await expect(launcher).toHaveAttribute('aria-expanded', 'false');
   await launcher.click();
   await expect(launcher).toHaveAttribute('aria-expanded', 'true');
-  // 다시 열기를 대화창이 받은 뒤의 왕복 하나(질문 → 답)를 끝까지 기다린 다음 센다
   await send(frame, '환불되나요?');
   await expect(finishedAnswers(frame)).toHaveCount(1);
   expect(sent).toHaveLength(1);

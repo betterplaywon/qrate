@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { computeMetrics } from '../src/events/metrics.js';
 import type { ConversationOutcome, EventCount, TimeWindow } from '../src/repo/types.js';
 
-// 콘솔 지표의 정의(events/metrics.ts)를 공개 함수 하나로 고정한다. 저장소는 고정된 사실을 돌려주는 가짜이고 now도 고정이다.
-
 const NOW = new Date('2026-11-05T12:00:00.000Z');
 const TENANT = 'tenant-1';
 
@@ -70,11 +68,8 @@ describe('computeMetrics — 자동 해결률', () => {
     const outcomes: ConversationOutcome[] = [
       { answered: true, handedOff: false },
       { answered: true, handedOff: false },
-      // 답했지만 모델 신호나 방문자 요청이 있었다
       { answered: true, handedOff: true },
-      // 정책 거절만 있던 대화
       { answered: false, handedOff: false },
-      // 질문 없이 상담원 연결만 요청한 대화
       { answered: false, handedOff: true },
       { answered: true, handedOff: false },
     ];

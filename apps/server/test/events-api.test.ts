@@ -10,10 +10,7 @@ import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { AppEvent } from '../src/repo/types.js';
 
-// POST /api/events — 대화창이 보내는 위젯 사건. 실제 HTTP로 Origin 검사·요율 제한·본문 검증·테넌트·기록 모양을 고정한다.
-
 const OWN_ORIGIN = 'http://widget.test';
-// 테넌트 id를 키와 다르게 둔다 — 사건에 키가 아니라 id가 들어가는지 보이게.
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const tenantSeed = { ...seed, tenant: { ...seed.tenant, id: 'tenant-demo-id' } };
 const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-events-'));

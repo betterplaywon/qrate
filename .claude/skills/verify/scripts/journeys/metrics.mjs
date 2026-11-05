@@ -1,6 +1,3 @@
-// 콘솔 지표 — 방문자 두 명의 행동이 운영자의 지표 화면 숫자가 되는 경로: 데모 페이지에서 위젯 열기(widget_open) → 질문 1건(답 끝까지) →
-// 닫고 다시 열기(열림은 그대로 1건) → 다른 페이지 로드에서 질문 없이 상담원 연결만 → 콘솔 #/metrics의 표본·백분위·해결률·열림 수 →
-// server.log의 사건 JSON 줄과 대조. 새 launch라 메모리 저장소가 비어 있어 절대값으로 본다.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { SERVER_ORIGIN, assert } from '../lib.mjs';
@@ -11,7 +8,6 @@ export const title = '콘솔 지표 — 위젯 열림·답한 질문·연결만 
 const QUESTION = '요금제가 뭐가 있나요?';
 const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
 
-/** "1,234ms" → 1234 */
 const msOf = (text) => Number(text.replace(/[,ms]/g, ''));
 
 export async function run(h) {
@@ -70,7 +66,7 @@ export async function run(h) {
     return `열림 사건 202 · 연결 요청 201 · 질문 0건 · 열림 사건 누계 ${eventPosts.length}건`;
   });
 
-  const consolePage = await h.newPage({ name: 'console', ignoreConsole: /status of 401/ }); // 로그인 전 /me의 401은 정상
+  const consolePage = await h.newPage({ name: 'console', ignoreConsole: /status of 401/ });
   let p50 = 0;
   await h.step('metrics-console', '콘솔 "지표" 화면: TTFT 표본 1건(p50 = p95), 자동 해결 1/2건 = 50.0%, 위젯 열림 2회', async () => {
     await consolePage.goto(`${SERVER_ORIGIN}/console/`);

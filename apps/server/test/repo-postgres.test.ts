@@ -28,8 +28,6 @@ describe.skipIf(!url)('Postgres 저장소', () => {
 
   beforeAll(async () => {
     prisma = createPrismaClient(url as string);
-    // 전용 테스트 DB다 — 지난 실행의 대화·사건을 비운다. 마이그레이션이 없으면 여기서 "relation ... does not exist"로 실패한다.
-    // 사건 계약 케이스는 고정 시각을 쓴다 — 남아 있으면 개수가 실행마다 늘어난다.
     await prisma.event.deleteMany();
     await prisma.handoff.deleteMany();
     await prisma.message.deleteMany();
@@ -73,7 +71,6 @@ describe.skipIf(!url)('Postgres 저장소', () => {
     it('README 추적 질의: 같은 사건에 대한 percentile_disc(ARRAY[0.5, 0.95])가 콘솔 지표의 p50·p95와 같다', async () => {
       const repos = createPrismaRepositories(prisma);
       const t = OTHER_TENANT.id;
-      // 표본 수마다 겹치지 않는 7일 창(2003년)을 쓴다 — 다른 케이스의 사건과 섞이지 않는다
       for (const [i, n] of [1, 2, 20, 37].entries()) {
         const now = new Date(Date.UTC(2003, i * 2, 1));
         const values = Array.from({ length: n }, (_, k) => ((k + 1) * 7919) % 1009);

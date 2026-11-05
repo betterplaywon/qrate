@@ -185,7 +185,6 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET/.test(e))).toEqual([]);
 });
 
-// 서버 상태가 앞 테스트들과 이어지므로 절대값이 아니라 늘어난 만큼을 본다.
 test('지표: 답한 질문 하나와 위젯 열림 하나가 생기면 TTFT 표본·해결률 분모와 분자·열림 수가 하나씩 는다', async ({
   page,
   request,

@@ -22,7 +22,6 @@ export function formatWon(amount: number): string {
   return `${numberFormat.format(amount)}원`;
 }
 
-/** 지표 값. null(표본·대화 없음)은 —. */
 export function formatMs(ms: number | null): string {
   return ms === null ? '—' : `${numberFormat.format(ms)}ms`;
 }

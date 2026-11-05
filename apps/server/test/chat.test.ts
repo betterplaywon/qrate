@@ -40,7 +40,6 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 
-// 테스트마다 사건을 비운다 — 실행 순서에 기대지 않고 각 테스트가 자기 요청의 사건만 본다.
 beforeEach(() => {
   recorded.length = 0;
   reports.length = 0;
@@ -247,7 +246,6 @@ describe('POST /api/chat — SSE 계약', () => {
       },
     });
     expect(failedFirst).toMatchObject({ ttftMs: null, payload: { errorCode: 'rate_limited' } });
-    // 끊기기 전에 조각을 보냈다 — 첫 조각까지의 시간은 유효하다
     expect(failedMid).toMatchObject({ ttftMs: expect.any(Number), payload: { errorCode: 'upstream_unavailable' } });
     expect(blocked).toMatchObject({ conversationId: null, ttftMs: null, payload: { reasons: ['block:profanity'] } });
     // 요율 제한·일시 장애는 예상된 실패라 보고 통로로 보내지 않는다

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sendWidgetEvent } from '../src/frame/events';
 
-// 위젯 사건 전송(POST /api/events). fetch를 가짜로 바꿔 서버 없이 돌린다.
-
 function fake(res: Response | Error): { fetchImpl: typeof fetch; calls: { url: string; init: RequestInit | undefined }[] } {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {

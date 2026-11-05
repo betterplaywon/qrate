@@ -453,7 +453,6 @@ input:focus-visible {
   color: var(--ok);
 }
 
-/* 지표 */
 .metrics-window {
   margin: 0 0 12px;
 }
