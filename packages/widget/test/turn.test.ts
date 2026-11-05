@@ -106,6 +106,9 @@ describe('Turn — 사건을 화면에 반영한다', () => {
     expect(calls).toEqual(['notice:안내: 메시지가 검토 대상으로 표시되었어요.', 'notice:해당 메시지는 전송할 수 없어요. 표현을 바꿔 다시 시도해 주세요.']);
     expect(failureText({ type: 'failed', stage: 'connect', status: null, code: null, retryable: true, retryAfterMs: null })).toBe('서버에 연결할 수 없어요.');
     expect(failureText({ type: 'failed', stage: 'response', status: 503, code: 'rate_limited', retryable: true, retryAfterMs: 2000 })).toBe('지금은 답변할 수 없어요.');
+    expect(failureText({ type: 'failed', stage: 'response', status: 429, code: 'too_many_requests', retryable: true, retryAfterMs: 37000 })).toBe(
+      '요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.',
+    );
     expect(failureText({ type: 'failed', stage: 'stream', status: null, code: 'upstream_error', retryable: false, retryAfterMs: null })).toBe('답변 중 오류가 발생했어요.');
   });
 
