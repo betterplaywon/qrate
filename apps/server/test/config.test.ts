@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
 describe('QRATE_PAYMENT_PROVIDER', () => {
-  it('auto(기본)는 운영(NODE_ENV=production)에서 none, 그 밖에서 mock', () => {
+  it('auto(기본)는 NODE_ENV가 development·test일 때만 mock이고, 비어 있거나 그 밖이면 none', () => {
+    expect(loadConfig({ NODE_ENV: 'development' }).paymentProvider).toBe('mock');
+    expect(loadConfig({ NODE_ENV: 'test' }).paymentProvider).toBe('mock');
+    expect(loadConfig({}).paymentProvider).toBe('none');
     expect(loadConfig({ NODE_ENV: 'production' }).paymentProvider).toBe('none');
     expect(loadConfig({ NODE_ENV: 'production', QRATE_PAYMENT_PROVIDER: 'auto' }).paymentProvider).toBe('none');
-    expect(loadConfig({}).paymentProvider).toBe('mock');
-    expect(loadConfig({ NODE_ENV: 'test' }).paymentProvider).toBe('mock');
+    expect(loadConfig({ NODE_ENV: 'staging' }).paymentProvider).toBe('none');
   });
 
   it('명시하면 그대로 — 운영에서도 mock을 켤 수 있고(데모 배포), 개발에서도 끌 수 있다', () => {

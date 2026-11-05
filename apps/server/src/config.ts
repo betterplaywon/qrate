@@ -46,6 +46,14 @@ const PAYMENT_PROVIDER_SETTINGS = ['auto', 'mock', 'none'] as const satisfies re
 // D5 결정(2026-11-02): 기본 Sonnet 5.5 + 사고 끔. 환경변수 한 줄로 교체한다.
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
+/**
+ * 결제 없이 크레딧을 채우는 모의 결제는 개발·테스트임이 확실할 때만 기본으로 연다(2026-11-05 결정).
+ * NODE_ENV가 비어 있으면 운영일 수도 있어 닫힌 쪽으로 본다 — 이미지 밖에서 띄운 운영 서버가 무료 충전을 열지 않게.
+ */
+export function isDevelopmentEnv(nodeEnv: string | undefined): boolean {
+  return nodeEnv === 'development' || nodeEnv === 'test';
+}
+
 /** 짧은 비밀은 조용히 받지 않는다 — 오타로 'secret' 같은 값이 들어가면 세션·웹훅 위조가 쉬워진다. 시작 시점에 실패시킨다. */
 function parseSecret(name: string, raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -82,7 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: env.DATABASE_URL ? env.DATABASE_URL : undefined,
     demoConsoleKey: env.QRATE_DEMO_CONSOLE_KEY ? env.QRATE_DEMO_CONSOLE_KEY : undefined,
     consoleSecret: parseSecret('QRATE_CONSOLE_SECRET', env.QRATE_CONSOLE_SECRET),
-    paymentProvider: paymentSetting === 'auto' ? (env.NODE_ENV === 'production' ? 'none' : 'mock') : paymentSetting,
+    paymentProvider: paymentSetting === 'auto' ? (isDevelopmentEnv(env.NODE_ENV) ? 'mock' : 'none') : paymentSetting,
     mockPaymentSecret: parseSecret('QRATE_MOCK_PAYMENT_SECRET', env.QRATE_MOCK_PAYMENT_SECRET),
   };
 }

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createApp } from './app.js';
 import { createMockProvider } from './billing/mock.js';
 import type { PaymentProviders } from './billing/provider.js';
-import { loadConfig } from './config.js';
+import { isDevelopmentEnv, loadConfig } from './config.js';
 import { createEngine } from './engine/index.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import { createRepositories } from './repo/create.js';
@@ -38,8 +38,10 @@ const payments: PaymentProviders =
   config.paymentProvider === 'mock'
     ? { mock: createMockProvider(config.mockPaymentSecret ?? randomBytes(32).toString('base64url')) }
     : {};
-if (config.paymentProvider === 'mock' && process.env.NODE_ENV === 'production') {
-  console.warn('[server] WARNING: mock payments in production — 결제 없이 크레딧을 채우는 테스트 버튼이 열린다(QRATE_PAYMENT_PROVIDER)');
+if (config.paymentProvider === 'mock' && !isDevelopmentEnv(process.env.NODE_ENV)) {
+  console.warn(
+    `[server] WARNING: mock payments with NODE_ENV=${process.env.NODE_ENV ?? '(없음)'} — 결제 없이 크레딧을 채우는 테스트 버튼이 열린다(QRATE_PAYMENT_PROVIDER=mock)`,
+  );
 }
 const app = createApp({
   engine,

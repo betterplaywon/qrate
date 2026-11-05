@@ -39,5 +39,5 @@ Preconditions:
 
 - 시뮬레이션 버튼의 이벤트 id는 `evt_<주문 id>_<결과>`로 고정이라 같은 버튼을 다시 누르는 것이 곧 재배달이다. 다른 이벤트 id로 온 같은 결과는 서명 웹훅 단계에서만 재현된다.
 - 고정 비밀 없이 띄운 서버(`QRATE_MOCK_PAYMENT_SECRET` 없음)는 프로세스마다 무작위 비밀을 써서 밖에서 서명한 웹훅이 전부 401이다. 이 스킬의 launch로 띄운다.
-- `NODE_ENV=production`이거나 `QRATE_PAYMENT_PROVIDER=none`이면 충전 폼 대신 "결제 제공자가 설정되지 않아" 안내가 보이고 웹훅은 404다. 그 상태를 PASS로 보고하지 않는다.
+- `QRATE_PAYMENT_PROVIDER`를 mock으로 주지 않으면 기본 auto가 `NODE_ENV`가 development·test일 때만 mock이다. 이 스킬의 서버는 `NODE_ENV` 없이 mock을 명시해 뜨므로 server.log에 `WARNING: mock payments with NODE_ENV=(없음)`이 찍히는 것이 정상이다. 충전 폼 대신 "결제 제공자가 설정되지 않아" 안내가 보이고 웹훅이 404면 mock이 빠진 것이다. 그 상태를 PASS로 보고하지 않는다.
 - 서명 웹훅 본문은 원문 바이트 그대로 보내야 한다(재직렬화하면 서명이 깨진다). 요청 컨텍스트에 문자열로 넘긴다.
