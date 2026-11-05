@@ -207,6 +207,11 @@ export interface ConsoleMetricsResponse {
     resolved: number;
     /** resolved / conversations. conversations가 0이면 null. 반올림하지 않는다. */
     rate: number | null;
+    /**
+     * 창 안에 시작해 질문 없이 상담원 연결만 요청한 대화. conversations·resolved·rate에는 넣지 않는다.
+     * 비율에서 뺀 대화를 운영자가 볼 수 있게 따로 센다. 공개 키로 늘릴 수 있는 수라 비율과 섞지 않는다.
+     */
+    handoffOnly: number;
   };
   /** 방문자 브라우저가 보고한 위젯 열림(페이지 로드당 첫 열림). 공개 키로 꾸밀 수 있어 서버 사건과 비율을 만들지 않는다. */
   widget: { opens: number };

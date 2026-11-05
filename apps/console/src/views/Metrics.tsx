@@ -4,7 +4,8 @@ import { formatMs, formatRate, formatTime } from '../labels';
 import { useMetrics } from '../queries';
 
 // 지표 — 정의서의 성공 지표(첫 응답 시간 p50·p95, 자동 해결률)와 위젯 열림 수. 정의는 서버(events/metrics.ts) 한 곳에 있고,
-// 화면은 값과 그 정의 한 줄만 그린다. 위젯 열림은 방문자 브라우저가 보고한 수라 카드로 세우지 않고 한 줄로 둔다.
+// 화면은 값과 그 정의 한 줄만 그린다. 해결률에서 뺀 대화(질문 없이 바로 상담원 연결)는 숨기지 않고 정의 아래 한 줄로 센다.
+// 위젯 열림은 방문자 브라우저가 보고한 수라 카드로 세우지 않고 한 줄로 둔다.
 
 function Cards({ metrics: { window, ttft, autoResolution, widget } }: { metrics: ConsoleMetricsResponse }) {
   return (
@@ -51,6 +52,10 @@ function Cards({ metrics: { window, ttft, autoResolution, widget } }: { metrics:
             <span data-testid="metric-resolution-resolved">{autoResolution.resolved}</span>/
             <span data-testid="metric-resolution-conversations">{autoResolution.conversations}</span>건 · 기간 안에 시작해 질문이 있었던 대화 중
             답이 있고 상담원 연결 요청이 없는 대화
+          </p>
+          <p className="metric-def">
+            질문 없이 바로 상담원 연결 <span data-testid="metric-resolution-handoff-only">{autoResolution.handoffOnly}</span>건 · 위 비율에는 넣지
+            않음
           </p>
         </article>
       </div>
