@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import { decodeCursor, encodeCursor, previewOf } from '../listing.js';
 import type { Conversation, ConversationPage, ConversationRepository, NewTurn } from '../types.js';
+import { appendCredit } from './credits.js';
 import { NEWEST_FIRST, afterCursor } from './cursor.js';
 import { toHandoffRecord } from './handoffs.js';
 
@@ -87,6 +88,8 @@ export class PrismaConversationRepository implements ConversationRepository {
           data: { tenantId, conversationId, source: 'model', reason: turn.handoff.reason, summary: turn.handoff.summary },
         });
       }
+      // 차감은 같은 트랜잭션에서. 같은 키가 이미 있으면 들어가지 않는다(ON CONFLICT DO NOTHING) — 턴은 그대로 저장된다.
+      if (turn.charge) await appendCredit(tx, tenantId, turn.charge);
     });
   }
 }

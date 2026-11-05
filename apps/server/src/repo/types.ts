@@ -4,9 +4,9 @@
 // 메모리 구현은 W3 이후에도 단위 테스트용으로 남기고, 두 구현에 같은 계약 테스트를 돌린다.
 // 메모리 구현은 UNIQUE 제약·트랜잭션·정렬 규칙에서 실제 DB와 다를 수 있다 — 계약 테스트가 그 차이를 잡는다.
 
-import type { HandoffReason, HandoffSource, HandoffStatus } from '@qrate/contracts';
+import type { CreditReason, HandoffReason, HandoffSource, HandoffStatus } from '@qrate/contracts';
 
-export type { HandoffSource, HandoffStatus };
+export type { CreditReason, HandoffSource, HandoffStatus };
 
 export interface Tenant {
   id: string;
@@ -86,6 +86,42 @@ export interface NewTurn {
   question: NewMessage;
   answer: NewMessage | null;
   handoff: { reason: HandoffReason; summary: string | null } | null;
+  /**
+   * 이 턴의 크레딧 차감(답이 있는 턴만, 턴당 -1). 턴 저장과 같은 트랜잭션에 들어간다 — 턴은 남았는데 차감이 안 되거나 그 반대가 없다.
+   * 같은 멱등 키가 이미 있으면 건너뛴다(중복 차감 없음). 없거나 null이면 차감하지 않는다(거절·실패 턴).
+   */
+  charge?: NewCreditEntry | null;
+}
+
+/** 크레딧 원장 항목. 잔액은 delta의 합이다. */
+export interface CreditEntry {
+  id: string;
+  tenantId: string;
+  delta: number;
+  reason: CreditReason;
+  idempotencyKey: string;
+  createdAt: Date;
+}
+
+export interface NewCreditEntry {
+  delta: number;
+  reason: CreditReason;
+  /** 출처별 접두사: seed: · turn:<턴 id> · topup:<주문 id> · adj:<키>. 테넌트 안에서 유일하다. */
+  idempotencyKey: string;
+}
+
+export interface CreditPage {
+  items: CreditEntry[];
+  nextCursor: string | null;
+}
+
+export interface CreditRepository {
+  /** 원장 합계. 항목이 없으면 0. */
+  balance(tenantId: string): Promise<number>;
+  /** 멱등 추가: 같은 (tenantId, idempotencyKey)면 기존 항목을 돌려주고(duplicate=true) 잔액은 움직이지 않는다. */
+  append(tenantId: string, entry: NewCreditEntry): Promise<{ entry: CreditEntry; duplicate: boolean }>;
+  /** 최근순 목록(콘솔 원장). 커서는 listByTenant와 같은 규칙. */
+  list(tenantId: string, opts: { limit: number; cursor?: string | null }): Promise<CreditPage>;
 }
 
 /** 콘솔 대화 로그 목록의 한 줄. 메시지 전문은 싣지 않는다 — 상세는 find. */
@@ -158,6 +194,7 @@ export interface Repositories {
   knowledge: KnowledgeRepository;
   conversations: ConversationRepository;
   handoffs: HandoffRepository;
+  credits: CreditRepository;
 }
 
 /** 목록 커서가 이 구현이 만든 값이 아닐 때. HTTP 계층은 400으로 옮긴다. */

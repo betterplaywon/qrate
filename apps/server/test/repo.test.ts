@@ -29,6 +29,19 @@ describe('시드 로더', () => {
       /blocks\[0\]/,
     );
     expect(() => parseSeed({ tenant: { ...tenant, apiKey: '' }, knowledge: [] })).toThrow(/apiKey/);
+    const knowledge = [{ id: 'a', title: 'A', category: 'c', blocks: ['x'] }];
+    expect(() => parseSeed({ tenant, knowledge, initialCredits: -1 })).toThrow(/initialCredits/);
+    expect(() => parseSeed({ tenant, knowledge, initialCredits: 1.5 })).toThrow(/initialCredits/);
+    expect(parseSeed({ tenant, knowledge }).initialCredits).toBe(0); // 없으면 지급 없음
+    expect(parseSeed({ tenant, knowledge, initialCredits: 100 }).initialCredits).toBe(100);
+  });
+
+  it('데모 시드는 초기 크레딧을 지급하고, 메모리 저장소는 시작 때 원장에 한 줄로 올린다', async () => {
+    const seed = loadSeedFile(DEFAULT_SEED_PATH);
+    expect(seed.initialCredits).toBeGreaterThan(0);
+    const repos = createRepositoriesFromSeed(seed);
+    expect(await repos.credits.balance(seed.tenant.id)).toBe(seed.initialCredits);
+    expect((await repos.credits.list(seed.tenant.id, { limit: 10 })).items.map((e) => e.reason)).toEqual(['seed']);
   });
 
   it('allowedOrigins는 정규형 오리진만 — CSP 헤더에 그대로 들어가므로', () => {
