@@ -185,7 +185,7 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET/.test(e))).toEqual([]);
 });
 
-test('지표: 답한 질문 하나와 위젯 열림 하나가 생기면 TTFT 표본·해결률 분모와 분자·열림 수가 하나씩 는다', async ({
+test('지표: 답한 질문·위젯 열림·질문 없는 연결 요청이 하나씩 생기면 각 수가 하나씩 는다 — 연결만 요청한 대화는 해결률 분모가 아니라 따로 센다', async ({
   page,
   request,
   consoleErrors,
@@ -205,6 +205,7 @@ test('지표: 답한 질문 하나와 위젯 열림 하나가 생기면 TTFT 표
     samples: await count('metric-ttft-samples'),
     conversations: await count('metric-resolution-conversations'),
     resolved: await count('metric-resolution-resolved'),
+    handoffOnly: await count('metric-resolution-handoff-only'),
     opens: await count('metric-widget-opens'),
   });
   const before = await read();
@@ -219,6 +220,11 @@ test('지표: 답한 질문 하나와 위젯 열림 하나가 생기면 TTFT 표
     data: { tenant: 'demo', type: 'widget_open' },
   });
   expect(opened.status()).toBe(202);
+  const handoff = await request.post('/api/handoff', {
+    headers: { origin: SERVER_ORIGIN, 'content-type': 'application/json' },
+    data: { tenant: 'demo', contact: 'metrics@example.com' },
+  });
+  expect(handoff.status()).toBe(201);
 
   await page.reload();
   await expect(page.getByTestId('metric-ttft-samples')).toHaveText(String(before.samples + 1));
@@ -226,6 +232,7 @@ test('지표: 답한 질문 하나와 위젯 열림 하나가 생기면 TTFT 표
     samples: before.samples + 1,
     conversations: before.conversations + 1,
     resolved: before.resolved + 1,
+    handoffOnly: before.handoffOnly + 1,
     opens: before.opens + 1,
   });
   await expect(page.getByTestId('metric-ttft-p50')).toHaveText(/^[\d,]+ms$/);

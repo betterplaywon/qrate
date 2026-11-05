@@ -15,7 +15,7 @@ import type {
 export interface ConsoleMetrics {
   window: TimeWindow;
   ttft: { samples: number; p50Ms: number | null; p95Ms: number | null };
-  autoResolution: { conversations: number; resolved: number; rate: number | null };
+  autoResolution: { conversations: number; resolved: number; rate: number | null; handoffOnly: number };
   widget: { opens: number };
 }
 
@@ -39,12 +39,14 @@ function summarizeTtft(values: readonly number[]): ConsoleMetrics['ttft'] {
 /**
  * 분모는 창 안에 시작해 질문이 있었던 대화(봇에게 물어본 대화), 해결은 그중 답이 하나 이상이고 상담원 연결 요청이 없는 대화.
  * 질문 없이 연결만 요청한 대화는 분모·분자 모두에서 뺀다 — 봇이 답할 기회가 없었고, 넣으면 공개 POST /api/handoff만으로
- * 분모를 부풀릴 수 있다. 정책 거절로 답 없이 끝난 대화는 질문이 있으니 분모에 든다.
+ * 분모를 부풀릴 수 있다. 대신 handoffOnly로 따로 세어, 비율에서 뺀 대화를 콘솔이 숨기지 않게 한다.
+ * 정책 거절로 답 없이 끝난 대화는 질문이 있으니 분모에 든다.
  */
 function summarizeResolution(outcomes: readonly ConversationOutcome[]): ConsoleMetrics['autoResolution'] {
   const asked = outcomes.filter((o) => o.asked);
   const resolved = asked.filter((o) => o.answered && !o.handedOff).length;
-  return { conversations: asked.length, resolved, rate: asked.length === 0 ? null : resolved / asked.length };
+  const handoffOnly = outcomes.filter((o) => !o.asked && o.handedOff).length;
+  return { conversations: asked.length, resolved, rate: asked.length === 0 ? null : resolved / asked.length, handoffOnly };
 }
 
 function countOf(counts: readonly EventCount[], type: AppEvent['type']): number {
