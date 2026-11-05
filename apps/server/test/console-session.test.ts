@@ -29,7 +29,8 @@ describe('콘솔 세션 토큰(JWT, HS256)', () => {
     const codec = createSessionCodec(SECRET);
     const token = await codec.issue('demo');
     const [header, payload, sig] = token.split('.') as [string, string, string];
-    const flipped = (s: string) => s.slice(0, -1) + (s.endsWith('A') ? 'B' : 'A');
+    // 첫 글자를 바꾼다. 마지막 글자는 base64url의 남는 비트(패딩)만 바꿀 수 있어 디코드 결과가 같을 때가 있다 — iat·exp에 따라 간헐적으로 실패했다.
+    const flipped = (s: string) => (s.startsWith('A') ? 'B' : 'A') + s.slice(1);
     expect(await codec.verify(`${header}.${flipped(payload)}.${sig}`)).toBeNull();
     expect(await codec.verify(`${header}.${payload}.${flipped(sig)}`)).toBeNull();
     // 다른 테넌트로 바꿔 쓴 payload — 서명이 안 맞는다
