@@ -384,13 +384,13 @@ describe('지표 — GET /api/console/metrics', () => {
     const body = (await res.json()) as ConsoleMetricsResponse;
     expect(body).toMatchObject({
       ttft: { samples: 0, p50Ms: null, p95Ms: null },
-      autoResolution: { conversations: 0, resolved: 0, rate: null },
+      autoResolution: { conversations: 0, resolved: 0, rate: null, handoffOnly: 0 },
       widget: { opens: 0 },
     });
     expect(Date.parse(body.window.to) - Date.parse(body.window.from)).toBe(METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   });
 
-  it('대화·연결 요청·위젯 열림이 각 원천에서 집계된다 — 질문 없이 연결만 요청한 대화는 해결률에서 빠진다', async () => {
+  it('대화·연결 요청·위젯 열림이 각 원천에서 집계된다 — 질문 없이 연결만 요청한 대화는 해결률에서 빠지고 따로 센다', async () => {
     await (await post('/api/chat', { tenant: 'demo', message: '환불 정책 알려줘' })).text();
     await (await post('/api/chat', { tenant: 'demo', message: '[[handoff]] 카카오톡 알림 되나요?' })).text();
     expect((await post('/api/handoff', { tenant: 'demo', contact: 'v@example.com' })).status).toBe(201);
@@ -399,7 +399,7 @@ describe('지표 — GET /api/console/metrics', () => {
     await expect.poll(async () => (await metrics()).ttft.samples, { timeout: 2_000 }).toBe(2);
     const body = await metrics();
     expect(body.ttft).toEqual({ samples: 2, p50Ms: expect.any(Number), p95Ms: expect.any(Number) });
-    expect(body.autoResolution).toEqual({ conversations: 2, resolved: 1, rate: 0.5 });
+    expect(body.autoResolution).toEqual({ conversations: 2, resolved: 1, rate: 0.5, handoffOnly: 1 });
     expect(body.widget).toEqual({ opens: 1 });
   });
 });

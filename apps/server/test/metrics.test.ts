@@ -74,20 +74,36 @@ describe('computeMetrics — 자동 해결률', () => {
       { asked: true, answered: true, handedOff: false },
     ];
     const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
-    expect(autoResolution).toEqual({ conversations: 6, resolved: 3, rate: 0.5 });
+    expect(autoResolution).toEqual({ conversations: 6, resolved: 3, rate: 0.5, handoffOnly: 0 });
   });
 
-  it('질문 없이 연결만 요청한 대화는 몇 건이든 분모·분자 어디에도 들지 않는다', async () => {
+  it('질문 없이 연결만 요청한 대화는 몇 건이든 분모·분자 어디에도 들지 않고 handoffOnly로 따로 센다', async () => {
     const handoffOnly: ConversationOutcome = { asked: false, answered: false, handedOff: true };
     const outcomes: ConversationOutcome[] = [{ asked: true, answered: true, handedOff: false }, ...Array.from({ length: 20 }, () => handoffOnly)];
     const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
-    expect(autoResolution).toEqual({ conversations: 1, resolved: 1, rate: 1 });
+    expect(autoResolution).toEqual({ conversations: 1, resolved: 1, rate: 1, handoffOnly: 20 });
   });
 
-  it('대화가 없거나 연결만 요청한 대화뿐이면 rate는 null(0%가 아니다)', async () => {
-    expect((await computeMetrics(sources().repos, TENANT, NOW)).autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null });
+  it('handoffOnly는 질문이 없고 연결 요청이 있는 대화만 센다 — 질문 뒤 연결은 분모 쪽, 질문도 연결도 없는 대화는 어디에도 없다', async () => {
+    const outcomes: ConversationOutcome[] = [
+      { asked: true, answered: true, handedOff: true },
+      { asked: true, answered: false, handedOff: true },
+      { asked: false, answered: false, handedOff: false },
+      { asked: false, answered: false, handedOff: true },
+    ];
+    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
+    expect(autoResolution).toEqual({ conversations: 2, resolved: 0, rate: 0, handoffOnly: 1 });
+  });
+
+  it('대화가 없거나 연결만 요청한 대화뿐이면 rate는 null(0%가 아니다) — 연결만 요청한 대화는 그래도 센다', async () => {
+    expect((await computeMetrics(sources().repos, TENANT, NOW)).autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null, handoffOnly: 0 });
     const outcomes: ConversationOutcome[] = [{ asked: false, answered: false, handedOff: true }];
-    expect((await computeMetrics(sources({ outcomes }).repos, TENANT, NOW)).autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null });
+    expect((await computeMetrics(sources({ outcomes }).repos, TENANT, NOW)).autoResolution).toEqual({
+      conversations: 0,
+      resolved: 0,
+      rate: null,
+      handoffOnly: 1,
+    });
   });
 
   it('비율은 그대로 — 1/3은 0.333…', async () => {

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { SERVER_ORIGIN, assert } from '../lib.mjs';
 import { LAUNCHER, finishedAnswers, loginConsole, openWidget, send } from '../harness.mjs';
 
-export const title = '콘솔 지표 — 위젯 열림·답한 질문·연결만 요청한 대화 → #/metrics 값(연결만 요청한 대화는 해결률 밖) → server.log 사건 줄';
+export const title = '콘솔 지표 — 위젯 열림·답한 질문·연결만 요청한 대화 → #/metrics 값(연결만 요청한 대화는 해결률 밖에서 따로 센다) → server.log 사건 줄';
 
 const QUESTION = '요금제가 뭐가 있나요?';
 const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
@@ -94,13 +94,13 @@ export async function run(h) {
       `API ttft ${JSON.stringify(body.ttft)} ≠ 화면 ${p50}ms`,
     );
     assert(
-      JSON.stringify(body.autoResolution) === JSON.stringify({ conversations: 1, resolved: 1, rate: 1 }) && body.widget.opens === 2,
+      JSON.stringify(body.autoResolution) === JSON.stringify({ conversations: 1, resolved: 1, rate: 1, handoffOnly: 1 }) && body.widget.opens === 2,
       `API ${JSON.stringify({ autoResolution: body.autoResolution, widget: body.widget })}`,
     );
     return `화면: p50 = p95 = ${p50Text}, 표본 1 · 해결 1/1 = 100.0% · 열림 2 — API 응답과 같음`;
   });
 
-  await h.step('metrics-handoff-excluded', '연결만 요청한 대화는 대화 로그에는 있지만 해결률 분모에는 없다', async () => {
+  await h.step('metrics-handoff-excluded', '연결만 요청한 대화는 대화 로그에는 있지만 해결률 분모에는 없고, 카드 아래 "질문 없이 바로 상담원 연결 1건"으로 따로 보인다', async () => {
     const res = await consolePage.request.get('/api/console/conversations');
     await h.evidence.saveApiResponse('console-conversations.txt', res);
     const { items } = await res.json();
@@ -110,7 +110,10 @@ export async function run(h) {
       `대화 로그: ${JSON.stringify(shapes)}`,
     );
     await expect(consolePage.getByTestId('metric-resolution-conversations')).toHaveText('1');
-    return `대화 로그 2건(질문·답 1건, 연결만 1건) · 해결률 분모 1건`;
+    await expect(consolePage.getByTestId('metric-resolution-handoff-only')).toHaveText('1');
+    const line = consolePage.getByTestId('metric-resolution').locator('p', { has: consolePage.getByTestId('metric-resolution-handoff-only') });
+    await expect(line).toHaveText('질문 없이 바로 상담원 연결 1건 · 위 비율에는 넣지 않음');
+    return `대화 로그 2건(질문·답 1건, 연결만 1건) · 해결률 분모 1건 · 화면 "${await line.textContent()}"`;
   });
 
   await h.step('metrics-server-log', 'server.log에 사건 JSON 줄: chat_request 1줄(ttftMs = 화면 p50, 질문 원문 없음), widget_open 2줄', async () => {
