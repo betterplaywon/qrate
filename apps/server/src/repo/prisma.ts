@@ -1,6 +1,7 @@
 import type { PrismaClient } from './prisma/client.js';
 import { PrismaConversationRepository } from './prisma/conversations.js';
 import { PrismaCreditRepository } from './prisma/credits.js';
+import { PrismaEventRepository } from './prisma/events.js';
 import { PrismaHandoffRepository } from './prisma/handoffs.js';
 import { PrismaKnowledgeRepository } from './prisma/knowledge.js';
 import { PrismaTenantRepository } from './prisma/tenants.js';
@@ -14,6 +15,7 @@ export { createPrismaClient } from './prisma/client.js';
 export {
   PrismaConversationRepository,
   PrismaCreditRepository,
+  PrismaEventRepository,
   PrismaHandoffRepository,
   PrismaKnowledgeRepository,
   PrismaTenantRepository,
@@ -28,5 +30,6 @@ export function createPrismaRepositories(prisma: PrismaClient): Repositories {
     handoffs: new PrismaHandoffRepository(prisma),
     credits: new PrismaCreditRepository(prisma),
     topUps: new PrismaTopUpRepository(prisma),
+    events: new PrismaEventRepository(prisma),
   };
 }

@@ -27,7 +27,9 @@ describe.skipIf(!url)('Postgres 저장소', () => {
 
   beforeAll(async () => {
     prisma = createPrismaClient(url as string);
-    // 전용 테스트 DB다 — 지난 실행의 대화를 비운다. 마이그레이션이 없으면 여기서 "relation ... does not exist"로 실패한다.
+    // 전용 테스트 DB다 — 지난 실행의 대화·사건을 비운다. 마이그레이션이 없으면 여기서 "relation ... does not exist"로 실패한다.
+    // 사건 계약 케이스는 고정 시각을 쓴다 — 남아 있으면 개수가 실행마다 늘어난다.
+    await prisma.event.deleteMany();
     await prisma.handoff.deleteMany();
     await prisma.message.deleteMany();
     await prisma.conversation.deleteMany();
@@ -57,6 +59,14 @@ describe.skipIf(!url)('Postgres 저장소', () => {
       const id = randomUUID();
       await expect(repos.conversations.appendTurn(id, 'no-such-tenant', turn('x', 'y'))).rejects.toThrow();
       expect(await prisma.conversation.findUnique({ where: { id } })).toBeNull();
+    });
+
+    it('없는 테넌트의 사건은 기록되지 않는다 (FK) — 메모리 구현은 이걸 잡지 못한다', async () => {
+      const repos = createPrismaRepositories(prisma);
+      await expect(
+        repos.events.record({ type: 'widget_open', tenantId: 'no-such-tenant', createdAt: new Date(), conversationId: null, payload: {} }),
+      ).rejects.toThrow();
+      expect(await prisma.event.count({ where: { tenantId: 'no-such-tenant' } })).toBe(0);
     });
 
     it('턴은 한 트랜잭션 — 핸드오프 저장이 실패하면 대화·질문·답변도 남지 않는다', async () => {

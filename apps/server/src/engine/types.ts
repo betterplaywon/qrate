@@ -34,12 +34,13 @@ export interface EngineRequest {
   signal: AbortSignal;
 }
 
-export interface Usage {
+/** type 별칭인 이유: 이벤트 로그 payload(repo/types.ts)에 실려 Prisma Json 입력에 그대로 대입된다 — interface는 인덱스 시그니처가 없어 거부된다. */
+export type Usage = {
   inputTokens: number;
   cacheCreationInputTokens: number;
   cacheReadInputTokens: number;
   outputTokens: number;
-}
+};
 
 export type EngineEvent =
   | { type: 'delta'; text: string }
