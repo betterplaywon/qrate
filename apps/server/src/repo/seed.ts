@@ -4,6 +4,7 @@ import { isOriginString } from '../origin.js';
 import {
   MemoryConversationRepository,
   MemoryCreditRepository,
+  MemoryEventRepository,
   MemoryHandoffRepository,
   MemoryKnowledgeRepository,
   MemoryStore,
@@ -107,5 +108,6 @@ export function createRepositoriesFromSeed(
     handoffs: new MemoryHandoffRepository(store),
     credits: new MemoryCreditRepository(store),
     topUps: new MemoryTopUpRepository(store),
+    events: new MemoryEventRepository(),
   };
 }

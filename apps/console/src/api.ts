@@ -3,6 +3,7 @@ import {
   IDEMPOTENCY_KEY_HEADER,
   parseApiErrorBody,
   type ConsoleLoginBody,
+  type ConsoleMetricsResponse,
   type ConsoleSessionResponse,
   type ConversationDetailResponse,
   type ConversationListResponse,
@@ -62,6 +63,7 @@ export const api = {
     run(client.get('conversations', { searchParams: search({ cursor }) }).json<ConversationListResponse>()),
   conversation: (id: string) => run(client.get(`conversations/${encodeURIComponent(id)}`).json<ConversationDetailResponse>()),
   credits: (cursor: string | null) => run(client.get('credits', { searchParams: search({ cursor }) }).json<CreditsResponse>()),
+  metrics: () => run(client.get('metrics').json<ConsoleMetricsResponse>()),
   handoffs: (status: HandoffStatus | null, cursor: string | null) =>
     run(client.get('handoffs', { searchParams: search({ status, cursor }) }).json<HandoffListResponse>()),
   updateHandoff: (id: string, status: HandoffStatus) =>

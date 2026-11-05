@@ -1,6 +1,7 @@
 // 대화창 앱 — 서버 오리진의 iframe 문서(GET /frame?t=테넌트&o=부모 오리진)에서 돈다.
 //
 // 역할: 화면(view.ts)과 대화 API 스트림(stream.ts)을 잇고, 런처와 postMessage(../protocol.ts)로 열림·닫힘·안 읽은 수를 주고받는다.
+// 열림을 아는 곳이 여기뿐이라(런처는 서버를 부르지 않는다) 첫 열림을 위젯 사건으로 서버에 알린다(events.ts).
 // 서버와 같은 오리진이라 상대 경로로 API를 부르고, 호스트 사이트의 스크립트는 이 문서에 손댈 수 없다(ADR-0003 하이브리드).
 //
 // 설정은 URL 쿼리에서 읽는다. 서버가 t(테넌트)와 o(부모 오리진 — 테넌트의 허용 목록에 있는지)를 검사한 뒤에야 이 문서를 내려주므로,
@@ -13,6 +14,7 @@
 // 앱에 미치는 효과(대화 id, 안 읽은 수, 재시도, 연결 요청)만 콜백으로 돌려받는다.
 
 import { MAX_UNREAD, parseLauncherMessage, toWire, type FrameMessage } from '../protocol';
+import { sendWidgetEvent } from './events';
 import { requestHandoff as postHandoffRequest, type HandoffResult } from './handoff';
 import { streamChat } from './stream';
 import { Turn } from './turn';
@@ -42,6 +44,8 @@ function handoffFailureText(result: Extract<HandoffResult, { ok: false }>): stri
 class FrameApp {
   private readonly view: ChatView;
   private visible = false;
+  /** widget_open은 페이지 로드당 첫 열림에 한 번. 다시 열기는 세지 않는다. */
+  private openReported = false;
   private unread = 0;
   private conversationId: string | null = null;
   private inFlight = false;
@@ -78,6 +82,10 @@ class FrameApp {
     if (this.visible) {
       this.unread = 0;
       this.view.focusInput();
+      if (!this.openReported) {
+        this.openReported = true;
+        void sendWidgetEvent({ tenant: this.config.tenant, type: 'widget_open' });
+      }
     }
   }
 

@@ -12,6 +12,7 @@ const HOST = '#qrate-host';
 const LAUNCHER = `${HOST} .launcher`;
 const FRAME = `${HOST} iframe.frame`;
 const CHAT_URL = `${SERVER_ORIGIN}/api/chat`;
+const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
 
 // 페이지(모든 프레임)의 콘솔 오류와 예외를 모은다. 정상 흐름에서는 0건이어야 한다.
 const test = base.extend<{ consoleErrors: string[] }>({
@@ -89,6 +90,28 @@ test('열면 서버 오리진의 iframe이 뜨고, 호스트 문서는 대화 DO
 
   // 대화창 앱이 ready를 postMessage로 보내면 런처가 로딩 문구를 지운다
   await expect(page.locator(`${HOST} .loading`)).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('처음 열면 대화창 문서가 widget_open 사건을 한 번 보내고, 닫았다 다시 열어도 더 보내지 않는다', async ({ page, consoleErrors }) => {
+  const sent: { frameUrl: string; body: unknown }[] = [];
+  page.on('request', (r) => {
+    if (r.url() === EVENTS_URL && r.method() === 'POST') sent.push({ frameUrl: r.frame().url(), body: r.postDataJSON() });
+  });
+
+  const accepted = page.waitForResponse((r) => r.url() === EVENTS_URL);
+  const frame = await openWidget(page);
+  expect((await accepted).status()).toBe(202);
+  expect(sent).toEqual([{ frameUrl: expect.stringMatching(`^${SERVER_ORIGIN}/frame\\?`), body: { tenant: 'demo', type: 'widget_open' } }]);
+
+  const launcher = page.locator(LAUNCHER);
+  await frame.locator('.close').click();
+  await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+  await launcher.click();
+  await expect(launcher).toHaveAttribute('aria-expanded', 'true');
+  await send(frame, '환불되나요?');
+  await expect(finishedAnswers(frame)).toHaveCount(1);
+  expect(sent).toHaveLength(1);
   expect(consoleErrors).toEqual([]);
 });
 

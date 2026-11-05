@@ -224,6 +224,7 @@ describe('대화 유스케이스 — createChatService', () => {
         appendTurn: async () => {
           throw new Error('db down');
         },
+        outcomes: async () => [],
       },
     });
     const turn = await chat.start({ tenantKey: 'demo', message: '요금제가 뭐가 있나요?', conversationId: null, signal });

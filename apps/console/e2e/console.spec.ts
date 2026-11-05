@@ -1,5 +1,6 @@
 // 운영 콘솔 E2E — 실제 Chromium에서 로그인(쿠키 세션) → 대화 로그 → 미응답 큐 상태 변경 → 크레딧 잔액·원장 → 로그아웃,
-// 그리고 충전(모의 결제 제공자): 끊긴 요청의 재시도 · 결제 결과 흉내 · 같은 이벤트 재배달 · 늦은 실패 · 웹훅 원문 재전송과 위조.
+// 그리고 충전(모의 결제 제공자): 끊긴 요청의 재시도 · 결제 결과 흉내 · 같은 이벤트 재배달 · 늦은 실패 · 웹훅 원문 재전송과 위조,
+// 지표 화면(TTFT·자동 해결률·위젯 열림).
 // 대화는 대화 API(POST /api/chat, 목업 엔진)로 만든다. 목업 훅 [[handoff]]가 모델 신호를 낸다(apps/server/src/engine/mock.ts).
 // 단위 테스트가 못 보는 것만 본다: 브라우저가 HttpOnly 쿠키를 실어 주는지, CSP 아래에서 번들이 도는지, 화면 흐름.
 
@@ -182,4 +183,54 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   await expect(page.getByTestId('credit-entry').filter({ hasText: '충전' })).toHaveCount(1);
 
   expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET/.test(e))).toEqual([]);
+});
+
+test('지표: 답한 질문 하나와 위젯 열림 하나가 생기면 TTFT 표본·해결률 분모와 분자·열림 수가 하나씩 는다', async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
+  await page.goto('/console/');
+  await login(page, CONSOLE_KEY);
+  await page.getByTestId('nav-metrics').click();
+  await expect(page).toHaveURL(/#\/metrics$/);
+  await expect(page.getByTestId('metrics-window')).toContainText('최근 7일');
+
+  const count = async (testId: string): Promise<number> => {
+    const locator = page.getByTestId(testId);
+    await expect(locator).toHaveText(/^\d+$/);
+    return Number(await locator.textContent());
+  };
+  const read = async () => ({
+    samples: await count('metric-ttft-samples'),
+    conversations: await count('metric-resolution-conversations'),
+    resolved: await count('metric-resolution-resolved'),
+    opens: await count('metric-widget-opens'),
+  });
+  const before = await read();
+
+  const chat = await request.post('/api/chat', {
+    headers: { origin: SERVER_ORIGIN, 'content-type': 'application/json' },
+    data: { tenant: 'demo', message: '환불 정책 알려줘' },
+  });
+  expect(await chat.text()).toContain('[DONE]');
+  const opened = await request.post('/api/events', {
+    headers: { origin: SERVER_ORIGIN, 'content-type': 'application/json' },
+    data: { tenant: 'demo', type: 'widget_open' },
+  });
+  expect(opened.status()).toBe(202);
+
+  await page.reload();
+  await expect(page.getByTestId('metric-ttft-samples')).toHaveText(String(before.samples + 1));
+  expect(await read()).toEqual({
+    samples: before.samples + 1,
+    conversations: before.conversations + 1,
+    resolved: before.resolved + 1,
+    opens: before.opens + 1,
+  });
+  await expect(page.getByTestId('metric-ttft-p50')).toHaveText(/^[\d,]+ms$/);
+  await expect(page.getByTestId('metric-ttft-p95')).toHaveText(/^[\d,]+ms$/);
+  await expect(page.getByTestId('metric-resolution-rate')).toHaveText(/^\d+(\.\d)?%$/);
+
+  expect(consoleErrors).toEqual([]);
 });

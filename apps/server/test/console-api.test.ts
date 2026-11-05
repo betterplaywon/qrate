@@ -1,10 +1,12 @@
-import type {
-  ConsoleSessionResponse,
-  ConversationDetailResponse,
-  ConversationListResponse,
-  CreditsResponse,
-  HandoffListResponse,
-  HandoffQueueItemDto,
+import {
+  METRICS_WINDOW_DAYS,
+  type ConsoleMetricsResponse,
+  type ConsoleSessionResponse,
+  type ConversationDetailResponse,
+  type ConversationListResponse,
+  type CreditsResponse,
+  type HandoffListResponse,
+  type HandoffQueueItemDto,
 } from '@qrate/contracts';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -342,5 +344,62 @@ describe('대화 로그·미응답 큐', () => {
     } finally {
       await new Promise<void>((resolve) => s.close(() => resolve()));
     }
+  });
+});
+
+describe('지표 — GET /api/console/metrics', () => {
+  let metricsServer: Server;
+  let url: string;
+  let cookie: string;
+
+  const metrics = async () => {
+    const res = await fetch(`${url}/api/console/metrics`, { headers: { cookie } });
+    expect(res.status).toBe(200);
+    return (await res.json()) as ConsoleMetricsResponse;
+  };
+  const post = (route: string, body: unknown) =>
+    fetch(`${url}${route}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: OWN_ORIGIN }, body: JSON.stringify(body) });
+
+  beforeAll(async () => {
+    const app = createApp({
+      engine: new MockEngine(0),
+      repos: createRepositoriesFromSeed(seed, { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) }),
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      console: { secret: SECRET },
+    });
+    ({ server: metricsServer, url } = await serve(app));
+    const res = await post('/api/console/login', { tenant: 'demo', key: CONSOLE_KEY });
+    expect(res.status).toBe(200);
+    cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  });
+
+  afterAll(() => new Promise<void>((resolve) => metricsServer.close(() => resolve())));
+
+  it('세션이 없으면 401, 빈 저장소면 표본 0·백분위 null·해결률 null·열림 0, 창은 7일이고 캐시 금지', async () => {
+    expect((await fetch(`${url}/api/console/metrics`)).status).toBe(401);
+
+    const res = await fetch(`${url}/api/console/metrics`, { headers: { cookie } });
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = (await res.json()) as ConsoleMetricsResponse;
+    expect(body).toMatchObject({
+      ttft: { samples: 0, p50Ms: null, p95Ms: null },
+      autoResolution: { conversations: 0, resolved: 0, rate: null },
+      widget: { opens: 0 },
+    });
+    expect(Date.parse(body.window.to) - Date.parse(body.window.from)).toBe(METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  });
+
+  it('대화·연결 요청·위젯 열림이 각 원천에서 집계된다 — 질문 없이 연결만 요청한 대화는 해결률에서 빠진다', async () => {
+    await (await post('/api/chat', { tenant: 'demo', message: '환불 정책 알려줘' })).text();
+    await (await post('/api/chat', { tenant: 'demo', message: '[[handoff]] 카카오톡 알림 되나요?' })).text();
+    expect((await post('/api/handoff', { tenant: 'demo', contact: 'v@example.com' })).status).toBe(201);
+    expect((await post('/api/events', { tenant: 'demo', type: 'widget_open' })).status).toBe(202);
+
+    await expect.poll(async () => (await metrics()).ttft.samples, { timeout: 2_000 }).toBe(2);
+    const body = await metrics();
+    expect(body.ttft).toEqual({ samples: 2, p50Ms: expect.any(Number), p95Ms: expect.any(Number) });
+    expect(body.autoResolution).toEqual({ conversations: 2, resolved: 1, rate: 0.5 });
+    expect(body.widget).toEqual({ opens: 1 });
   });
 });

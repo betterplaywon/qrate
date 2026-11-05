@@ -12,8 +12,11 @@ import type {
   PaymentProviderName,
   PaymentResult,
   SettleOutcome,
+  StopReason,
   TopUpStatus,
+  WidgetEventType,
 } from '@qrate/contracts';
+import type { EngineErrorCode, Usage } from '../engine/types.js';
 
 export type { CreditReason, HandoffSource, HandoffStatus, PaymentProviderName, PaymentResult, SettleOutcome, TopUpStatus };
 
@@ -250,6 +253,100 @@ export interface ConversationRepository {
    * id가 다른 테넌트의 대화면 실패한다(테넌트 경계는 쓰기에서도 지킨다).
    */
   appendTurn(conversationId: string, tenantId: string, turn: NewTurn): Promise<void>;
+  /** createdAt이 창 안인 테넌트의 대화마다 하나. 순서 없음. 해결 판정은 여기서 하지 않는다(events/metrics.ts). */
+  outcomes(tenantId: string, window: TimeWindow): Promise<ConversationOutcome[]>;
+}
+
+/** 자동 해결률 계산에 필요한 대화 한 건의 사실. */
+export interface ConversationOutcome {
+  /** user 메시지가 1개 이상. 방문자 연결 요청만으로 생긴 대화는 false다. */
+  asked: boolean;
+  /** assistant 메시지가 1개 이상. */
+  answered: boolean;
+  /** Handoff 행이 1개 이상(출처·상태 무관). */
+  handedOff: boolean;
+}
+
+// 이벤트 로그(W4 ③). 사건 등록표는 아래 판별 유니온 하나다 — 종류를 더하면 여기 한 변형이 늘고, 쓰는 곳·DB 쓰기·위젯 화이트리스트가 따라온다.
+// payload와 그 안의 타입은 interface가 아니라 type 별칭이다 — Prisma의 Json 입력(인덱스 시그니처)에 그대로 대입되게.
+// 자유 문자열 필드를 두지 않는다: 문자열은 엔진·모델 이름, 규칙 id, 열거값뿐이라 질문·답 원문이 들어갈 자리가 없다.
+
+export type EngineRunFacts = {
+  engine: string;
+  model: string;
+  /** 요청 수신 → 끝(턴 저장 포함, ms). */
+  durationMs: number;
+  knowledgeItems: number;
+  citations: number;
+  /** 이 요청에서 엔진이 낸 핸드오프 신호. 지표는 이 값을 읽지 않는다 — 자동 해결률은 Handoff 표(두 출처)에서 센다(events/metrics.ts). */
+  handoff: HandoffReason | null;
+  /** warn 레벨 규칙 id. ok면 빈 배열. */
+  moderation: string[];
+};
+
+export type ChatRequestPayload =
+  | (EngineRunFacts & {
+      outcome: 'done';
+      stopReason: StopReason | null;
+      /** 실제로 답한 모델. 서버 측 폴백이면 model과 다르다. */
+      servedBy: string | null;
+      fallbackUsed: boolean;
+      usage: Usage | null;
+    })
+  | (EngineRunFacts & { outcome: 'error'; errorCode: EngineErrorCode })
+  | (EngineRunFacts & { outcome: 'aborted' });
+
+type EventBase = {
+  /** 테넌트 id(키가 아니다). DB에서는 FK. */
+  tenantId: string;
+  /** 사건이 일어난 시각. chat_request는 요청을 받은 시각, 위젯 사건은 서버가 받은 시각. 저장 시각이 아니다. */
+  createdAt: Date;
+};
+
+/**
+ * 엔진을 부른 POST /api/chat 요청(테넌트를 찾고 모더레이션·크레딧을 통과한 요청)당 정확히 한 건. 쓰는 곳은 http/chat.ts 하나이고,
+ * 거절(422·402)을 남기지 않는 이유도 거기 있다. conversationId는 DB에 없을 수 있다(실패·중단 턴은 저장 안 됨).
+ */
+export type ChatRequestEvent = EventBase & {
+  type: 'chat_request';
+  conversationId: string;
+  /** 요청 수신 → 공백이 아닌 첫 delta 전송(ms). 그런 조각 없이 끝났으면 null(공백뿐인 답은 답이 없는 턴이다 — chat/service.ts). */
+  ttftMs: number | null;
+  payload: ChatRequestPayload;
+};
+
+/** 대화창이 POST /api/events로 보낸 사건. payload는 서버가 만드는 빈 객체 — 요청 본문에서 아무것도 옮기지 않는다. */
+export type WidgetEvent = EventBase & {
+  type: WidgetEventType;
+  conversationId: null;
+  payload: Record<string, never>;
+};
+
+export type AppEvent = ChatRequestEvent | WidgetEvent;
+
+/** 반열린 시간 구간 [from, to). */
+export interface TimeWindow {
+  from: Date;
+  to: Date;
+}
+
+export interface EventCount {
+  /** 저장된 종류 문자열. 다른 버전의 코드가 쓴 종류도 그대로 온다(type은 enum이 아니다 — schema.prisma). */
+  type: string;
+  variant: string | null;
+  count: number;
+}
+
+/**
+ * 사건 로그. 집계 정의(백분위·비율)는 여기 없다 — 저장소는 사실만 돌려주고 events/metrics.ts가 계산한다. 두 구현이 같은 정의를 쓰게.
+ */
+export interface EventRepository {
+  /** 한 건 추가. 호출자는 기다리지 않는다(events/sink.ts가 감싼다). 테넌트가 없으면 Postgres는 FK로 던진다. */
+  record(event: AppEvent): Promise<void>;
+  /** 창 안 chat_request 중 ttftMs가 있는 것의 값. 순서 없음. */
+  ttftSamples(tenantId: string, window: TimeWindow): Promise<number[]>;
+  /** 창 안 사건을 (type, variant)로 묶은 개수. type 오름차순, 같으면 variant 오름차순(null 먼저), 코드 단위 비교. */
+  counts(tenantId: string, window: TimeWindow): Promise<EventCount[]>;
 }
 
 export interface Repositories {
@@ -259,6 +356,7 @@ export interface Repositories {
   handoffs: HandoffRepository;
   credits: CreditRepository;
   topUps: TopUpRepository;
+  events: EventRepository;
 }
 
 /** 목록 커서가 이 구현이 만든 값이 아닐 때. HTTP 계층은 400으로 옮긴다. */

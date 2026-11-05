@@ -11,6 +11,7 @@
 //   GET   /api/console/handoffs         ?status=&limit=&cursor= → HandoffListResponse (미응답 큐)
 //   PATCH /api/console/handoffs/:id     UpdateHandoffBody → HandoffQueueItemDto. 다른 테넌트의 것은 404
 //   GET   /api/console/credits          ?limit=&cursor= → CreditsResponse (잔액 + 원장 최근순)
+//   GET   /api/console/metrics          → ConsoleMetricsResponse (최근 METRICS_WINDOW_DAYS일, 쿼리 없음)
 //   GET   /api/console/top-ups          ?limit=&cursor= → TopUpListResponse (충전 주문 최근순 + 충전을 받는 제공자)
 //   POST  /api/console/top-ups          헤더 Idempotency-Key(8~128자 [A-Za-z0-9_-]) + CreateTopUpBody → 201 TopUpDto.
 //                                       같은 키 재요청도 201 + 같은 본문 + Idempotent-Replayed: true. 같은 키·다른 상품 422 idempotency_key_reused,
@@ -186,4 +187,27 @@ export interface SimulatePaymentResponse {
   /** 같은 이벤트의 재배달이었다. outcome은 처음 판정이다. */
   replayed: boolean;
   topUp: TopUpDto;
+}
+
+/** 지표 집계 창의 길이(일). 창은 [응답 시각 − 7×24h, 응답 시각). */
+export const METRICS_WINDOW_DAYS = 7;
+
+export interface ConsoleMetricsResponse {
+  /** 집계 창 [from, to). to는 응답을 만든 시각. */
+  window: { from: string; to: string };
+  /**
+   * 공백이 아닌 답변 조각을 보낸 대화 요청의 TTFT(요청 수신 → 그런 첫 조각, ms). nearest-rank 백분위(= Postgres percentile_disc)라
+   * 값은 언제나 실제 한 요청의 값이다. samples가 0이면 둘 다 null.
+   */
+  ttft: { samples: number; p50Ms: number | null; p95Ms: number | null };
+  autoResolution: {
+    /** 창 안에 시작해 방문자 질문이 1개 이상인 대화. 분모. 질문 없이 상담원 연결만 요청한 대화는 빠진다(공개 키로 분모를 부풀릴 수 없게). */
+    conversations: number;
+    /** 그중 답이 1개 이상이고 상담원 연결 요청(모델 신호·방문자 요청, 상태 무관)이 없는 대화. 분자. */
+    resolved: number;
+    /** resolved / conversations. conversations가 0이면 null. 반올림하지 않는다. */
+    rate: number | null;
+  };
+  /** 방문자 브라우저가 보고한 위젯 열림(페이지 로드당 첫 열림). 공개 키로 꾸밀 수 있어 서버 사건과 비율을 만들지 않는다. */
+  widget: { opens: number };
 }

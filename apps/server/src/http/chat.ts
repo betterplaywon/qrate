@@ -2,58 +2,26 @@ import { CONVERSATION_ID_HEADER, encodeChatEvent, type ApiErrorBody, type ApiErr
 import { chatRequestSchema } from '@qrate/contracts/schemas';
 import type { Request, Response } from 'express';
 import type { ChatService } from '../chat/service.js';
-import {
-  asEngineError,
-  type EngineError,
-  type EngineErrorCode,
-  type EngineEvent,
-  type HandoffReason,
-  type Usage,
-} from '../engine/types.js';
+import { asEngineError, type EngineError, type EngineErrorCode, type EngineEvent, type HandoffReason } from '../engine/types.js';
+import type { EventSink } from '../events/sink.js';
 import { reportToStderr, type ErrorReporter } from '../report.js';
+import type { ChatRequestPayload, EngineRunFacts } from '../repo/types.js';
 import { sseForEngineEvent } from './sse.js';
 
 // POST /api/chat — 대화 유스케이스(chat/service.ts)를 HTTP와 SSE로 옮기는 어댑터.
 // 여기서 정하는 것: 본문 모양·길이 검사(400), 결과 종류 → 상태 코드(404·422·402), 엔진 실패 코드 → 상태 코드(statusFor),
-// 첫 이벤트 전 실패 → HTTP 상태 + Retry-After, 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 요청 1건의 사용량 로그.
-
-/** 요청 1건의 결과 기록. W4에서 이벤트 로그(DB)로 옮기고, 지금은 stdout JSON 한 줄이다. */
-export interface UsageLogEntry {
-  type: 'chat_usage';
-  ts: string;
-  tenant: string;
-  conversationId: string | null;
-  engine: string;
-  model: string;
-  /** 실제로 답한 모델. 서버 측 폴백이 작동하면 model과 다르다. */
-  servedBy: string | null;
-  fallbackUsed: boolean;
-  outcome: 'done' | 'error' | 'aborted';
-  stopReason: string | null;
-  errorCode: string | null;
-  /** 요청 수신 → 첫 답변 조각 전송(ms). README 지표 TTFT의 원천. */
-  ttftMs: number | null;
-  durationMs: number;
-  knowledgeItems: number;
-  /** 모델이 상담원 연결을 요청했으면 그 이유(event: handoff). 정의서 지표 '자동 해결률'의 분자가 이 값이다. */
-  handoff: HandoffReason | null;
-  /** 답에 붙은 인용 수. 0이면 자료 없이 답한 턴일 수 있어 핸드오프 신호의 보조 지표로 본다(W5). */
-  citations: number;
-  usage: Usage | null;
-}
-
-export type UsageLogger = (entry: UsageLogEntry) => void;
-
-const logToStdout: UsageLogger = (entry) => {
-  console.log(JSON.stringify(entry));
-};
+// 첫 이벤트 전 실패 → HTTP 상태 + Retry-After, 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 엔진을 부른 요청 1건의 chat_request 사건.
 
 type DoneEvent = Extract<EngineEvent, { type: 'done' }>;
 
 export interface ChatHandlerDeps {
   chat: ChatService;
-  logUsage?: UsageLogger;
-  /** 예상 밖의 엔진 실패(인증·잘못된 요청·미분류)의 보고 통로. 요율 제한·일시 장애는 사용량 로그로 충분해 보내지 않는다. */
+  /**
+   * 엔진을 부른 요청마다 chat_request 사건 정확히 한 건. 거절(422·402)은 남기지 않는다 — 모델을 부르지 않아 비용이 0이고
+   * /api/chat에는 요율 제한이 없어, 남기면 공개 키만으로 행을 무제한으로 만들 수 있다. app.ts가 기본값(저장소 통로)을 넣는다.
+   */
+  recordEvent: EventSink;
+  /** 예상 밖의 엔진 실패(인증·잘못된 요청·미분류)의 보고 통로. 요율 제한·일시 장애는 chat_request 사건으로 충분해 보내지 않는다. */
   reportError?: ErrorReporter;
 }
 
@@ -83,9 +51,9 @@ function chatBodyError(issues: readonly { path: PropertyKey[]; code: string }[])
   return 'tenant is required';
 }
 
-export function createChatHandler({ chat, logUsage = logToStdout, reportError = reportToStderr }: ChatHandlerDeps) {
+export function createChatHandler({ chat, recordEvent, reportError = reportToStderr }: ChatHandlerDeps) {
   return async function handleChat(req: Request, res: Response): Promise<void> {
-    const startedAt = Date.now();
+    const receivedAt = new Date();
     // 본문 모양은 계약의 zod 스키마(@qrate/contracts/schemas). 메시지 길이 상한은 본문 32kb 상한(app.ts)과 별개다 —
     // 테넌트 키는 공개값이라 긴 입력은 곧 요청당 입력 토큰 비용이다. 테넌트 키는 모든 요청이 명시한다(W1의 'demo' 기본값은 제거).
     const parsed = chatRequestSchema.safeParse(req.body ?? {});
@@ -122,29 +90,17 @@ export function createChatHandler({ chat, logUsage = logToStdout, reportError = 
     let ttftMs: number | null = null;
     let handoff: HandoffReason | null = null;
     let citations = 0;
-    const finish = (
-      outcome: UsageLogEntry['outcome'],
-      detail: { done?: DoneEvent | null; errorCode?: string | null },
-    ): void => {
-      logUsage({
-        type: 'chat_usage',
-        ts: new Date(startedAt).toISOString(),
-        tenant: turn.tenantId,
-        conversationId: turn.conversationId,
-        engine: chat.engine.name,
-        model: chat.engine.model,
-        servedBy: detail.done?.servedBy ?? null,
-        fallbackUsed: detail.done?.fallbackUsed ?? false,
-        outcome,
-        stopReason: detail.done?.stopReason ?? null,
-        errorCode: detail.errorCode ?? null,
-        ttftMs,
-        durationMs: Date.now() - startedAt,
-        knowledgeItems: turn.knowledgeItems,
-        handoff,
-        citations,
-        usage: detail.done?.usage ?? null,
-      });
+    const facts = (): EngineRunFacts => ({
+      engine: chat.engine.name,
+      model: chat.engine.model,
+      durationMs: Date.now() - receivedAt.getTime(),
+      knowledgeItems: turn.knowledgeItems,
+      citations,
+      handoff,
+      moderation: turn.moderation.level === 'warn' ? turn.moderation.reasons : [],
+    });
+    const finish = (payload: ChatRequestPayload): void => {
+      recordEvent({ type: 'chat_request', tenantId: turn.tenantId, conversationId: turn.conversationId, createdAt: receivedAt, ttftMs, payload });
     };
     const report = (e: EngineError): void => {
       if (REPORTED_CODES.has(e.code)) {
@@ -159,14 +115,14 @@ export function createChatHandler({ chat, logUsage = logToStdout, reportError = 
       first = await events.next();
     } catch (err) {
       if (abort.signal.aborted) {
-        finish('aborted', {});
+        finish({ ...facts(), outcome: 'aborted' });
         return;
       }
       const e = asEngineError(err);
       report(e);
       if (e.retryable) res.setHeader('Retry-After', '2');
       res.status(statusFor(e.code)).json({ error: e.code, retryable: e.retryable } satisfies ApiErrorBody);
-      finish('error', { errorCode: e.code });
+      finish({ ...facts(), outcome: 'error', errorCode: e.code });
       return;
     }
 
@@ -187,7 +143,8 @@ export function createChatHandler({ chat, logUsage = logToStdout, reportError = 
     try {
       for (let r = first; !r.done; r = await events.next()) {
         const ev = r.value;
-        if (ev.type === 'delta' && ttftMs === null) ttftMs = Date.now() - startedAt;
+        // 공백뿐인 조각은 첫 응답이 아니다 — 유스케이스도 공백뿐인 답을 답 없음으로 저장한다(chat/service.ts recordTurn).
+        if (ev.type === 'delta' && ttftMs === null && ev.text.trim() !== '') ttftMs = Date.now() - receivedAt.getTime();
         if (ev.type === 'citation') citations += 1;
         if (ev.type === 'handoff') handoff = ev.reason;
         if (ev.type === 'done') done = ev;
@@ -195,20 +152,27 @@ export function createChatHandler({ chat, logUsage = logToStdout, reportError = 
       }
     } catch (err) {
       if (abort.signal.aborted) {
-        finish('aborted', {});
+        finish({ ...facts(), outcome: 'aborted' });
         return;
       }
       const e = asEngineError(err);
       report(e);
       res.write(encodeChatEvent({ type: 'error', code: e.code, retryable: e.retryable }));
       res.end();
-      finish('error', { errorCode: e.code });
+      finish({ ...facts(), outcome: 'error', errorCode: e.code });
       return;
     }
 
     // 여기 닿았으면 유스케이스가 턴을 대화에 저장한 뒤다(chat/service.ts). 저장 실패는 거기서 보고하고 여기로 오지 않는다.
     res.write(encodeChatEvent({ type: 'end' }));
     res.end();
-    finish('done', { done });
+    finish({
+      ...facts(),
+      outcome: 'done',
+      stopReason: done?.stopReason ?? null,
+      servedBy: done?.servedBy ?? null,
+      fallbackUsed: done?.fallbackUsed ?? false,
+      usage: done?.usage ?? null,
+    });
   };
 }

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '../src/generated/prisma/client.js';
 import type { HandoffReason } from '../src/engine/types.js';
+import { computeMetrics } from '../src/events/metrics.js';
 import type { PaymentResult } from '../src/repo/types.js';
 import { applySeed, createPrismaClient, createPrismaRepositories } from '../src/repo/prisma.js';
 import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
@@ -27,7 +28,7 @@ describe.skipIf(!url)('Postgres 저장소', () => {
 
   beforeAll(async () => {
     prisma = createPrismaClient(url as string);
-    // 전용 테스트 DB다 — 지난 실행의 대화를 비운다. 마이그레이션이 없으면 여기서 "relation ... does not exist"로 실패한다.
+    await prisma.event.deleteMany();
     await prisma.handoff.deleteMany();
     await prisma.message.deleteMany();
     await prisma.conversation.deleteMany();
@@ -57,6 +58,40 @@ describe.skipIf(!url)('Postgres 저장소', () => {
       const id = randomUUID();
       await expect(repos.conversations.appendTurn(id, 'no-such-tenant', turn('x', 'y'))).rejects.toThrow();
       expect(await prisma.conversation.findUnique({ where: { id } })).toBeNull();
+    });
+
+    it('없는 테넌트의 사건은 기록되지 않는다 (FK) — 메모리 구현은 이걸 잡지 못한다', async () => {
+      const repos = createPrismaRepositories(prisma);
+      await expect(
+        repos.events.record({ type: 'widget_open', tenantId: 'no-such-tenant', createdAt: new Date(), conversationId: null, payload: {} }),
+      ).rejects.toThrow();
+      expect(await prisma.event.count({ where: { tenantId: 'no-such-tenant' } })).toBe(0);
+    });
+
+    it('README 추적 질의: 같은 사건에 대한 percentile_disc(ARRAY[0.5, 0.95])가 콘솔 지표의 p50·p95와 같다', async () => {
+      const repos = createPrismaRepositories(prisma);
+      const t = OTHER_TENANT.id;
+      for (const [i, n] of [1, 2, 20, 37].entries()) {
+        const now = new Date(Date.UTC(2003, i * 2, 1));
+        const values = Array.from({ length: n }, (_, k) => ((k + 1) * 7919) % 1009);
+        for (const [k, ttftMs] of values.entries()) {
+          await repos.events.record({
+            type: 'chat_request',
+            tenantId: t,
+            createdAt: new Date(now.getTime() - (k + 1) * 60_000),
+            conversationId: randomUUID(),
+            ttftMs,
+            payload: { outcome: 'aborted', engine: 'mock', model: 'mock', durationMs: 1, knowledgeItems: 0, citations: 0, handoff: null, moderation: [] },
+          });
+        }
+        const metrics = await computeMetrics(repos, t, now);
+        const [row] = await prisma.$queryRaw<{ p: number[]; n: bigint }[]>`
+          SELECT percentile_disc(ARRAY[0.5, 0.95]) WITHIN GROUP (ORDER BY "ttftMs") AS p, count(*) AS n
+          FROM "Event"
+          WHERE "tenantId" = ${t} AND type = 'chat_request' AND "ttftMs" IS NOT NULL
+            AND "createdAt" >= ${metrics.window.from} AND "createdAt" < ${metrics.window.to}`;
+        expect({ n, sql: { samples: Number(row?.n), p50Ms: row?.p[0], p95Ms: row?.p[1] } }).toEqual({ n, sql: metrics.ttft });
+      }
     });
 
     it('턴은 한 트랜잭션 — 핸드오프 저장이 실패하면 대화·질문·답변도 남지 않는다', async () => {

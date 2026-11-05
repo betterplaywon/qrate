@@ -1,14 +1,16 @@
-import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, FRAME_PATH, HANDOFF_PATH, PAYMENT_WEBHOOK_ROUTE } from '@qrate/contracts';
+import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, EVENTS_PATH, FRAME_PATH, HANDOFF_PATH, PAYMENT_WEBHOOK_ROUTE } from '@qrate/contracts';
 import express from 'express';
 import type { PaymentProviders } from './billing/provider.js';
 import { createBillingService } from './billing/service.js';
 import { createChatService } from './chat/service.js';
 import { createSessionCodec } from './console/session.js';
 import type { AnswerEngine } from './engine/types.js';
-import { createChatHandler, type UsageLogger } from './http/chat.js';
+import { createEventSink, type EventSink } from './events/sink.js';
+import { createChatHandler } from './http/chat.js';
 import { createConsoleRouter } from './http/console/router.js';
 import { consoleStatic } from './http/console/static.js';
 import { createErrorHandler, notFound } from './http/errors.js';
+import { createEventRoute } from './http/events.js';
 import { createFrameHandler } from './http/frame.js';
 import { createHandoffRoute } from './http/handoff.js';
 import { createWebhookRoute } from './http/payments.js';
@@ -17,14 +19,15 @@ import { reportToStderr, type ErrorReporter } from './report.js';
 import type { Repositories } from './repo/types.js';
 
 // 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
-//   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, 사용량 로그,
-//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts),
+//   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, chat_request 사건,
+//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts), 위젯 사건 수집(events.ts),
 //             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, top-ups 충전, static 페이지 서빙),
 //             결제 제공자 웹훅(payments.ts)
 //   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
 //   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장. Express를 모른다
 //   billing/  충전 유스케이스 — 결제 제공자 경계(provider)·모의 제공자(mock)·이벤트 판정(settlement, 순수)·충전 요청과 웹훅(service). Express를 모른다
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
+//   events/   이벤트 로그 — 사건 기록 통로(sink), 콘솔 지표 정의(metrics, 순수 계산). Express를 모른다
 //   repo/     저장소 계약과 구현(메모리; W3에서 Postgres)
 //   origin.ts 오리진 규칙(설정 해석·시드 검증·Origin 검사가 함께 쓴다)
 //   report.ts 예외 보고 통로(reportError). index.ts가 Sentry를 꽂는다
@@ -39,8 +42,8 @@ export interface AppOptions {
   /** 대화창 앱 정적 파일(app.js·app.css)이 있는 디렉터리. 위젯 패키지의 빌드 산출물 dist/frame. (index.ts가 찾는다) */
   frameAssetsDir: string;
   sentryEnabled?: boolean;
-  /** 테스트에서 로그를 가로채기 위한 주입점. 기본은 stdout JSON 한 줄. */
-  logUsage?: UsageLogger;
+  /** 사건 기록 통로. 기본은 저장소(repos.events)에 쓰는 통로. index.ts는 stdout 미러를 켠 것을 넣고, 테스트는 가로챈다. */
+  recordEvent?: EventSink;
   /** 처리 중 예외(턴 저장 실패, 예상 밖 엔진 실패, 라우트 예외)의 보고 통로. index.ts가 Sentry를 꽂고, 테스트는 가로챈다. 기본은 stderr. */
   reportError?: ErrorReporter;
   /**
@@ -52,6 +55,8 @@ export interface AppOptions {
   consoleAssetsDir?: string;
   /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
   handoffRequests?: { max: number; windowMs: number };
+  /** 위젯 사건(POST /api/events)의 IP당 요율 제한. 기본 30회/분. 테스트가 줄여서 쓴다. */
+  eventRequests?: { max: number; windowMs: number };
   payments?: PaymentProviders;
 }
 
@@ -61,11 +66,12 @@ export function createApp({
   publicOrigin,
   frameAssetsDir,
   sentryEnabled = false,
-  logUsage,
+  recordEvent: recordEventOption,
   reportError = reportToStderr,
   console: consoleOptions,
   consoleAssetsDir,
   handoffRequests,
+  eventRequests,
   payments = {},
 }: AppOptions): express.Express {
   const app = express();
@@ -74,6 +80,7 @@ export function createApp({
   app.disable('x-powered-by');
   const chat = createChatService({ engine, repos, reportError });
   const billing = createBillingService({ repos, providers: payments, reportError });
+  const recordEvent = recordEventOption ?? createEventSink({ repo: repos.events, reportError });
 
   // CORS 헤더는 없다 (W1의 전체 허용 `*` 제거 — 테넌트 검증 단계).
   // 대화 API를 부르는 브라우저 문서는 이 서버 오리진의 iframe 하나뿐이라(ADR-0003 하이브리드) 같은 오리진 요청이고,
@@ -95,7 +102,7 @@ export function createApp({
     CHAT_PATH,
     requireOwnOrigin(publicOrigin),
     express.json({ limit: '32kb' }), // 채팅 입력에 32kb면 충분 — 과대 페이로드 차단
-    createChatHandler({ chat, logUsage, reportError }),
+    createChatHandler({ chat, recordEvent, reportError }),
   );
 
   // 상담원 연결 요청. 대화 API와 같은 Origin 검사 뒤 요율 제한 → 본문 → 처리(http/handoff.ts). 콘솔 큐의 방문자 항목이 된다.
@@ -103,6 +110,13 @@ export function createApp({
     HANDOFF_PATH,
     requireOwnOrigin(publicOrigin),
     ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
+  );
+
+  // 위젯 사건(대화창의 widget_open). 상담원 연결과 같은 순서: Origin 검사 → 요율 제한(자기 카운터) → 본문 → 처리(http/events.ts).
+  app.post(
+    EVENTS_PATH,
+    requireOwnOrigin(publicOrigin),
+    ...createEventRoute({ repos, recordEvent, ...(eventRequests ? { requestLimit: eventRequests } : {}) }),
   );
 
   app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));

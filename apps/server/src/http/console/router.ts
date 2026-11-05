@@ -1,5 +1,6 @@
 import {
   type ApiErrorBody,
+  type ConsoleMetricsResponse,
   type ConsoleSessionResponse,
   type ConversationListResponse,
   type CreditsResponse,
@@ -10,12 +11,13 @@ import express, { Router } from 'express';
 import type { PaymentProviders } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
 import type { SessionCodec } from '../../console/session.js';
+import { computeMetrics } from '../../events/metrics.js';
 import { requireOwnOrigin } from '../../origin.js';
 import type { Repositories } from '../../repo/types.js';
 import { jsonRateLimit } from '../rate-limit.js';
 import { authenticate } from './auth.js';
 import { sessionCookie } from './cookie.js';
-import { toCreditDto, toDetailDto, toQueueDto, toSummaryDto } from './dto.js';
+import { toCreditDto, toDetailDto, toMetricsDto, toQueueDto, toSummaryDto } from './dto.js';
 import { parseListQuery, withCursorErrors } from './query.js';
 import { requireSession, tenantIdOf } from './session.js';
 import { createTopUpRoutes } from './top-ups.js';
@@ -136,6 +138,13 @@ export function createConsoleRouter({
     const balance = await repos.credits.balance(tenantId);
     res.setHeader('Cache-Control', 'no-store');
     res.json({ balance, items: page.items.map(toCreditDto), nextCursor: page.nextCursor } satisfies CreditsResponse);
+  });
+
+  // 창은 고정(최근 7일, 쿼리 없음)이다. 정의는 events/metrics.ts 한 곳.
+  router.get('/metrics', session, async (_req, res) => {
+    const metrics = await computeMetrics(repos, tenantIdOf(res), new Date());
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(toMetricsDto(metrics) satisfies ConsoleMetricsResponse);
   });
 
   router.patch('/handoffs/:id', session, ownOrigin, json, async (req, res) => {

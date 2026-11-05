@@ -15,10 +15,19 @@ export const REASON_LABEL: Record<HandoffReason, string> = {
 
 const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 
-const wonFormat = new Intl.NumberFormat('ko-KR');
+const numberFormat = new Intl.NumberFormat('ko-KR');
+const rateFormat = new Intl.NumberFormat('ko-KR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 export function formatWon(amount: number): string {
-  return `${wonFormat.format(amount)}원`;
+  return `${numberFormat.format(amount)}원`;
+}
+
+export function formatMs(ms: number | null): string {
+  return ms === null ? '—' : `${numberFormat.format(ms)}ms`;
+}
+
+export function formatRate(rate: number | null): string {
+  return rate === null ? '—' : rateFormat.format(rate);
 }
 
 export function formatTime(iso: string): string {

@@ -20,6 +20,7 @@ export const keys = {
   handoffs: (status: HandoffStatus) => ['handoffs', status] as const,
   credits: ['credits'] as const,
   topUps: ['topUps'] as const,
+  metrics: ['metrics'] as const,
 };
 
 /** 세션 조회. 401은 오류가 아니라 "로그인 필요"(null)다. */
@@ -87,6 +88,10 @@ export function useCredits() {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   });
+}
+
+export function useMetrics() {
+  return useQuery({ queryKey: keys.metrics, queryFn: api.metrics });
 }
 
 export function useTopUps() {

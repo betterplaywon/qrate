@@ -64,6 +64,8 @@ export type ApiErrorCode =
   /** 상담원 연결 요청(handoff.ts). 연락처가 이메일이 아니거나 너무 긺(400), 공개 엔드포인트의 요율 제한(429). */
   | 'invalid_contact'
   | 'too_many_requests'
+  /** 위젯 사건(events.ts). 종류가 없거나 화이트리스트 밖(400) — 서버 사건(chat_request)도 밖에서는 이 코드로 막힌다. */
+  | 'invalid_event'
   /** 테넌트의 크레딧이 0 이하(402). 모델을 부르기 전에 막는다 — 운영자가 충전해야 풀린다. */
   | 'insufficient_credits'
   /**

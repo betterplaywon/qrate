@@ -7,15 +7,16 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { MockEngine } from '../src/engine/mock.js';
-import type { UsageLogEntry } from '../src/http/chat.js';
+import type { AnswerEngine, EngineEvent } from '../src/engine/types.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
+import type { AppEvent } from '../src/repo/types.js';
 import { CapturingEngine } from './helpers/capturing-engine.js';
 
 // 실제 HTTP로 핸들러를 통과시키는 계약 테스트. 엔진은 목업(지연 0)이고, 실패 상황은 목업의 테스트 훅으로 재현한다.
 
 let server: Server;
 let baseUrl: string;
-const logs: UsageLogEntry[] = [];
+const recorded: AppEvent[] = [];
 const reports: { err: unknown; context?: Record<string, unknown> }[] = [];
 const engine = new CapturingEngine(new MockEngine(0));
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
@@ -31,7 +32,7 @@ beforeAll(async () => {
     repos: createRepositoriesFromSeed(seed),
     publicOrigin: OWN_ORIGIN,
     frameAssetsDir,
-    logUsage: (entry) => logs.push(entry),
+    recordEvent: (event) => recorded.push(event),
     reportError: (err, context) => void reports.push({ err, context }),
   });
   await new Promise<void>((resolve) => {
@@ -40,9 +41,8 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 
-// 테스트마다 로그를 비운다 — 실행 순서에 기대지 않고 각 테스트가 자기 요청의 로그만 본다.
 beforeEach(() => {
-  logs.length = 0;
+  recorded.length = 0;
   reports.length = 0;
 });
 
@@ -100,7 +100,7 @@ describe('POST /api/chat — SSE 계약', () => {
     expect(source?.blocks).toContain(parsed.citedText);
   });
 
-  it('핸드오프 신호: 안내 조각 뒤 event: handoff{reason, summary} → done(end_turn). 인용은 없고 로그에 handoff가 남는다', async () => {
+  it('핸드오프 신호: 안내 조각 뒤 event: handoff{reason, summary} → done(end_turn). 인용은 없고 사건에 handoff가 남는다', async () => {
     const res = await post({ message: '[[handoff]] 카카오톡으로 청구서 알림을 보낼 수 있나요?', tenant: 'demo' });
     expect(res.status).toBe(200);
     const events = parseSSE(await res.text());
@@ -118,9 +118,7 @@ describe('POST /api/chat — SSE 계약', () => {
     const human = parseSSE(await (await post({ message: '[[handoff:needs_human]] 환불해 주세요', tenant: 'demo' })).text());
     expect(JSON.parse(human.find((e) => e.event === 'handoff')?.data ?? '{}')).toMatchObject({ reason: 'needs_human' });
 
-    const log = logs.find((l) => l.handoff === 'not_in_knowledge');
-    expect(log?.outcome).toBe('done');
-    expect(log?.citations).toBe(0);
+    expect(recorded[0]?.payload).toMatchObject({ outcome: 'done', handoff: 'not_in_knowledge', citations: 0 });
   });
 
   it('대화 id를 헤더로 주고, 같은 id로 다시 보내면 이전 턴이 history로 들어간다', async () => {
@@ -223,30 +221,54 @@ describe('POST /api/chat — SSE 계약', () => {
     });
   });
 
-  it('요청마다 사용량 로그를 남긴다 (정상은 TTFT·대화 id·지식 수·인용 수·handoff, 실패는 errorCode)', async () => {
+  it('엔진을 부른 /api/chat 요청당 정확히 1건 — 400·403·404·422는 남기지 않는다', async () => {
     await (await post({ message: '환불 정책 알려줘', tenant: 'demo' })).text();
     await (await post({ message: '[[fail:429]]', tenant: 'demo' })).text();
     await (await post({ message: '[[fail-mid]]', tenant: 'demo' })).text();
-    expect(logs).toHaveLength(3);
+    await (await post({ message: '씨발 환불해줘', tenant: 'demo' })).text();
+    await (await post({ message: '   ', tenant: 'demo' })).text();
+    await (await post({ message: '안녕', tenant: 'no-such-tenant' })).text();
+    await (await post({ message: '안녕', tenant: 'demo' }, { origin: 'http://localhost:5173' })).text();
+    expect(recorded.map((e) => e.payload.outcome)).toEqual(['done', 'error', 'error']);
+    expect(recorded.every((e) => e.type === 'chat_request' && e.tenantId === seed.tenant.id)).toBe(true);
 
-    const [ok, failedFirst, failedMid] = logs;
-    expect(ok).toMatchObject({ outcome: 'done', stopReason: 'end_turn', engine: 'mock', handoff: null });
-    expect(ok?.ttftMs).toBeTypeOf('number');
-    expect(ok?.conversationId).toBeTruthy();
-    expect(ok?.knowledgeItems).toBe(seed.knowledge.length);
-    // 목업은 자료가 있으면 인용 1건을 붙인다
-    expect(ok?.citations).toBe(1);
-    expect(failedFirst).toMatchObject({ outcome: 'error', errorCode: 'rate_limited' });
-    expect(failedMid).toMatchObject({ outcome: 'error', errorCode: 'upstream_unavailable' });
+    const [ok, failedFirst, failedMid] = recorded;
+    expect(ok).toMatchObject({
+      conversationId: expect.any(String),
+      ttftMs: expect.any(Number),
+      payload: {
+        stopReason: 'end_turn',
+        engine: 'mock',
+        handoff: null,
+        moderation: [],
+        knowledgeItems: seed.knowledge.length,
+        // 목업은 자료가 있으면 인용 1건을 붙인다
+        citations: 1,
+      },
+    });
+    expect(failedFirst).toMatchObject({ ttftMs: null, payload: { errorCode: 'rate_limited' } });
+    expect(failedMid).toMatchObject({ ttftMs: expect.any(Number), payload: { errorCode: 'upstream_unavailable' } });
     // 요율 제한·일시 장애는 예상된 실패라 보고 통로로 보내지 않는다
     expect(reports).toEqual([]);
+  });
+
+  it('사건에 질문·답 원문이 없다 — 직렬화한 사건 어디에도', async () => {
+    const question = '환불 정책 알려줘 원문표지-7731';
+    const answer = deltasOf(parseSSE(await (await post({ message: question, tenant: 'demo' })).text()));
+    const handoffQuestion = '[[handoff]] 카카오톡 알림 원문표지-7732';
+    await (await post({ message: handoffQuestion, tenant: 'demo' })).text();
+    expect(recorded).toHaveLength(2);
+
+    const serialized = JSON.stringify(recorded);
+    expect(answer.length).toBeGreaterThan(0);
+    for (const text of [question, answer, handoffQuestion, '원문표지']) expect(serialized).not.toContain(text);
   });
 
   it('메시지가 상한을 넘으면 400 message_too_long — 본문 32kb 상한과 별개의 비용 방어', async () => {
     const res = await post({ message: 'a'.repeat(MAX_MESSAGE_CHARS + 1), tenant: 'demo' });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'message_too_long' });
-    expect(logs).toEqual([]);
+    expect(recorded).toEqual([]);
   });
 
   it('계약 밖의 실패도 JSON 오류 본문이다 — JSON 아님 400, 32kb 초과 413, 모르는 경로 404', async () => {
@@ -283,14 +305,14 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
     };
   }
 
-  it('크레딧이 없는 테넌트는 402 insufficient_credits(재시도 불가·Retry-After 없음)이고 엔진을 부르지 않는다', async () => {
+  it('크레딧이 없는 테넌트는 402 insufficient_credits(재시도 불가·Retry-After 없음)이고 엔진을 부르지 않는다 — 사건도 없다', async () => {
     const captured = new CapturingEngine(new MockEngine(0));
     const app = createApp({
       engine: captured,
       repos: createRepositoriesFromSeed({ ...seed, initialCredits: 0 }),
       publicOrigin: OWN_ORIGIN,
       frameAssetsDir,
-      logUsage: (entry) => logs.push(entry),
+      recordEvent: (event) => recorded.push(event),
     });
     const { url, close } = await serve(app);
     try {
@@ -303,12 +325,43 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       expect(res.headers.get('retry-after')).toBeNull();
       expect(await res.json()).toEqual({ error: 'insufficient_credits', retryable: false });
       expect(captured.requests).toHaveLength(0);
+      expect(recorded).toEqual([]);
     } finally {
       await close();
     }
   });
 
-  it('라우트에서 던진 예외는 500 internal_error(JSON)로 답하고 보고 통로로 보낸다', async () => {
+  it('공개 키로 422·402를 20건씩 반복해도 사건 저장소는 그대로다 — 충전 뒤 답한 요청 1건만 남는다', async () => {
+    const repos = createRepositoriesFromSeed({ ...seed, initialCredits: 0 });
+    const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, reportError: () => undefined });
+    const { url, close } = await serve(app);
+    const everything = { from: new Date(0), to: new Date(Date.now() + 3_600_000) };
+    const send = async (message: string): Promise<number> => {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, tenant: 'demo' }),
+      });
+      await res.text();
+      return res.status;
+    };
+    try {
+      const statuses: Record<number, number> = {};
+      for (let i = 0; i < 20; i += 1) {
+        for (const status of [await send('씨발 환불해줘'), await send('요금제가 뭐가 있나요?')]) statuses[status] = (statuses[status] ?? 0) + 1;
+      }
+      expect(statuses).toEqual({ 402: 20, 422: 20 });
+      expect(await repos.events.counts(seed.tenant.id, everything)).toEqual([]);
+
+      await repos.credits.append(seed.tenant.id, { delta: 1, reason: 'adjustment', idempotencyKey: 'adj:events-test' });
+      expect(await send('요금제가 뭐가 있나요?')).toBe(200);
+      await expect.poll(() => repos.events.counts(seed.tenant.id, everything)).toEqual([{ type: 'chat_request', variant: null, count: 1 }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('라우트에서 던진 예외는 500 internal_error(JSON)로 답하고 보고 통로로 보낸다 — 사건은 남기지 않는다', async () => {
     const reported: { err: unknown; context?: Record<string, unknown> }[] = [];
     const repos = createRepositoriesFromSeed(seed);
     const app = createApp({
@@ -324,7 +377,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       },
       publicOrigin: OWN_ORIGIN,
       frameAssetsDir,
-      logUsage: () => undefined,
+      recordEvent: (event) => recorded.push(event),
       reportError: (err, context) => void reported.push({ err, context }),
     });
     const { url, close } = await serve(app);
@@ -339,13 +392,14 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       expect(reported).toHaveLength(1);
       expect((reported[0]?.err as Error).message).toBe('db down');
       expect(reported[0]?.context).toEqual({ where: 'express', method: 'POST', path: '/api/chat' });
+      expect(recorded).toEqual([]);
     } finally {
       await close();
     }
   });
 
-  it('클라이언트가 스트림 도중 끊으면 엔진의 signal이 abort되고 로그는 aborted 한 번, 대화는 만들어지지 않는다', async () => {
-    const entries: UsageLogEntry[] = [];
+  it('클라이언트가 스트림 도중 끊으면 엔진의 signal이 abort되고 사건은 aborted 한 번, 대화는 만들어지지 않는다', async () => {
+    const entries: AppEvent[] = [];
     const engine = new CapturingEngine(new MockEngine(30)); // 한 글자 30ms — 끊을 시간을 준다
     const repos = createRepositoriesFromSeed(seed);
     const app = createApp({
@@ -353,7 +407,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       repos,
       publicOrigin: OWN_ORIGIN,
       frameAssetsDir,
-      logUsage: (entry) => entries.push(entry),
+      recordEvent: (event) => entries.push(event),
       reportError: () => undefined,
     });
     const { url, close } = await serve(app);
@@ -372,11 +426,105 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       controller.abort();
 
       await expect.poll(() => entries.length, { timeout: 2_000 }).toBe(1);
-      expect(entries[0]).toMatchObject({ outcome: 'aborted', errorCode: null, stopReason: null });
+      expect(entries[0]).toMatchObject({ conversationId, payload: { outcome: 'aborted' } });
       expect(engine.requests.at(-1)?.signal.aborted).toBe(true);
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(entries).toHaveLength(1); // 두 번 기록하지 않는다
       expect(await repos.conversations.find(conversationId, seed.tenant.id)).toBeNull();
+    } finally {
+      await close();
+    }
+  });
+
+  it('TTFT는 공백이 아닌 첫 조각에서 잰다 — 줄바꿈만 내고 연결 신호로 끝난 턴은 표본이 아니다', async () => {
+    const entries: AppEvent[] = [];
+    const done: EngineEvent = {
+      type: 'done',
+      stopReason: 'end_turn',
+      refusalCategory: null,
+      model: 'scripted',
+      servedBy: 'scripted',
+      fallbackUsed: false,
+      usage: { inputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, outputTokens: 0 },
+    };
+    const scripted: AnswerEngine = {
+      name: 'scripted',
+      model: 'scripted',
+      async *stream({ message }) {
+        yield { type: 'delta', text: '\n' };
+        if (message === '줄바꿈 뒤 연결') {
+          yield { type: 'handoff', reason: 'needs_human', summary: null };
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          yield { type: 'delta', text: '답입니다' };
+        }
+        yield done;
+      },
+    };
+    const repos = createRepositoriesFromSeed(seed);
+    const app = createApp({
+      engine: scripted,
+      repos,
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      recordEvent: (event) => entries.push(event),
+      reportError: () => undefined,
+    });
+    const { url, close } = await serve(app);
+    const send = async (message: string): Promise<void> => {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, tenant: 'demo' }),
+      });
+      expect(res.status).toBe(200);
+      await res.text();
+    };
+    try {
+      await send('줄바꿈 뒤 연결');
+      await send('줄바꿈 뒤 답');
+      await expect.poll(() => entries.length, { timeout: 2_000 }).toBe(2);
+      const [blank, late] = entries;
+      expect(blank).toMatchObject({ ttftMs: null, payload: { outcome: 'done', handoff: 'needs_human' } });
+      const saved = await repos.conversations.find(blank?.conversationId ?? '', seed.tenant.id);
+      expect(saved?.messages.map((m) => m.role)).toEqual(['user']);
+      // 줄바꿈 조각은 바로 나가고 글자 조각은 60ms 뒤에 나간다 — 표본은 뒤쪽 시각이어야 한다
+      expect(late?.type === 'chat_request' ? late.ttftMs : null).toBeGreaterThanOrEqual(50);
+    } finally {
+      await close();
+    }
+  });
+
+  it('사건 저장이 실패해도 응답은 정상으로 끝나고, 실패는 보고 통로로 한 번 간다', async () => {
+    const reported: { err: unknown; context?: Record<string, unknown> }[] = [];
+    const repos = createRepositoriesFromSeed(seed);
+    const app = createApp({
+      engine: new MockEngine(0),
+      repos: {
+        ...repos,
+        events: {
+          record: () => Promise.reject(new Error('events table down')),
+          ttftSamples: (tenantId, window) => repos.events.ttftSamples(tenantId, window),
+          counts: (tenantId, window) => repos.events.counts(tenantId, window),
+        },
+      },
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      reportError: (err, context) => void reported.push({ err, context }),
+    });
+    const { url, close } = await serve(app);
+    try {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: '환불 정책 알려줘', tenant: 'demo' }),
+      });
+      expect(res.status).toBe(200);
+      expect(parseSSE(await res.text()).at(-1)).toEqual({ event: 'message', data: '[DONE]' });
+
+      await expect.poll(() => reported.length, { timeout: 2_000 }).toBe(1);
+      expect((reported[0]?.err as Error).message).toBe('events table down');
+      expect(reported[0]?.context).toEqual({ where: 'events', type: 'chat_request', tenantId: seed.tenant.id });
     } finally {
       await close();
     }
