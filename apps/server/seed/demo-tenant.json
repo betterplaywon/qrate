@@ -6,6 +6,7 @@
     "name": "마루인보이스",
     "allowedOrigins": ["http://localhost:5173", "http://127.0.0.1:5173"]
   },
+  "initialCredits": 100,
   "knowledge": [
     {
       "id": "faq:plans",

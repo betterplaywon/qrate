@@ -1,9 +1,11 @@
 import type { PrismaClient } from '../../generated/prisma/client.js';
-import type { SeedFile } from '../seed.js';
+import { INITIAL_CREDIT_KEY, type SeedFile } from '../seed.js';
+import { appendCredit } from './credits.js';
 
 /**
  * 시드 파일을 DB에 반영한다 — `prisma db seed`(prisma/seed.ts)와 Postgres 계약 테스트가 쓴다.
  * 몇 번을 돌려도 결과가 같다: 테넌트·지식은 upsert, 시드에서 빠진 지식은 지운다. 대화는 건드리지 않는다.
+ * 초기 크레딧은 멱등 키 seed:initial로 한 번만 들어간다 — 시드 파일의 숫자를 바꿔도 이미 지급한 테넌트는 바뀌지 않는다(원장은 고치지 않는다).
  */
 export async function applySeed(
   prisma: PrismaClient,
@@ -27,6 +29,9 @@ export async function applySeed(
           create: { tenantId: tenant.id, id: k.id, title: k.title, category: k.category, blocks: k.blocks },
           update: { title: k.title, category: k.category, blocks: k.blocks },
         });
+      }
+      if (seed.initialCredits > 0) {
+        await appendCredit(tx, tenant.id, { delta: seed.initialCredits, reason: 'seed', idempotencyKey: INITIAL_CREDIT_KEY });
       }
     },
     // 항목 수만큼 문장이 나간다(26개면 28문장). 기본 5초는 느린 CI에서 빠듯할 수 있다.

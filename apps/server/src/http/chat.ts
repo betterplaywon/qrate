@@ -14,7 +14,7 @@ import { reportToStderr, type ErrorReporter } from '../report.js';
 import { sseForEngineEvent } from './sse.js';
 
 // POST /api/chat — 대화 유스케이스(chat/service.ts)를 HTTP와 SSE로 옮기는 어댑터.
-// 여기서 정하는 것: 본문 모양·길이 검사(400), 결과 종류 → 상태 코드(404·422), 엔진 실패 코드 → 상태 코드(statusFor),
+// 여기서 정하는 것: 본문 모양·길이 검사(400), 결과 종류 → 상태 코드(404·422·402), 엔진 실패 코드 → 상태 코드(statusFor),
 // 첫 이벤트 전 실패 → HTTP 상태 + Retry-After, 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 요청 1건의 사용량 로그.
 
 /** 요청 1건의 결과 기록. W4에서 이벤트 로그(DB)로 옮기고, 지금은 stdout JSON 한 줄이다. */
@@ -110,6 +110,11 @@ export function createChatHandler({ chat, logUsage = logToStdout, reportError = 
     if (turn.status === 'blocked') {
       // 422: 요청 형식은 맞지만 내용 정책 위반. (400과 구분 — 면접 소재)
       res.status(422).json({ error: 'blocked_by_moderation', reasons: turn.reasons } satisfies ApiErrorBody);
+      return;
+    }
+    if (turn.status === 'insufficient_credits') {
+      // 402: 테넌트의 크레딧이 없다. 방문자가 고칠 수 없는 상태라 재시도 불가 — 위젯은 "운영자에게 알려 달라"고 안내한다.
+      res.status(402).json({ error: 'insufficient_credits', retryable: false } satisfies ApiErrorBody);
       return;
     }
 

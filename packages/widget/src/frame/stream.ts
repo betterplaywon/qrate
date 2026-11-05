@@ -43,7 +43,8 @@ export type ChatEvent =
   | { type: 'end'; stopReason: StopReason | null }
   /** 422 — 모더레이션 차단. 같은 메시지를 다시 보내도 같은 결과다. */
   | { type: 'blocked' }
-  | { type: 'failed'; stage: FailureStage; status: number | null; retryable: boolean; retryAfterMs: number | null };
+  /** code는 서버의 오류 본문 코드(계약 ApiErrorCode). 응답이 계약 모양이 아니거나 닿지 못했으면 null. */
+  | { type: 'failed'; stage: FailureStage; status: number | null; code: string | null; retryable: boolean; retryAfterMs: number | null };
 
 export interface StreamOptions {
   /** 대화 API의 기준 주소. 대화창은 같은 오리진이라 기본값 ''(상대 경로)을 쓴다. */
@@ -67,7 +68,7 @@ export async function* streamChat(
   opts: StreamOptions = {},
 ): AsyncGenerator<ChatEvent, void, undefined> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const lost: ChatEvent = { type: 'failed', stage: 'stream', status: null, retryable: true, retryAfterMs: null };
+  const lost: ChatEvent = { type: 'failed', stage: 'stream', status: null, code: null, retryable: true, retryAfterMs: null };
 
   let res: Response;
   try {
@@ -79,7 +80,7 @@ export async function* streamChat(
     });
   } catch {
     if (opts.signal?.aborted) return;
-    yield { type: 'failed', stage: 'connect', status: null, retryable: true, retryAfterMs: null };
+    yield { type: 'failed', stage: 'connect', status: null, code: null, retryable: true, retryAfterMs: null };
     return;
   }
 
@@ -92,8 +93,11 @@ export async function* streamChat(
   if (!res.ok || !res.body) {
     // 본문의 retryable이 기준이다. 본문이 계약의 오류 본문이 아니면(프록시 오류 페이지 등) 상태 코드로 짐작한다.
     let retryable = res.status === 429 || res.status === 503;
+    let code: string | null = null;
     try {
-      retryable = parseApiErrorBody(await res.json())?.retryable ?? retryable;
+      const body = parseApiErrorBody(await res.json());
+      retryable = body?.retryable ?? retryable;
+      code = body?.error ?? null;
     } catch {
       // JSON이 아니면 위의 짐작을 쓴다.
     }
@@ -101,6 +105,7 @@ export async function* streamChat(
       type: 'failed',
       stage: 'response',
       status: res.status,
+      code,
       retryable,
       retryAfterMs: retryable ? parseRetryAfter(res.headers.get('Retry-After')) : null,
     };
@@ -157,7 +162,7 @@ export async function* streamChat(
             break;
           case 'error':
             // 이 뒤에는 [DONE] 없이 연결이 끝난다(서버 계약). 재시도 여부는 서버가 정한다.
-            yield { type: 'failed', stage: 'stream', status: null, retryable: ev.retryable, retryAfterMs: null };
+            yield { type: 'failed', stage: 'stream', status: null, code: ev.code, retryable: ev.retryable, retryAfterMs: null };
             return;
         }
       }

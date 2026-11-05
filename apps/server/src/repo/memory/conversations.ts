@@ -1,5 +1,6 @@
 import { compareNewestFirst, decodeCursor, encodeCursor, isAfterCursor } from '../listing.js';
 import type { Conversation, ConversationPage, ConversationRepository, NewTurn } from '../types.js';
+import { appendCredit } from './credits.js';
 import { newHandoff, toMessage, toSummary } from './records.js';
 import { MemoryStore } from './store.js';
 
@@ -12,8 +13,10 @@ function lastMessages<T>(messages: T[], n: number | undefined): T[] {
 
 export class MemoryConversationRepository implements ConversationRepository {
   private readonly byId: Map<string, Conversation>;
+  private readonly store: MemoryStore;
 
   constructor(store: MemoryStore = new MemoryStore()) {
+    this.store = store;
     this.byId = store.conversations;
   }
 
@@ -55,5 +58,7 @@ export class MemoryConversationRepository implements ConversationRepository {
     if (turn.handoff) {
       conversation.handoffs.push(newHandoff({ source: 'model', reason: turn.handoff.reason, summary: turn.handoff.summary, contact: null }, now));
     }
+    // 차감은 턴과 함께. 같은 키가 이미 있으면 건너뛴다(중복 차감 없음).
+    if (turn.charge) appendCredit(this.store, tenantId, turn.charge);
   }
 }

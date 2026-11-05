@@ -262,6 +262,40 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect((await ctx.repos.conversations.find(existing, t))?.handoffs).toHaveLength(1);
     });
 
+    it('크레딧: 잔액은 원장 합계, 같은 멱등 키는 한 번만, 턴 차감은 턴 저장과 함께 들어가고 중복 키는 건너뛴다', async () => {
+      const t = ctx.otherTenantId; // 시드 지급이 없는 테넌트 — 0에서 시작
+      const credits = ctx.repos.credits;
+      expect(await credits.balance(t)).toBe(0);
+
+      const first = await credits.append(t, { delta: 5, reason: 'adjustment', idempotencyKey: 'adj:contract-grant' });
+      expect(first.duplicate).toBe(false);
+      expect(first.entry).toMatchObject({ tenantId: t, delta: 5, reason: 'adjustment', idempotencyKey: 'adj:contract-grant' });
+      const again = await credits.append(t, { delta: 5, reason: 'adjustment', idempotencyKey: 'adj:contract-grant' });
+      expect(again.duplicate).toBe(true);
+      expect(again.entry.id).toBe(first.entry.id);
+      expect(await credits.balance(t)).toBe(5);
+
+      // 답이 있는 턴은 -1. 같은 턴이 다시 저장돼도(같은 키) 한 번만 빠진다
+      const id = randomUUID();
+      const charged = { ...turn('질문', '답'), charge: { delta: -1, reason: 'turn' as const, idempotencyKey: `turn:${id}` } };
+      await ctx.repos.conversations.appendTurn(id, t, charged);
+      expect(await credits.balance(t)).toBe(4);
+      await ctx.repos.conversations.appendTurn(id, t, charged);
+      expect(await credits.balance(t)).toBe(4);
+      expect((await ctx.repos.conversations.find(id, t))?.messages).toHaveLength(4); // 턴은 두 번 저장됐다 — 차감만 한 번
+      // 답이 없는 턴(거절)은 charge가 null이라 빠지지 않는다
+      await ctx.repos.conversations.appendTurn(id, t, { ...turn('거절될 질문', null), charge: null });
+      expect(await credits.balance(t)).toBe(4);
+
+      // 원장은 최근순, 커서로 이어 받는다. 다른 테넌트의 원장에는 없다
+      const p1 = await credits.list(t, { limit: 1 });
+      expect(p1.items.map((e) => e.reason)).toEqual(['turn']);
+      const p2 = await credits.list(t, { limit: 1, cursor: p1.nextCursor });
+      expect(p2.items.map((e) => e.reason)).toEqual(['adjustment']);
+      expect(p2.nextCursor).toBeNull();
+      expect((await credits.list(ctx.tenantId, { limit: 100 })).items.some((e) => e.idempotencyKey === 'adj:contract-grant')).toBe(false);
+    });
+
     it('돌려준 객체를 바꿔도 저장소는 변하지 않는다', async () => {
       const first = await ctx.repos.knowledge.listByTenant(ctx.tenantId);
       first[0]?.blocks.push('oops');

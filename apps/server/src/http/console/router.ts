@@ -1,4 +1,10 @@
-import { type ApiErrorBody, type ConsoleSessionResponse, type ConversationListResponse, type HandoffListResponse } from '@qrate/contracts';
+import {
+  type ApiErrorBody,
+  type ConsoleSessionResponse,
+  type ConversationListResponse,
+  type CreditsResponse,
+  type HandoffListResponse,
+} from '@qrate/contracts';
 import { updateHandoffSchema } from '@qrate/contracts/schemas';
 import express, { Router } from 'express';
 import type { SessionCodec } from '../../console/session.js';
@@ -7,7 +13,7 @@ import type { Repositories } from '../../repo/types.js';
 import { jsonRateLimit } from '../rate-limit.js';
 import { authenticate } from './auth.js';
 import { sessionCookie } from './cookie.js';
-import { toDetailDto, toQueueDto, toSummaryDto } from './dto.js';
+import { toCreditDto, toDetailDto, toQueueDto, toSummaryDto } from './dto.js';
 import { parseListQuery, withCursorErrors } from './query.js';
 import { requireSession, tenantIdOf } from './session.js';
 
@@ -106,6 +112,17 @@ export function createConsoleRouter({ repos, publicOrigin, sessions, loginAttemp
     if (!page) return;
     res.setHeader('Cache-Control', 'no-store');
     res.json({ items: page.items.map(toQueueDto), nextCursor: page.nextCursor } satisfies HandoffListResponse);
+  });
+
+  router.get('/credits', session, async (req, res) => {
+    const query = parseListQuery(req.query, res);
+    if (!query) return;
+    const tenantId = tenantIdOf(res);
+    const page = await withCursorErrors(res, () => repos.credits.list(tenantId, { limit: query.limit, cursor: query.cursor }));
+    if (!page) return;
+    const balance = await repos.credits.balance(tenantId);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ balance, items: page.items.map(toCreditDto), nextCursor: page.nextCursor } satisfies CreditsResponse);
   });
 
   router.patch('/handoffs/:id', session, ownOrigin, json, async (req, res) => {

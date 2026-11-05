@@ -24,8 +24,9 @@ type Failure = Extract<ChatEvent, { type: 'failed' }>;
 
 type Handlers = { [K in ChatEvent['type']]: (ev: Extract<ChatEvent, { type: K }>) => void };
 
-/** 실패 단계와 재시도 가능 여부 → 안내 문구. */
+/** 실패 단계와 재시도 가능 여부 → 안내 문구. 방문자가 고칠 수 없는 상태(크레딧 소진)는 운영자에게 알리라고 따로 말한다. */
 export function failureText(ev: Failure): string {
+  if (ev.code === 'insufficient_credits') return '지금은 상담을 이용할 수 없어요. 사이트 운영자에게 알려 주세요.';
   if (ev.stage === 'connect') return '서버에 연결할 수 없어요.';
   if (ev.stage === 'response') return ev.retryable ? '지금은 답변할 수 없어요.' : `오류가 발생했어요. (${ev.status ?? '?'})`;
   return ev.retryable ? '답변이 중단됐어요.' : '답변 중 오류가 발생했어요.';

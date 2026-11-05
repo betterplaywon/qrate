@@ -26,6 +26,8 @@ export interface ChatTurnInput {
 export type ChatTurn =
   | { status: 'unknown_tenant' }
   | { status: 'blocked'; reasons: string[] }
+  /** 테넌트의 크레딧이 0 이하. 모델을 부르기 전에 막는다(비용 0). 운영자가 충전해야 풀린다. */
+  | { status: 'insufficient_credits' }
   | {
       status: 'accepted';
       tenantId: string;
@@ -107,6 +109,12 @@ export function createChatService({ engine, repos, reportError = reportToStderr 
       const moderation = moderateInput(message);
       if (moderation.level === 'block') return { status: 'blocked', reasons: moderation.reasons };
 
+      // 크레딧(W4 결정): 턴당 1. 잔액이 0 이하면 모델을 부르지 않는다. 차감은 답이 끝난 뒤 턴 저장과 같은 트랜잭션에서(아래 charge).
+      // 동시에 들어온 두 턴이 모두 통과해 잔액이 음수가 될 수 있다 — 위젯은 한 번에 한 턴만 보내고, 다음 턴부터 막히므로 받아들인다(ADR-0007).
+      if ((await repos.credits.balance(tenant.id)) <= 0) return { status: 'insufficient_credits' };
+      // 이 턴의 차감 멱등 키. 턴마다 새 값이라 중복 차감은 없고, 같은 턴이 두 번 저장되는 일이 있어도 한 번만 빠진다.
+      const turnId = randomUUID();
+
       // 대화: 위젯이 보낸 id가 이 테넌트의 대화면 이어 가고, 없거나 다른 테넌트 것이면 새 id로 시작한다.
       // 새 대화는 지금 만들지 않는다 — 첫 턴이 저장될 때(appendTurn) 생긴다. 그래서 첫 이벤트 전에 실패하거나 끊긴 요청은
       // 빈 대화를 남기지 않는다. 공개 키로 요청을 반복해도 저장소가 늘지 않는다.
@@ -127,7 +135,7 @@ export function createChatService({ engine, repos, reportError = reportToStderr 
         moderation,
         knowledgeItems: knowledge.length,
         events: recordTurn(events, async ({ answer, handoff }) => {
-          // 질문은 받은 시각으로, 답변은 저장 시각으로. 구현이 이 한 호출을 한 트랜잭션으로 쓴다.
+          // 질문은 받은 시각으로, 답변은 저장 시각으로. 구현이 이 한 호출을 한 트랜잭션으로 쓴다 — 차감도 그 안에서.
           // 저장이 실패해도 답은 이미 전달됐다 — 스트림은 정상으로 끝내고 실패는 운영자에게만 알린다.
           // 예외를 흘리면 http 계층이 상류(모델) 오류로 보고하고, 이미 과금된 호출의 사용량 기록까지 잃는다.
           try {
@@ -135,6 +143,8 @@ export function createChatService({ engine, repos, reportError = reportToStderr 
               question: { role: 'user', content: message, createdAt: receivedAt },
               answer: answer ? { role: 'assistant', content: answer } : null,
               handoff,
+              // 답이 있는 턴만 차감한다. 거절(답 없음)·실패(여기 안 옴)는 0.
+              charge: answer ? { delta: -1, reason: 'turn', idempotencyKey: `turn:${turnId}` } : null,
             });
           } catch (err) {
             reportError(err, { where: 'appendTurn', tenantId: tenant.id, conversationId });

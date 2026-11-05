@@ -11,6 +11,7 @@ export const keys = {
   conversations: ['conversations'] as const,
   conversation: (id: string) => ['conversation', id] as const,
   handoffs: (status: HandoffStatus) => ['handoffs', status] as const,
+  credits: ['credits'] as const,
 };
 
 /** 세션 조회. 401은 오류가 아니라 "로그인 필요"(null)다. */
@@ -66,6 +67,15 @@ export function useHandoffs(status: HandoffStatus) {
   return useInfiniteQuery({
     queryKey: keys.handoffs(status),
     queryFn: ({ pageParam }) => api.handoffs(status, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+  });
+}
+
+export function useCredits() {
+  return useInfiniteQuery({
+    queryKey: keys.credits,
+    queryFn: ({ pageParam }) => api.credits(pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   });

@@ -32,6 +32,8 @@ describe.skipIf(!url)('Postgres 저장소', () => {
     await prisma.conversation.deleteMany();
     await applySeed(prisma, seed);
     await prisma.knowledgeItem.deleteMany({ where: { tenantId: OTHER_TENANT.id } });
+    // 계약 테스트의 크레딧 검증은 0에서 시작하고 고정 멱등 키를 쓴다 — 지난 실행의 원장 행을 비운다(테스트 DB는 실행 사이에 남는다)
+    await prisma.creditLedger.deleteMany({ where: { tenantId: OTHER_TENANT.id } });
     await prisma.tenant.upsert({ where: { id: OTHER_TENANT.id }, create: { ...OTHER_TENANT, allowedOrigins: [] }, update: {} });
   });
 
@@ -99,6 +101,25 @@ describe.skipIf(!url)('Postgres 저장소', () => {
       expect(await key()).toBeNull();
     });
 
+    it('같은 멱등 키로 동시에 다섯 번 넣어도 원장에는 한 줄 — UNIQUE 제약 + skipDuplicates', async () => {
+      const repos = createPrismaRepositories(prisma);
+      const key = `adj:${randomUUID()}`;
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () => repos.credits.append(OTHER_TENANT.id, { delta: 3, reason: 'adjustment', idempotencyKey: key })),
+      );
+      expect(results.filter((r) => !r.duplicate)).toHaveLength(1);
+      expect(new Set(results.map((r) => r.entry.id)).size).toBe(1);
+      expect(await prisma.creditLedger.count({ where: { tenantId: OTHER_TENANT.id, idempotencyKey: key } })).toBe(1);
+    });
+
+    it('시드의 초기 크레딧은 한 번만 — 다시 시드해도, 숫자를 바꿔도 원장은 그대로', async () => {
+      await applySeed(prisma, seed);
+      const before = await createPrismaRepositories(prisma).credits.balance(seed.tenant.id);
+      await applySeed(prisma, { ...seed, initialCredits: 999 });
+      expect(await createPrismaRepositories(prisma).credits.balance(seed.tenant.id)).toBe(before);
+      expect(await prisma.creditLedger.count({ where: { tenantId: seed.tenant.id, reason: 'seed' } })).toBe(1);
+    });
+
     it('시드는 몇 번을 넣어도 같다 — 바뀐 항목은 덮어쓰고, 빠진 항목은 지운다', async () => {
       const count = () => prisma.knowledgeItem.count({ where: { tenantId: seed.tenant.id } });
       await applySeed(prisma, seed);
@@ -106,7 +127,7 @@ describe.skipIf(!url)('Postgres 저장소', () => {
 
       const [first, ...rest] = seed.knowledge;
       if (!first) throw new Error('시드가 비어 있다');
-      await applySeed(prisma, { tenant: seed.tenant, knowledge: [{ ...first, title: '바뀐 제목' }, ...rest.slice(1)] });
+      await applySeed(prisma, { ...seed, knowledge: [{ ...first, title: '바뀐 제목' }, ...rest.slice(1)] });
       expect(await count()).toBe(seed.knowledge.length - 1);
       const changed = await prisma.knowledgeItem.findUnique({ where: { tenantId_id: { tenantId: seed.tenant.id, id: first.id } } });
       expect(changed?.title).toBe('바뀐 제목');

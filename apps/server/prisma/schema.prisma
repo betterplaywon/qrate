@@ -132,20 +132,28 @@ model Handoff {
   @@index([conversationId, createdAt])
 }
 
-// 크레딧 과금(W4). idempotencyKey의 UNIQUE 제약이 멱등 처리의 핵심:
-// 같은 결제/차감 요청이 네트워크 재시도로 두 번 도착해도,
-// 두 번째 INSERT는 제약 위반으로 실패하므로 잔액이 두 번 움직일 수 없다.
-model CreditLedger {
-  id             String   @id @default(cuid())
-  tenantId       String
-  tenant         Tenant   @relation(fields: [tenantId], references: [id])
-  delta          Int // 충전 +, 차감 -
-  reason         String
-  idempotencyKey String   @unique
-  // [권고/W4 전 결정] 전역 unique는 테넌트가 달라도 같은 키면 충돌한다.
-  // 클라이언트가 키를 만드는 구조라면 @@unique([tenantId, idempotencyKey])가 안전하다. (ADR 후보)
-  createdAt      DateTime @default(now())
+// 크레딧 원장(W4 결정 2026-11-05). 잔액은 이 표의 delta 합계다 — 캐시 열은 두지 않는다(필요가 보이면 W6 부하 때).
+// (tenantId, idempotencyKey)의 UNIQUE 제약이 멱등 처리의 핵심: 같은 충전·차감 요청이 네트워크 재시도로 두 번 도착해도
+// 두 번째 INSERT는 제약 위반(또는 skipDuplicates)으로 들어가지 않아 잔액이 두 번 움직일 수 없다.
+// 키의 범위를 테넌트로 둔 이유: 충전 요청 키는 클라이언트(콘솔)가 만들어 다른 테넌트가 같은 값을 보낼 수 있다.
+// 키의 출처는 둘이고 접두사로 구분한다 — `seed:` 초기 지급, `turn:<턴 id>` 답변 차감, `topup:<주문 id>` 충전(제공자 승인), 그 밖 `adj:`.
+enum CreditReason {
+  seed
+  topup
+  turn
+  adjustment
+}
 
+model CreditLedger {
+  id             String       @id @default(cuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  delta          Int // 충전 +, 차감 -
+  reason         CreditReason
+  idempotencyKey String
+  createdAt      DateTime     @default(now())
+
+  @@unique([tenantId, idempotencyKey])
   @@index([tenantId, createdAt])
 }
 
