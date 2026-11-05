@@ -100,7 +100,7 @@ run.json의 feature(또는 `--feature`)에 해당하는 여정 `scripts/journeys
 - `chat-N.sse.txt` — 위젯이 받은 `POST /api/chat` 응답 원문(상태줄·헤더·SSE 이벤트 전부: delta 조각, event: citation/handoff/done, `data: [DONE]`). `handoff-N.json.txt` — `POST /api/handoff` 응답. 페이지 안에서 응답 복제본을 읽어 남긴 것이라 위젯이 실제로 받은 바이트와 같다.
 - `network.jsonl` — 서버(8787)로 간 요청·응답 메타(메서드·URL·요청 문서·상태·CSP/cache-control/X-Conversation-Id 헤더·요청 본문).
 - `console-*.txt` — 부수 효과를 콘솔 API로 다시 읽은 응답(상태·헤더·본문).
-- `browser-console.log` — 모든 페이지의 콘솔 메시지. `result.json` — 단계 목록과 결과, 파일 목록. `run.json`·`doctor.json`·`server.log`·`demo-5173.log`·`demo-5174.log` — 인스턴스 기록(server.log에는 사건마다 JSON 한 줄이 남는다 — 테넌트를 찾은 `/api/chat` 요청마다 `{"type":"chat_request",…}`(ttftMs, payload에 outcome·엔진·인용 수·핸드오프, 메시지 원문 없음), 위젯 열림마다 `{"type":"widget_open",…}`. 서버가 `NODE_ENV` 없이 떠서 찍힌다. 같은 사건이 메모리 저장소의 이벤트 로그에 들어가 콘솔 지표가 된다).
+- `browser-console.log` — 모든 페이지의 콘솔 메시지. `result.json` — 단계 목록과 결과, 파일 목록. `run.json`·`doctor.json`·`server.log`·`demo-5173.log`·`demo-5174.log` — 인스턴스 기록(server.log에는 사건마다 JSON 한 줄이 남는다 — 엔진을 부른 `/api/chat` 요청마다 `{"type":"chat_request",…}`(차단 422·크레딧 부족 402는 남지 않는다)(ttftMs, payload에 outcome·엔진·인용 수·핸드오프, 메시지 원문 없음), 위젯 열림마다 `{"type":"widget_open",…}`. 서버가 `NODE_ENV` 없이 떠서 찍힌다. 같은 사건이 메모리 저장소의 이벤트 로그에 들어가 콘솔 지표가 된다).
 
 증거의 기준:
 

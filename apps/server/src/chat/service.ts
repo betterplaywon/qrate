@@ -25,10 +25,9 @@ export interface ChatTurnInput {
 
 export type ChatTurn =
   | { status: 'unknown_tenant' }
-  /** 거절 결과도 tenantId를 싣는다 — 호출자가 거절을 그 테넌트의 chat_request 사건으로 남긴다(http/chat.ts). */
-  | { status: 'blocked'; tenantId: string; reasons: string[] }
+  | { status: 'blocked'; reasons: string[] }
   /** 테넌트의 크레딧이 0 이하. 모델을 부르기 전에 막는다(비용 0). 운영자가 충전해야 풀린다. */
-  | { status: 'insufficient_credits'; tenantId: string }
+  | { status: 'insufficient_credits' }
   | {
       status: 'accepted';
       tenantId: string;
@@ -108,17 +107,17 @@ export function createChatService({ engine, repos, reportError = reportToStderr 
       if (!tenant) return { status: 'unknown_tenant' };
 
       const moderation = moderateInput(message);
-      if (moderation.level === 'block') return { status: 'blocked', tenantId: tenant.id, reasons: moderation.reasons };
+      if (moderation.level === 'block') return { status: 'blocked', reasons: moderation.reasons };
 
       // 크레딧(W4 결정): 턴당 1. 잔액이 0 이하면 모델을 부르지 않는다. 차감은 답이 끝난 뒤 턴 저장과 같은 트랜잭션에서(아래 charge).
       // 동시에 들어온 두 턴이 모두 통과해 잔액이 음수가 될 수 있다 — 위젯은 한 번에 한 턴만 보내고, 다음 턴부터 막히므로 받아들인다(ADR-0007).
-      if ((await repos.credits.balance(tenant.id)) <= 0) return { status: 'insufficient_credits', tenantId: tenant.id };
+      if ((await repos.credits.balance(tenant.id)) <= 0) return { status: 'insufficient_credits' };
       // 이 턴의 차감 멱등 키. 턴마다 새 값이라 중복 차감은 없고, 같은 턴이 두 번 저장되는 일이 있어도 한 번만 빠진다.
       const turnId = randomUUID();
 
       // 대화: 위젯이 보낸 id가 이 테넌트의 대화면 이어 가고, 없거나 다른 테넌트 것이면 새 id로 시작한다.
       // 새 대화는 지금 만들지 않는다 — 첫 턴이 저장될 때(appendTurn) 생긴다. 그래서 첫 이벤트 전에 실패하거나 끊긴 요청은
-      // 빈 대화를 남기지 않는다. 공개 키로 요청을 반복해도 저장소가 늘지 않는다.
+      // 빈 대화를 남기지 않는다. 공개 키로 요청을 반복해도 대화가 늘지 않는다(사건은 엔진을 부른 요청마다 한 건 — http/chat.ts).
       const existing = requestedId
         ? await repos.conversations.find(requestedId, tenant.id, { lastMessages: HISTORY_MESSAGES })
         : null;

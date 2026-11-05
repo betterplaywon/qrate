@@ -269,14 +269,6 @@ export interface ConversationOutcome {
 // payload와 그 안의 타입은 interface가 아니라 type 별칭이다 — Prisma의 Json 입력(인덱스 시그니처)에 그대로 대입되게.
 // 자유 문자열 필드를 두지 않는다: 문자열은 엔진·모델 이름, 규칙 id, 열거값뿐이라 질문·답 원문이 들어갈 자리가 없다.
 
-/** 조기 거부(모델을 부르기 전). 대화도 TTFT도 없다. */
-export type ChatRejectedPayload =
-  /** 422. reasons는 걸린 규칙 id(block:profanity) — 패턴·원문이 아니다. */
-  | { outcome: 'blocked'; reasons: string[] }
-  /** 402. */
-  | { outcome: 'insufficient_credits' };
-
-/** 수락된 요청의 엔진 실행 사실. */
 export type EngineRunFacts = {
   engine: string;
   model: string;
@@ -290,7 +282,7 @@ export type EngineRunFacts = {
   moderation: string[];
 };
 
-export type ChatAcceptedPayload =
+export type ChatRequestPayload =
   | (EngineRunFacts & {
       outcome: 'done';
       stopReason: StopReason | null;
@@ -310,14 +302,16 @@ type EventBase = {
 };
 
 /**
- * POST /api/chat 요청 하나 = 정확히 한 건(테넌트를 찾은 요청만). 쓰는 곳은 http/chat.ts 하나다.
- * 거절이면 대화·TTFT가 없다는 것을 타입이 강제한다. 수락된 턴의 conversationId는 DB에 없을 수 있다(실패·중단 턴은 저장 안 됨).
+ * 엔진을 부른 POST /api/chat 요청(테넌트를 찾고 모더레이션·크레딧을 통과한 요청)당 정확히 한 건. 쓰는 곳은 http/chat.ts 하나이고,
+ * 거절(422·402)을 남기지 않는 이유도 거기 있다. conversationId는 DB에 없을 수 있다(실패·중단 턴은 저장 안 됨).
  */
-export type ChatRequestEvent = EventBase & { type: 'chat_request' } & (
-    | { conversationId: null; ttftMs: null; payload: ChatRejectedPayload }
-    /** ttftMs: 요청 수신 → 첫 delta 전송(ms). 첫 조각 전에 끝났으면 null. */
-    | { conversationId: string; ttftMs: number | null; payload: ChatAcceptedPayload }
-  );
+export type ChatRequestEvent = EventBase & {
+  type: 'chat_request';
+  conversationId: string;
+  /** 요청 수신 → 첫 delta 전송(ms). 첫 조각 전에 끝났으면 null. */
+  ttftMs: number | null;
+  payload: ChatRequestPayload;
+};
 
 /** 대화창이 POST /api/events로 보낸 사건. payload는 서버가 만드는 빈 객체 — 요청 본문에서 아무것도 옮기지 않는다. */
 export type WidgetEvent = EventBase & {
@@ -334,7 +328,6 @@ export interface TimeWindow {
   to: Date;
 }
 
-/** (종류, 변형)별 사건 수. */
 export interface EventCount {
   /** 저장된 종류 문자열. 다른 버전의 코드가 쓴 종류도 그대로 온다(type은 enum이 아니다 — schema.prisma). */
   type: string;

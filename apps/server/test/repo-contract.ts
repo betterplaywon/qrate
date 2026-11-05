@@ -440,14 +440,6 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
         answered(120, at('2001-01-08T00:00:00Z')),
         answered(80, at('2001-01-10T12:00:00Z')),
         answered(null, at('2001-01-11T00:00:00Z')),
-        {
-          type: 'chat_request',
-          tenantId: t,
-          createdAt: at('2001-01-12T00:00:00Z'),
-          conversationId: null,
-          ttftMs: null,
-          payload: { outcome: 'blocked', reasons: ['block:profanity'] },
-        },
         opened(at('2001-01-09T00:00:00Z')),
         opened(at('2001-01-14T23:59:59.999Z')),
         answered(999, at('2001-01-07T23:59:59.999Z')),
@@ -460,7 +452,7 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
 
       expect((await ctx.repos.events.ttftSamples(t, window)).sort((a, b) => a - b)).toEqual([80, 120]);
       expect(await ctx.repos.events.counts(t, window)).toEqual([
-        { type: 'chat_request', variant: null, count: 4 },
+        { type: 'chat_request', variant: null, count: 3 },
         { type: 'widget_open', variant: null, count: 2 },
       ]);
       expect(await ctx.repos.events.ttftSamples(ctx.otherTenantId, window)).toEqual([997]);

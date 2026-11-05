@@ -5,18 +5,21 @@ import type { ChatService } from '../chat/service.js';
 import { asEngineError, type EngineError, type EngineErrorCode, type EngineEvent, type HandoffReason } from '../engine/types.js';
 import type { EventSink } from '../events/sink.js';
 import { reportToStderr, type ErrorReporter } from '../report.js';
-import type { ChatAcceptedPayload, ChatRejectedPayload, EngineRunFacts } from '../repo/types.js';
+import type { ChatRequestPayload, EngineRunFacts } from '../repo/types.js';
 import { sseForEngineEvent } from './sse.js';
 
 // POST /api/chat — 대화 유스케이스(chat/service.ts)를 HTTP와 SSE로 옮기는 어댑터.
 // 여기서 정하는 것: 본문 모양·길이 검사(400), 결과 종류 → 상태 코드(404·422·402), 엔진 실패 코드 → 상태 코드(statusFor),
-// 첫 이벤트 전 실패 → HTTP 상태 + Retry-After, 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 요청 1건의 chat_request 사건.
+// 첫 이벤트 전 실패 → HTTP 상태 + Retry-After, 그 뒤 실패 → event: error, 클라이언트 끊김 → 엔진 중단, 엔진을 부른 요청 1건의 chat_request 사건.
 
 type DoneEvent = Extract<EngineEvent, { type: 'done' }>;
 
 export interface ChatHandlerDeps {
   chat: ChatService;
-  /** 테넌트를 찾은 요청마다 chat_request 사건 정확히 한 건. app.ts가 기본값(저장소 통로)을 넣는다. */
+  /**
+   * 엔진을 부른 요청마다 chat_request 사건 정확히 한 건. 거절(422·402)은 남기지 않는다 — 모델을 부르지 않아 비용이 0이고
+   * /api/chat에는 요율 제한이 없어, 남기면 공개 키만으로 행을 무제한으로 만들 수 있다. app.ts가 기본값(저장소 통로)을 넣는다.
+   */
   recordEvent: EventSink;
   /** 예상 밖의 엔진 실패(인증·잘못된 요청·미분류)의 보고 통로. 요율 제한·일시 장애는 chat_request 사건으로 충분해 보내지 않는다. */
   reportError?: ErrorReporter;
@@ -67,9 +70,6 @@ export function createChatHandler({ chat, recordEvent, reportError = reportToStd
     const abort = new AbortController();
     res.on('close', () => abort.abort());
 
-    const recordRejected = (tenantId: string, payload: ChatRejectedPayload): void => {
-      recordEvent({ type: 'chat_request', tenantId, conversationId: null, createdAt: receivedAt, ttftMs: null, payload });
-    };
     const turn = await chat.start({ tenantKey, message, conversationId: requestedConversationId, signal: abort.signal });
     if (turn.status === 'unknown_tenant') {
       res.status(404).json({ error: 'unknown_tenant' } satisfies ApiErrorBody);
@@ -78,13 +78,11 @@ export function createChatHandler({ chat, recordEvent, reportError = reportToStd
     if (turn.status === 'blocked') {
       // 422: 요청 형식은 맞지만 내용 정책 위반. (400과 구분 — 면접 소재)
       res.status(422).json({ error: 'blocked_by_moderation', reasons: turn.reasons } satisfies ApiErrorBody);
-      recordRejected(turn.tenantId, { outcome: 'blocked', reasons: turn.reasons });
       return;
     }
     if (turn.status === 'insufficient_credits') {
       // 402: 테넌트의 크레딧이 없다. 방문자가 고칠 수 없는 상태라 재시도 불가 — 위젯은 "운영자에게 알려 달라"고 안내한다.
       res.status(402).json({ error: 'insufficient_credits', retryable: false } satisfies ApiErrorBody);
-      recordRejected(turn.tenantId, { outcome: 'insufficient_credits' });
       return;
     }
 
@@ -101,7 +99,7 @@ export function createChatHandler({ chat, recordEvent, reportError = reportToStd
       handoff,
       moderation: turn.moderation.level === 'warn' ? turn.moderation.reasons : [],
     });
-    const finish = (payload: ChatAcceptedPayload): void => {
+    const finish = (payload: ChatRequestPayload): void => {
       recordEvent({ type: 'chat_request', tenantId: turn.tenantId, conversationId: turn.conversationId, createdAt: receivedAt, ttftMs, payload });
     };
     const report = (e: EngineError): void => {

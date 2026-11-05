@@ -220,7 +220,7 @@ describe('POST /api/chat — SSE 계약', () => {
     });
   });
 
-  it('테넌트를 찾은 /api/chat 요청당 정확히 1건 — 400·403·404는 남기지 않는다', async () => {
+  it('엔진을 부른 /api/chat 요청당 정확히 1건 — 400·403·404·422는 남기지 않는다', async () => {
     await (await post({ message: '환불 정책 알려줘', tenant: 'demo' })).text();
     await (await post({ message: '[[fail:429]]', tenant: 'demo' })).text();
     await (await post({ message: '[[fail-mid]]', tenant: 'demo' })).text();
@@ -228,10 +228,10 @@ describe('POST /api/chat — SSE 계약', () => {
     await (await post({ message: '   ', tenant: 'demo' })).text();
     await (await post({ message: '안녕', tenant: 'no-such-tenant' })).text();
     await (await post({ message: '안녕', tenant: 'demo' }, { origin: 'http://localhost:5173' })).text();
-    expect(recorded.map((e) => e.payload.outcome)).toEqual(['done', 'error', 'error', 'blocked']);
+    expect(recorded.map((e) => e.payload.outcome)).toEqual(['done', 'error', 'error']);
     expect(recorded.every((e) => e.type === 'chat_request' && e.tenantId === seed.tenant.id)).toBe(true);
 
-    const [ok, failedFirst, failedMid, blocked] = recorded;
+    const [ok, failedFirst, failedMid] = recorded;
     expect(ok).toMatchObject({
       conversationId: expect.any(String),
       ttftMs: expect.any(Number),
@@ -247,7 +247,6 @@ describe('POST /api/chat — SSE 계약', () => {
     });
     expect(failedFirst).toMatchObject({ ttftMs: null, payload: { errorCode: 'rate_limited' } });
     expect(failedMid).toMatchObject({ ttftMs: expect.any(Number), payload: { errorCode: 'upstream_unavailable' } });
-    expect(blocked).toMatchObject({ conversationId: null, ttftMs: null, payload: { reasons: ['block:profanity'] } });
     // 요율 제한·일시 장애는 예상된 실패라 보고 통로로 보내지 않는다
     expect(reports).toEqual([]);
   });
@@ -257,8 +256,7 @@ describe('POST /api/chat — SSE 계약', () => {
     const answer = deltasOf(parseSSE(await (await post({ message: question, tenant: 'demo' })).text()));
     const handoffQuestion = '[[handoff]] 카카오톡 알림 원문표지-7732';
     await (await post({ message: handoffQuestion, tenant: 'demo' })).text();
-    await (await post({ message: '씨발 원문표지-7733', tenant: 'demo' })).text();
-    expect(recorded).toHaveLength(3);
+    expect(recorded).toHaveLength(2);
 
     const serialized = JSON.stringify(recorded);
     expect(answer.length).toBeGreaterThan(0);
@@ -306,7 +304,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
     };
   }
 
-  it('크레딧이 없는 테넌트는 402 insufficient_credits(재시도 불가·Retry-After 없음)이고 엔진을 부르지 않는다', async () => {
+  it('크레딧이 없는 테넌트는 402 insufficient_credits(재시도 불가·Retry-After 없음)이고 엔진을 부르지 않는다 — 사건도 없다', async () => {
     const captured = new CapturingEngine(new MockEngine(0));
     const app = createApp({
       engine: captured,
@@ -326,16 +324,37 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       expect(res.headers.get('retry-after')).toBeNull();
       expect(await res.json()).toEqual({ error: 'insufficient_credits', retryable: false });
       expect(captured.requests).toHaveLength(0);
-      expect(recorded).toEqual([
-        {
-          type: 'chat_request',
-          tenantId: seed.tenant.id,
-          conversationId: null,
-          createdAt: expect.any(Date),
-          ttftMs: null,
-          payload: { outcome: 'insufficient_credits' },
-        },
-      ]);
+      expect(recorded).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('공개 키로 422·402를 20건씩 반복해도 사건 저장소는 그대로다 — 충전 뒤 답한 요청 1건만 남는다', async () => {
+    const repos = createRepositoriesFromSeed({ ...seed, initialCredits: 0 });
+    const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, reportError: () => undefined });
+    const { url, close } = await serve(app);
+    const everything = { from: new Date(0), to: new Date(Date.now() + 3_600_000) };
+    const send = async (message: string): Promise<number> => {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, tenant: 'demo' }),
+      });
+      await res.text();
+      return res.status;
+    };
+    try {
+      const statuses: Record<number, number> = {};
+      for (let i = 0; i < 20; i += 1) {
+        for (const status of [await send('씨발 환불해줘'), await send('요금제가 뭐가 있나요?')]) statuses[status] = (statuses[status] ?? 0) + 1;
+      }
+      expect(statuses).toEqual({ 402: 20, 422: 20 });
+      expect(await repos.events.counts(seed.tenant.id, everything)).toEqual([]);
+
+      await repos.credits.append(seed.tenant.id, { delta: 1, reason: 'adjustment', idempotencyKey: 'adj:events-test' });
+      expect(await send('요금제가 뭐가 있나요?')).toBe(200);
+      await expect.poll(() => repos.events.counts(seed.tenant.id, everything)).toEqual([{ type: 'chat_request', variant: null, count: 1 }]);
     } finally {
       await close();
     }
