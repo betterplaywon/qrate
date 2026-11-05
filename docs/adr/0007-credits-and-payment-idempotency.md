@@ -28,7 +28,7 @@ W4 결정(2026-11-05) 다섯 가지 중 이 ADR은 ①결제 제공자 ②멱등
 | --- | --- | --- |
 | 범위 | `@@unique([tenantId, idempotencyKey])` | 전역 unique(W1 초안) — 클라이언트가 만든 키가 테넌트 간 충돌 |
 | 출처 | 둘, 접두사로 구분(`turn:`·`topup:`·`seed:`·`adj:`) | 하나만 |
-| 중복 응답 | 첫 번째와 같은 결과(200 + 기존 항목) | 409 |
+| 중복 응답 | 첫 번째와 같은 응답. 원장 추가는 기존 항목을 돌려준다. 충전 요청 재요청(같은 `Idempotency-Key`)은 첫 요청과 같은 201과 같은 본문(만든 직후의 주문)에 `Idempotent-Replayed: true`를 붙인다. 웹훅 재배달은 처음 판정(outcome)을 돌려준다 | 409, 재요청에 주문의 현재 상태 |
 | 넣는 방법 | `INSERT … ON CONFLICT DO NOTHING`(createMany skipDuplicates) 뒤 그 키로 다시 읽기 | 먼저 조회 후 삽입(경쟁 조건), 예외 잡기 |
 
 ### 3. 크레딧 모델
