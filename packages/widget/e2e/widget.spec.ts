@@ -90,6 +90,11 @@ test('열면 서버 오리진의 iframe이 뜨고, 호스트 문서는 대화 DO
 
   // 대화창 앱이 ready를 postMessage로 보내면 런처가 로딩 문구를 지운다
   await expect(page.locator(`${HOST} .loading`)).toHaveCount(0);
+
+  // 입력창은 메시지가 없어도 패널 바닥에 붙는다
+  const panel = await iframe.boundingBox();
+  const composer = await page.frameLocator(FRAME).locator('.composer').boundingBox();
+  expect(panel && composer && Math.abs(composer.y + composer.height - (panel.y + panel.height))).toBeLessThanOrEqual(1);
   expect(consoleErrors).toEqual([]);
 });
 
