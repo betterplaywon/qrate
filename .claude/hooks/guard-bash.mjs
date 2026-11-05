@@ -37,6 +37,8 @@ const SENSITIVE = [
   'apps/server/src/http/rate-limit.ts',
   'apps/server/prisma/**',
   'apps/server/src/repo/**/credits*',
+  'apps/server/src/repo/**/top-ups*',
+  'apps/server/src/billing/**',
   'apps/server/src/**/payment*',
   'apps/server/src/**/billing*',
   'apps/server/src/**/webhook*',
