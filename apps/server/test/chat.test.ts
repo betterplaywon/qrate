@@ -283,6 +283,31 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
     };
   }
 
+  it('크레딧이 없는 테넌트는 402 insufficient_credits(재시도 불가·Retry-After 없음)이고 엔진을 부르지 않는다', async () => {
+    const captured = new CapturingEngine(new MockEngine(0));
+    const app = createApp({
+      engine: captured,
+      repos: createRepositoriesFromSeed({ ...seed, initialCredits: 0 }),
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      logUsage: (entry) => logs.push(entry),
+    });
+    const { url, close } = await serve(app);
+    try {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: '요금제가 뭐가 있나요?', tenant: 'demo' }),
+      });
+      expect(res.status).toBe(402);
+      expect(res.headers.get('retry-after')).toBeNull();
+      expect(await res.json()).toEqual({ error: 'insufficient_credits', retryable: false });
+      expect(captured.requests).toHaveLength(0);
+    } finally {
+      await close();
+    }
+  });
+
   it('라우트에서 던진 예외는 500 internal_error(JSON)로 답하고 보고 통로로 보낸다', async () => {
     const reported: { err: unknown; context?: Record<string, unknown> }[] = [];
     const repos = createRepositoriesFromSeed(seed);

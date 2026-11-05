@@ -235,6 +235,42 @@ describe('대화 유스케이스 — createChatService', () => {
     expect(reports[0]?.context).toEqual({ where: 'appendTurn', tenantId: seed.tenant.id, conversationId: turn.conversationId });
   });
 
+  it('답이 있는 턴은 끝난 뒤 1크레딧을 턴 키(turn:<uuid>)로 차감하고, 거절·실패 턴은 차감하지 않는다', async () => {
+    const { chat, repos } = makeService();
+    const before = await repos.credits.balance(seed.tenant.id);
+    expect(before).toBe(seed.initialCredits);
+
+    const turn = await chat.start({ tenantKey: 'demo', message: '요금제가 뭐가 있나요?', conversationId: null, signal });
+    if (turn.status !== 'accepted') throw new Error('expected accepted');
+    // 차감은 답이 끝난 뒤 턴 저장과 함께 — 스트림을 소비하기 전에는 그대로
+    expect(await repos.credits.balance(seed.tenant.id)).toBe(before);
+    await drain(turn.events);
+    expect(await repos.credits.balance(seed.tenant.id)).toBe(before - 1);
+    const [latest] = (await repos.credits.list(seed.tenant.id, { limit: 1 })).items;
+    expect(latest).toMatchObject({ delta: -1, reason: 'turn' });
+    expect(latest?.idempotencyKey).toMatch(/^turn:[0-9a-f-]{36}$/);
+
+    const refused = await chat.start({ tenantKey: 'demo', message: '[[refuse]]', conversationId: null, signal });
+    if (refused.status !== 'accepted') throw new Error('expected accepted');
+    await drain(refused.events);
+    const failed = await chat.start({ tenantKey: 'demo', message: '[[fail-mid]]', conversationId: null, signal });
+    if (failed.status !== 'accepted') throw new Error('expected accepted');
+    await expect(drain(failed.events)).rejects.toThrow(/mid-stream/);
+    expect(await repos.credits.balance(seed.tenant.id)).toBe(before - 1);
+  });
+
+  it('잔액이 0이면 엔진을 부르지 않고 insufficient_credits — 모르는 테넌트·차단 입력 검사가 먼저다', async () => {
+    const repos = createRepositoriesFromSeed({ ...seed, initialCredits: 0 });
+    const engine = new CapturingEngine(new MockEngine(0));
+    const chat = createChatService({ engine, repos });
+    expect(await chat.start({ tenantKey: 'demo', message: '요금제가 뭐가 있나요?', conversationId: null, signal })).toEqual({
+      status: 'insufficient_credits',
+    });
+    expect(engine.requests).toHaveLength(0);
+    expect(await chat.start({ tenantKey: 'nope', message: '안녕', conversationId: null, signal })).toEqual({ status: 'unknown_tenant' });
+    expect((await chat.start({ tenantKey: 'demo', message: '씨발 환불해줘', conversationId: null, signal })).status).toBe('blocked');
+  });
+
   it('경고 입력은 받아들이되 moderation.level이 warn이고 사유는 규칙 id다', async () => {
     const { chat } = makeService();
     const turn = await chat.start({

@@ -1,6 +1,7 @@
 import type { ConsoleTenant } from '@qrate/contracts';
 import { useLogout } from '../queries';
 import { href, useRoute } from '../route';
+import { Billing } from './Billing';
 import { ConversationDetail } from './ConversationDetail';
 import { ConversationList } from './ConversationList';
 import { Queue } from './Queue';
@@ -22,8 +23,11 @@ export function Shell({ tenant }: { tenant: ConsoleTenant }) {
           <a href={href.queue('open')} className={route.name === 'queue' ? 'active' : ''}>
             미응답 큐
           </a>
-          <a href={href.conversations()} className={route.name !== 'queue' ? 'active' : ''}>
+          <a href={href.conversations()} className={route.name === 'conversations' || route.name === 'conversation' ? 'active' : ''}>
             대화 로그
+          </a>
+          <a href={href.billing()} className={route.name === 'billing' ? 'active' : ''} data-testid="nav-billing">
+            크레딧
           </a>
         </nav>
         <button type="button" className="ghost" disabled={logout.isPending} onClick={() => logout.mutate()}>
@@ -34,6 +38,7 @@ export function Shell({ tenant }: { tenant: ConsoleTenant }) {
         {route.name === 'queue' && <Queue status={route.status} />}
         {route.name === 'conversations' && <ConversationList />}
         {route.name === 'conversation' && <ConversationDetail id={route.id} />}
+        {route.name === 'billing' && <Billing />}
       </main>
     </div>
   );

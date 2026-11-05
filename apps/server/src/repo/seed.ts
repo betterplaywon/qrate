@@ -3,11 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { isOriginString } from '../origin.js';
 import {
   MemoryConversationRepository,
+  MemoryCreditRepository,
   MemoryHandoffRepository,
   MemoryKnowledgeRepository,
   MemoryStore,
   MemoryTenantRepository,
 } from './memory.js';
+import { appendCredit } from './memory/credits.js';
 import type { KnowledgeItem, Repositories, Tenant } from './types.js';
 
 // 시드 파일: W2의 데이터 원천. 테넌트 1개와 FAQ 목록을 JSON으로 두고 서버 시작 때 메모리 저장소에 올린다.
@@ -20,7 +22,12 @@ export type SeedTenant = Omit<Tenant, 'consoleKeyHash'>;
 export interface SeedFile {
   tenant: SeedTenant;
   knowledge: SeedKnowledge[];
+  /** 데모 테넌트에 한 번 지급하는 크레딧(W4 결정: 시드 지급). 0이면 지급하지 않는다. */
+  initialCredits: number;
 }
+
+/** 초기 지급의 멱등 키. 시드를 다시 돌려도 한 번만 들어간다. */
+export const INITIAL_CREDIT_KEY = 'seed:initial';
 
 // src/repo/ 와 dist/repo/ 모두 apps/server 아래 두 단계라 같은 상대 경로로 seed/ 를 찾는다.
 // 컨테이너에는 pnpm deploy가 패키지 디렉터리의 seed/ 를 함께 담는다.
@@ -70,7 +77,12 @@ export function parseSeed(raw: unknown, source = 'seed'): SeedFile {
     return { id: kid, title, category, blocks };
   });
 
-  return { tenant: { id, apiKey, name, allowedOrigins }, knowledge };
+  const initialCredits = raw.initialCredits === undefined ? 0 : raw.initialCredits;
+  if (typeof initialCredits !== 'number' || !Number.isInteger(initialCredits) || initialCredits < 0) {
+    return fail('initialCredits는 0 이상의 정수');
+  }
+
+  return { tenant: { id, apiKey, name, allowedOrigins }, knowledge, initialCredits };
 }
 
 export function loadSeedFile(path: string = DEFAULT_SEED_PATH): SeedFile {
@@ -84,10 +96,14 @@ export function createRepositoriesFromSeed(
 ): Repositories {
   const knowledge: KnowledgeItem[] = seed.knowledge.map((k) => ({ ...k, tenantId: seed.tenant.id }));
   const store = new MemoryStore();
+  if (seed.initialCredits > 0) {
+    appendCredit(store, seed.tenant.id, { delta: seed.initialCredits, reason: 'seed', idempotencyKey: INITIAL_CREDIT_KEY });
+  }
   return {
     tenants: new MemoryTenantRepository([{ ...seed.tenant, consoleKeyHash }]),
     knowledge: new MemoryKnowledgeRepository(knowledge),
     conversations: new MemoryConversationRepository(store),
     handoffs: new MemoryHandoffRepository(store),
+    credits: new MemoryCreditRepository(store),
   };
 }

@@ -370,3 +370,28 @@ input:focus-visible {
   font-weight: 400;
   font-size: 12px;
 }
+
+/* 크레딧 */
+.balance {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+
+.balance strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  align-self: center;
+}
+
+.delta.minus {
+  color: var(--muted);
+}
+
+.delta.plus {
+  color: var(--ok);
+}

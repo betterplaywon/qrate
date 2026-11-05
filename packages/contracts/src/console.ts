@@ -10,6 +10,7 @@
 //   GET   /api/console/conversations/:id → ConversationDetailResponse. 다른 테넌트의 대화는 404
 //   GET   /api/console/handoffs         ?status=&limit=&cursor= → HandoffListResponse (미응답 큐)
 //   PATCH /api/console/handoffs/:id     UpdateHandoffBody → HandoffQueueItemDto. 다른 테넌트의 것은 404
+//   GET   /api/console/credits          ?limit=&cursor= → CreditsResponse (잔액 + 원장 최근순)
 // 상태를 바꾸는 요청(login·logout·PATCH)은 대화 API와 같은 Origin 검사를 받는다. 날짜는 ISO 8601 문자열이다.
 
 import type { HandoffReason } from './chat.js';
@@ -98,4 +99,24 @@ export interface HandoffListResponse {
 
 export interface UpdateHandoffBody {
   status: HandoffStatus;
+}
+
+/** 원장 항목의 사유. seed 초기 지급 · topup 충전 · turn 답변 차감 · adjustment 운영자 조정. */
+export type CreditReason = 'seed' | 'topup' | 'turn' | 'adjustment';
+
+export interface CreditEntryDto {
+  id: string;
+  /** 충전 +, 차감 -. */
+  delta: number;
+  reason: CreditReason;
+  /** 멱등 키. 접두사가 출처다(seed: · turn: · topup: · adj:). */
+  idempotencyKey: string;
+  createdAt: string;
+}
+
+export interface CreditsResponse {
+  /** 원장 합계. */
+  balance: number;
+  items: CreditEntryDto[];
+  nextCursor: string | null;
 }
