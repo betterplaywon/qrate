@@ -87,14 +87,14 @@ describe('Turn — 사건을 화면에 반영한다', () => {
     const { effects, fired } = fakeEffects();
     const turn = new Turn(view, effects);
     turn.apply({ type: 'delta', text: '부분' });
-    turn.apply({ type: 'failed', stage: 'stream', status: null, retryable: true, retryAfterMs: 2000 });
+    turn.apply({ type: 'failed', stage: 'stream', status: null, code: null, retryable: true, retryAfterMs: 2000 });
     expect(calls).toEqual(['start:1', 'append:1:부분', 'finish:1:interrupted', 'notice:답변이 중단됐어요.']);
     expect(notices[0]?.action).toMatchObject({ label: '다시 보내기', disabledForMs: 2000 });
     notices[0]?.action?.run();
     expect(fired).toEqual(['retry']);
 
     const fatal = fakeView();
-    new Turn(fatal.view, fakeEffects().effects).apply({ type: 'failed', stage: 'response', status: 502, retryable: false, retryAfterMs: null });
+    new Turn(fatal.view, fakeEffects().effects).apply({ type: 'failed', stage: 'response', status: 502, code: 'upstream_error', retryable: false, retryAfterMs: null });
     expect(fatal.notices).toEqual([{ text: '오류가 발생했어요. (502)' }]);
   });
 
@@ -104,8 +104,21 @@ describe('Turn — 사건을 화면에 반영한다', () => {
     turn.apply({ type: 'moderation' });
     turn.apply({ type: 'blocked' });
     expect(calls).toEqual(['notice:안내: 메시지가 검토 대상으로 표시되었어요.', 'notice:해당 메시지는 전송할 수 없어요. 표현을 바꿔 다시 시도해 주세요.']);
-    expect(failureText({ type: 'failed', stage: 'connect', status: null, retryable: true, retryAfterMs: null })).toBe('서버에 연결할 수 없어요.');
-    expect(failureText({ type: 'failed', stage: 'response', status: 503, retryable: true, retryAfterMs: 2000 })).toBe('지금은 답변할 수 없어요.');
-    expect(failureText({ type: 'failed', stage: 'stream', status: null, retryable: false, retryAfterMs: null })).toBe('답변 중 오류가 발생했어요.');
+    expect(failureText({ type: 'failed', stage: 'connect', status: null, code: null, retryable: true, retryAfterMs: null })).toBe('서버에 연결할 수 없어요.');
+    expect(failureText({ type: 'failed', stage: 'response', status: 503, code: 'rate_limited', retryable: true, retryAfterMs: 2000 })).toBe('지금은 답변할 수 없어요.');
+    expect(failureText({ type: 'failed', stage: 'stream', status: null, code: 'upstream_error', retryable: false, retryAfterMs: null })).toBe('답변 중 오류가 발생했어요.');
+  });
+
+  it('크레딧 소진(402 insufficient_credits)은 방문자가 고칠 수 없는 상태라 운영자에게 알리라고 안내하고 버튼이 없다', () => {
+    const { view, notices } = fakeView();
+    new Turn(view, fakeEffects().effects).apply({
+      type: 'failed',
+      stage: 'response',
+      status: 402,
+      code: 'insufficient_credits',
+      retryable: false,
+      retryAfterMs: null,
+    });
+    expect(notices).toEqual([{ text: '지금은 상담을 이용할 수 없어요. 사이트 운영자에게 알려 주세요.' }]);
   });
 });

@@ -83,7 +83,7 @@ describe('streamChat — 정상 스트림', () => {
 describe('streamChat — 실패 단계', () => {
   it('fetch 자체가 실패하면 connect, 재시도 가능', async () => {
     const { events } = await collect(new TypeError('Failed to fetch'));
-    expect(events).toEqual([{ type: 'failed', stage: 'connect', status: null, retryable: true, retryAfterMs: null }]);
+    expect(events).toEqual([{ type: 'failed', stage: 'connect', status: null, code: null, retryable: true, retryAfterMs: null }]);
   });
 
   it('첫 조각 전 HTTP 오류는 response — 본문의 retryable과 Retry-After를 읽는다', async () => {
@@ -92,12 +92,12 @@ describe('streamChat — 실패 단계', () => {
       headers: { 'Retry-After': '2' },
     });
     const { events } = await collect(res);
-    expect(events).toEqual([{ type: 'failed', stage: 'response', status: 503, retryable: true, retryAfterMs: 2000 }]);
+    expect(events).toEqual([{ type: 'failed', stage: 'response', status: 503, code: 'rate_limited', retryable: true, retryAfterMs: 2000 }]);
   });
 
   it('본문이 계약의 오류 본문이 아니면(프록시 오류 페이지) 상태 코드로 짐작한다', async () => {
     const { events } = await collect(new Response('<html>502</html>', { status: 502 }));
-    expect(events).toEqual([{ type: 'failed', stage: 'response', status: 502, retryable: false, retryAfterMs: null }]);
+    expect(events).toEqual([{ type: 'failed', stage: 'response', status: 502, code: null, retryable: false, retryAfterMs: null }]);
   });
 
   it('422는 blocked — 다시 보내도 같다', async () => {
@@ -114,13 +114,13 @@ describe('streamChat — 실패 단계', () => {
     );
     expect(events).toEqual([
       { type: 'delta', text: '부분' },
-      { type: 'failed', stage: 'stream', status: null, retryable: true, retryAfterMs: null },
+      { type: 'failed', stage: 'stream', status: null, code: 'upstream_unavailable', retryable: true, retryAfterMs: null },
     ]);
   });
 
   it('[DONE] 없이 끝나면 끊긴 것으로 본다', async () => {
     const { events } = await collect(sseResponse([{ type: 'delta', text: '부분' }]));
-    expect(events.at(-1)).toEqual({ type: 'failed', stage: 'stream', status: null, retryable: true, retryAfterMs: null });
+    expect(events.at(-1)).toEqual({ type: 'failed', stage: 'stream', status: null, code: null, retryable: true, retryAfterMs: null });
   });
 });
 
@@ -131,5 +131,18 @@ describe('parseRetryAfter', () => {
     expect(parseRetryAfter('3600')).toBe(60_000);
     expect(parseRetryAfter('Wed, 21 Oct 2026 07:28:00 GMT')).toBeNull();
     expect(parseRetryAfter(null)).toBeNull();
+  });
+});
+
+describe('실패 사건의 code', () => {
+  it('첫 조각 전 HTTP 오류의 계약 본문에서 code를 읽고, 402 크레딧 소진은 재시도 불가로 온다', async () => {
+    const res = Response.json({ error: 'insufficient_credits', retryable: false }, { status: 402 });
+    const { events } = await collect(res);
+    expect(events).toEqual([{ type: 'failed', stage: 'response', status: 402, code: 'insufficient_credits', retryable: false, retryAfterMs: null }]);
+  });
+
+  it('본문이 계약 모양이 아니면 code는 null이고 상태 코드로 재시도 여부를 짐작한다', async () => {
+    const { events } = await collect(new Response('<html>503</html>', { status: 503, headers: { 'content-type': 'text/html' } }));
+    expect(events[0]).toMatchObject({ type: 'failed', stage: 'response', status: 503, code: null, retryable: true });
   });
 });
