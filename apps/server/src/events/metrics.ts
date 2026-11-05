@@ -36,13 +36,17 @@ function summarizeTtft(values: readonly number[]): ConsoleMetrics['ttft'] {
   return { samples: sorted.length, p50Ms: nearestRank(sorted, 50), p95Ms: nearestRank(sorted, 95) };
 }
 
-/** 해결 = 답이 하나 이상이고 상담원 연결 요청이 없는 대화. 분모는 창 안에 시작한 대화 전부 — 거절만 있던 대화, 질문 없이 연결만 요청한 대화도 든다. */
+/**
+ * 분모는 창 안에 시작해 질문이 있었던 대화(봇에게 물어본 대화), 해결은 그중 답이 하나 이상이고 상담원 연결 요청이 없는 대화.
+ * 질문 없이 연결만 요청한 대화는 분모·분자 모두에서 뺀다 — 봇이 답할 기회가 없었고, 넣으면 공개 POST /api/handoff만으로
+ * 분모를 부풀릴 수 있다. 정책 거절로 답 없이 끝난 대화는 질문이 있으니 분모에 든다.
+ */
 function summarizeResolution(outcomes: readonly ConversationOutcome[]): ConsoleMetrics['autoResolution'] {
-  const resolved = outcomes.filter((o) => o.answered && !o.handedOff).length;
-  return { conversations: outcomes.length, resolved, rate: outcomes.length === 0 ? null : resolved / outcomes.length };
+  const asked = outcomes.filter((o) => o.asked);
+  const resolved = asked.filter((o) => o.answered && !o.handedOff).length;
+  return { conversations: asked.length, resolved, rate: asked.length === 0 ? null : resolved / asked.length };
 }
 
-/** 한 종류의 사건 수(변형 합계). */
 function countOf(counts: readonly EventCount[], type: AppEvent['type']): number {
   return counts.reduce((sum, c) => (c.type === type ? sum + c.count : sum), 0);
 }

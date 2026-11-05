@@ -64,29 +64,37 @@ describe('computeMetrics — TTFT (nearest-rank)', () => {
 });
 
 describe('computeMetrics — 자동 해결률', () => {
-  it('분모는 창 안에 시작한 대화 전부, 분자는 답이 있고 연결 요청이 없는 대화. 반올림하지 않는다', async () => {
+  it('분모는 질문이 있었던 대화, 분자는 그중 답이 있고 연결 요청이 없는 대화. 반올림하지 않는다', async () => {
     const outcomes: ConversationOutcome[] = [
-      { answered: true, handedOff: false },
-      { answered: true, handedOff: false },
-      { answered: true, handedOff: true },
-      { answered: false, handedOff: false },
-      { answered: false, handedOff: true },
-      { answered: true, handedOff: false },
+      { asked: true, answered: true, handedOff: false },
+      { asked: true, answered: true, handedOff: false },
+      { asked: true, answered: true, handedOff: true },
+      { asked: true, answered: false, handedOff: false },
+      { asked: true, answered: false, handedOff: true },
+      { asked: true, answered: true, handedOff: false },
     ];
     const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
     expect(autoResolution).toEqual({ conversations: 6, resolved: 3, rate: 0.5 });
   });
 
-  it('대화가 없으면 rate는 null(0%가 아니다)', async () => {
-    const { autoResolution } = await computeMetrics(sources().repos, TENANT, NOW);
-    expect(autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null });
+  it('질문 없이 연결만 요청한 대화는 몇 건이든 분모·분자 어디에도 들지 않는다', async () => {
+    const handoffOnly: ConversationOutcome = { asked: false, answered: false, handedOff: true };
+    const outcomes: ConversationOutcome[] = [{ asked: true, answered: true, handedOff: false }, ...Array.from({ length: 20 }, () => handoffOnly)];
+    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
+    expect(autoResolution).toEqual({ conversations: 1, resolved: 1, rate: 1 });
+  });
+
+  it('대화가 없거나 연결만 요청한 대화뿐이면 rate는 null(0%가 아니다)', async () => {
+    expect((await computeMetrics(sources().repos, TENANT, NOW)).autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null });
+    const outcomes: ConversationOutcome[] = [{ asked: false, answered: false, handedOff: true }];
+    expect((await computeMetrics(sources({ outcomes }).repos, TENANT, NOW)).autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null });
   });
 
   it('비율은 그대로 — 1/3은 0.333…', async () => {
     const outcomes: ConversationOutcome[] = [
-      { answered: true, handedOff: false },
-      { answered: true, handedOff: true },
-      { answered: true, handedOff: true },
+      { asked: true, answered: true, handedOff: false },
+      { asked: true, answered: true, handedOff: true },
+      { asked: true, answered: true, handedOff: true },
     ];
     const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
     expect(autoResolution.rate).toBe(1 / 3);

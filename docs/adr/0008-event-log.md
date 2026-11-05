@@ -64,7 +64,7 @@ stdout 줄은 남겼다. 같은 통로가 `NODE_ENV`가 production이 아닐 때
 | TTFT 백분위 | nearest-rank(⌈p·n/100⌉번째) = Postgres `percentile_disc` | `percentile_cont`(보간) |
 | TTFT 표본 | 창 안 `chat_request` 중 첫 답변 조각을 보낸 요청(`ttftMs` 있음) | 모든 요청 |
 | 해결률 원천 | `Conversation`·`Message`·`Handoff` 표 | 사건 |
-| 해결률 분모 | 창 안에 시작한 대화 전부(질문 없이 연결만 요청한 대화 포함) | 마지막 메시지 뒤 30분 무활동인 대화만 |
+| 해결률 분모 | 창 안에 시작해 질문(방문자 메시지)이 있었던 대화. 질문 없이 연결만 요청한 대화는 분모·분자 모두에서 뺀다 | 창 안에 시작한 대화 전부(공개 `/api/handoff`만으로 분모가 부풀었다), 마지막 메시지 뒤 30분 무활동인 대화만 |
 | 해결률 분자 | 답 ≥ 1, Handoff 행 0(출처·상태 무관) | 모델 신호만 |
 | 창 | 최근 7일 고정 `[now − 7×24h, now)`, 쿼리 파라미터 없음 | 기간 파라미터, 전체 기간 |
 | 위젯 열림 | 수만 표시, 서버 사건과 비율을 만들지 않음 | 열림 대비 질문 비율 |
@@ -80,7 +80,7 @@ stdout 줄은 남겼다. 같은 통로가 `NODE_ENV`가 production이 아닐 때
 
 (본인 작성 — 2026-11-05에 고른 것: 사건은 다른 표가 모르는 사실만(`chat_request`·`widget_open`), 쓰기는 턴 트랜잭션과 분리한 통로 하나,
 위젯 열림은 대화창이 보냄, 스키마는 문자열 `type`·`ttftMs` 열·테넌트 FK, 지표 정의는 한 곳(nearest-rank, 해결률은 대화·핸드오프 표,
-분모는 창 안에 시작한 대화 전부, 7일 고정), 콘솔은 새 라우트. 왜 원자성보다 분리를 골랐는지, 왜 보간하지 않는지, 해결률 "종료"를
+분모는 창 안에 시작해 질문이 있었던 대화, 7일 고정), 콘솔은 새 라우트. 왜 원자성보다 분리를 골랐는지, 왜 보간하지 않는지, 해결률 "종료"를
 30분 무활동이 아니라 창 안의 대화 전부로 둔 것이 "시나리오 기준 명시"와 어떻게 맞는지를 직접 쓸 것.)
 
 ## 스스로 답해볼 유도 질문
@@ -88,7 +88,7 @@ stdout 줄은 남겼다. 같은 통로가 `NODE_ENV`가 production이 아닐 때
 1. 사건 쓰기를 턴 트랜잭션과 묶지 않았다. 사건은 남았는데 턴 저장이 실패하면(또는 그 반대) 어느 지표가 어떻게 흔들리나? 지표마다 원천이 하나라는 것이 그 흔들림을 어디까지 막나?
 2. `EventSink`가 `void`를 돌려주는 것이 호출자에게 무엇을 금지하나? `finish()`가 await되지 않는 지금 구조에서 저장 실패가 프로세스를 죽이는 길은 어떻게 막혔나?
 3. 표본이 2건이면 p95는 무엇인가? `percentile_cont`였다면 README의 p95를 어느 행까지 따라갈 수 있나?
-4. 해결률 분모에 "질문 없이 연결만 요청한 대화"를 넣었다. 빼면 비율이 어느 쪽으로 움직이고, 정의서 문장에는 어느 쪽이 가까운가? 30분 무활동 정의였다면 데모·verify에서 무엇이 달라지나?
+4. 해결률 분모에서 "질문 없이 연결만 요청한 대화"를 뺐다. 넣으면 비율이 어느 쪽으로 움직이고, 공개 키만 아는 사람이 무엇을 할 수 있었나(검토 재현: Origin 없는 `/api/handoff` 20건 → 1/1에서 1/21)? 정의서 문장에는 어느 쪽이 가까운가? 30분 무활동 정의였다면 데모·verify에서 무엇이 달라지나?
 5. `widget_open`은 공개 키로 위조할 수 있다. 같은 오리진 검사·IP 요율 제한·종류 화이트리스트가 각각 막는 것과 못 막는 것은? 콘솔이 비율을 만들지 않는 이유는?
 6. `type`을 enum이 아니라 문자열로 둔 이유를 "새 종류를 쓴 뒤 코드를 되돌리는" 롤백으로 설명할 수 있나?
 7. `ttftMs`를 `payload`에 두었다면 백분위 질의와 인덱스는 어떻게 달라지나?
@@ -111,8 +111,8 @@ stdout 줄은 남겼다. 같은 통로가 `NODE_ENV`가 production이 아닐 때
   응답은 `[DONE]`으로 끝나고 보고는 한 번(`apps/server/test/chat.test.ts`).
 - 위젯 사건 수집: 202·빈 payload·테넌트 id, `chat_request`·모르는 종류 400 `invalid_event`, 403·404·413·429, 요율 카운터는 상담원 연결과 따로
   (`apps/server/test/events-api.test.ts`). 대화창 전송(`packages/widget/test/events.test.ts`)과 위젯 E2E(열면 1건, 닫았다 다시 열어도 1건).
-- 저장소 계약(메모리·Postgres): 창 `[from, to)`·테넌트 경계의 TTFT 표본과 (종류, 변형) 개수, 대화별 `{ answered, handedOff }`(`repo-contract.ts`).
-- 지표 정의: n = 0·1·2·20·37·100, 섞인 입력·동률·숫자 정렬, 해결 경계, 창 전달(`apps/server/test/metrics.test.ts`).
+- 저장소 계약(메모리·Postgres): 창 `[from, to)`·테넌트 경계의 TTFT 표본과 (종류, 변형) 개수, 대화별 `{ asked, answered, handedOff }`(`repo-contract.ts`).
+- 지표 정의: n = 0·1·2·20·37·100, 섞인 입력·동률·숫자 정렬, 해결 경계, 연결만 요청한 대화 20건이 분모에 들지 않음, 창 전달(`apps/server/test/metrics.test.ts`).
   Postgres에서 같은 행에 대한 `percentile_disc(ARRAY[0.5, 0.95])`가 콘솔 값과 같음(`repo-postgres.test.ts`).
 - 콘솔: `GET /api/console/metrics` 빈 상태·집계(`console-api.test.ts`), 지표 화면 E2E(`apps/console/e2e/console.spec.ts`),
   verify 여정 `metrics`(화면 값 = API 값 = server.log의 `chat_request` ttftMs).

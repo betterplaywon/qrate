@@ -65,6 +65,10 @@ export class MemoryConversationRepository implements ConversationRepository {
   async outcomes(tenantId: string, window: TimeWindow): Promise<ConversationOutcome[]> {
     return [...this.byId.values()]
       .filter((c) => c.tenantId === tenantId && inWindow(c.createdAt, window))
-      .map((c) => ({ answered: c.messages.some((m) => m.role === 'assistant'), handedOff: c.handoffs.length > 0 }));
+      .map((c) => ({
+        asked: c.messages.some((m) => m.role === 'user'),
+        answered: c.messages.some((m) => m.role === 'assistant'),
+        handedOff: c.handoffs.length > 0,
+      }));
   }
 }

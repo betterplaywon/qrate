@@ -3,7 +3,7 @@ import path from 'node:path';
 import { SERVER_ORIGIN, assert } from '../lib.mjs';
 import { LAUNCHER, finishedAnswers, loginConsole, openWidget, send } from '../harness.mjs';
 
-export const title = '콘솔 지표 — 위젯 열림·답한 질문·연결만 요청한 대화 → #/metrics 값 → server.log 사건 줄';
+export const title = '콘솔 지표 — 위젯 열림·답한 질문·연결만 요청한 대화 → #/metrics 값(연결만 요청한 대화는 해결률 밖) → server.log 사건 줄';
 
 const QUESTION = '요금제가 뭐가 있나요?';
 const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
@@ -68,7 +68,7 @@ export async function run(h) {
 
   const consolePage = await h.newPage({ name: 'console', ignoreConsole: /status of 401/ });
   let p50 = 0;
-  await h.step('metrics-console', '콘솔 "지표" 화면: TTFT 표본 1건(p50 = p95), 자동 해결 1/2건 = 50.0%, 위젯 열림 2회', async () => {
+  await h.step('metrics-console', '콘솔 "지표" 화면: TTFT 표본 1건(p50 = p95), 자동 해결 1/1건 = 100.0%, 위젯 열림 2회', async () => {
     await consolePage.goto(`${SERVER_ORIGIN}/console/`);
     await loginConsole(h, consolePage);
     await expect(consolePage.getByTestId('tenant-name')).toHaveText(h.tenantName);
@@ -80,8 +80,8 @@ export async function run(h) {
     assert(/^[\d,]+ms$/.test(p50Text), `p50 표시: "${p50Text}"`);
     await expect(consolePage.getByTestId('metric-ttft-p95')).toHaveText(p50Text);
     await expect(consolePage.getByTestId('metric-resolution-resolved')).toHaveText('1');
-    await expect(consolePage.getByTestId('metric-resolution-conversations')).toHaveText('2');
-    await expect(consolePage.getByTestId('metric-resolution-rate')).toHaveText('50.0%');
+    await expect(consolePage.getByTestId('metric-resolution-conversations')).toHaveText('1');
+    await expect(consolePage.getByTestId('metric-resolution-rate')).toHaveText('100.0%');
     await expect(consolePage.getByTestId('metric-widget-opens')).toHaveText('2');
     p50 = msOf(p50Text);
 
@@ -94,10 +94,23 @@ export async function run(h) {
       `API ttft ${JSON.stringify(body.ttft)} ≠ 화면 ${p50}ms`,
     );
     assert(
-      JSON.stringify(body.autoResolution) === JSON.stringify({ conversations: 2, resolved: 1, rate: 0.5 }) && body.widget.opens === 2,
+      JSON.stringify(body.autoResolution) === JSON.stringify({ conversations: 1, resolved: 1, rate: 1 }) && body.widget.opens === 2,
       `API ${JSON.stringify({ autoResolution: body.autoResolution, widget: body.widget })}`,
     );
-    return `화면: p50 = p95 = ${p50Text}, 표본 1 · 해결 1/2 = 50.0% · 열림 2 — API 응답과 같음`;
+    return `화면: p50 = p95 = ${p50Text}, 표본 1 · 해결 1/1 = 100.0% · 열림 2 — API 응답과 같음`;
+  });
+
+  await h.step('metrics-handoff-excluded', '연결만 요청한 대화는 대화 로그에는 있지만 해결률 분모에는 없다', async () => {
+    const res = await consolePage.request.get('/api/console/conversations');
+    await h.evidence.saveApiResponse('console-conversations.txt', res);
+    const { items } = await res.json();
+    const shapes = items.map((c) => `messages=${c.messageCount} handoffs=${c.handoffCount}`).sort();
+    assert(
+      JSON.stringify(shapes) === JSON.stringify(['messages=0 handoffs=1', 'messages=2 handoffs=0']),
+      `대화 로그: ${JSON.stringify(shapes)}`,
+    );
+    await expect(consolePage.getByTestId('metric-resolution-conversations')).toHaveText('1');
+    return `대화 로그 2건(질문·답 1건, 연결만 1건) · 해결률 분모 1건`;
   });
 
   await h.step('metrics-server-log', 'server.log에 사건 JSON 줄: chat_request 1줄(ttftMs = 화면 p50, 질문 원문 없음), widget_open 2줄', async () => {

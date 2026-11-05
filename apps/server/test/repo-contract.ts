@@ -461,7 +461,7 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect(await ctx.repos.events.counts(t, empty)).toEqual([]);
     });
 
-    it('대화 결과: 창 [from, to) 안에 시작한 이 테넌트의 대화마다 답이 있는지·연결 요청이 있는지(출처·상태 무관)', async () => {
+    it('대화 결과: 창 [from, to) 안에 시작한 이 테넌트의 대화마다 질문·답이 있는지, 연결 요청이 있는지(출처·상태 무관)', async () => {
       const at = (iso: string): Date => new Date(iso);
       const window = { from: at('2001-02-01T00:00:00Z'), to: at('2001-02-08T00:00:00Z') };
       const t = ctx.tenantId;
@@ -469,7 +469,8 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
         ...turn('q', answer, handoff),
         question: { role: 'user', content: 'q', createdAt: at(iso) },
       });
-      const facts = (outcomes: ConversationOutcome[]): string[] => outcomes.map((o) => `answered=${o.answered} handedOff=${o.handedOff}`).sort();
+      const facts = (outcomes: ConversationOutcome[]): string[] =>
+        outcomes.map((o) => `asked=${o.asked} answered=${o.answered} handedOff=${o.handedOff}`).sort();
       const append = (tenantId: string, next: NewTurn): Promise<void> => ctx.repos.conversations.appendTurn(randomUUID(), tenantId, next);
 
       await append(t, startedAt('2001-02-01T00:00:00Z', '답'));
@@ -485,19 +486,19 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
 
       expect(facts(await ctx.repos.conversations.outcomes(t, window))).toEqual(
         facts([
-          { answered: true, handedOff: false },
-          { answered: true, handedOff: true },
-          { answered: false, handedOff: false },
-          { answered: true, handedOff: true },
+          { asked: true, answered: true, handedOff: false },
+          { asked: true, answered: true, handedOff: true },
+          { asked: true, answered: false, handedOff: false },
+          { asked: true, answered: true, handedOff: true },
         ]),
       );
-      expect(await ctx.repos.conversations.outcomes(ctx.otherTenantId, window)).toEqual([{ answered: false, handedOff: false }]);
+      expect(await ctx.repos.conversations.outcomes(ctx.otherTenantId, window)).toEqual([{ asked: true, answered: false, handedOff: false }]);
 
       const around = { from: new Date(Date.now() - 3_600_000), to: new Date(Date.now() + 3_600_000) };
       const before = await ctx.repos.conversations.outcomes(ctx.otherTenantId, around);
       await ctx.repos.handoffs.requestByVisitor(randomUUID(), ctx.otherTenantId, { contact: 'early@example.com', summary: null });
       expect(facts(await ctx.repos.conversations.outcomes(ctx.otherTenantId, around))).toEqual(
-        facts([...before, { answered: false, handedOff: true }]),
+        facts([...before, { asked: false, answered: false, handedOff: true }]),
       );
     });
 

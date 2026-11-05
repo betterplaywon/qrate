@@ -49,8 +49,8 @@ function Cards({ metrics: { window, ttft, autoResolution, widget } }: { metrics:
           )}
           <p className="metric-def">
             <span data-testid="metric-resolution-resolved">{autoResolution.resolved}</span>/
-            <span data-testid="metric-resolution-conversations">{autoResolution.conversations}</span>건 · 기간 안에 시작한 대화 중 답이
-            있고 상담원 연결 요청이 없는 대화
+            <span data-testid="metric-resolution-conversations">{autoResolution.conversations}</span>건 · 기간 안에 시작해 질문이 있었던 대화 중
+            답이 있고 상담원 연결 요청이 없는 대화
           </p>
         </article>
       </div>

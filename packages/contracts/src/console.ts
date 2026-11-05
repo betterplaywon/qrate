@@ -201,7 +201,7 @@ export interface ConsoleMetricsResponse {
    */
   ttft: { samples: number; p50Ms: number | null; p95Ms: number | null };
   autoResolution: {
-    /** 창 안에 시작한 대화 전부(질문 없이 상담원 연결만 요청한 대화 포함). 분모. */
+    /** 창 안에 시작해 방문자 질문이 1개 이상인 대화. 분모. 질문 없이 상담원 연결만 요청한 대화는 빠진다(공개 키로 분모를 부풀릴 수 없게). */
     conversations: number;
     /** 그중 답이 1개 이상이고 상담원 연결 요청(모델 신호·방문자 요청, 상태 무관)이 없는 대화. 분자. */
     resolved: number;

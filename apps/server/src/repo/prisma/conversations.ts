@@ -94,11 +94,14 @@ export class PrismaConversationRepository implements ConversationRepository {
   }
 
   async outcomes(tenantId: string, { from, to }: TimeWindow): Promise<ConversationOutcome[]> {
-    // (tenantId, createdAt) 인덱스. 메시지·핸드오프는 행을 읽지 않고 센다.
+    // (tenantId, createdAt) 인덱스. _count는 관계 하나에 조건 하나만 걸 수 있어서, 질문이 있었는지는 user 메시지 한 행(id만)으로 본다.
     const rows = await this.prisma.conversation.findMany({
       where: { tenantId, createdAt: { gte: from, lt: to } },
-      select: { _count: { select: { messages: { where: { role: 'assistant' } }, handoffs: true } } },
+      select: {
+        messages: { where: { role: 'user' }, select: { id: true }, take: 1 },
+        _count: { select: { messages: { where: { role: 'assistant' } }, handoffs: true } },
+      },
     });
-    return rows.map((r) => ({ answered: r._count.messages > 0, handedOff: r._count.handoffs > 0 }));
+    return rows.map((r) => ({ asked: r.messages.length > 0, answered: r._count.messages > 0, handedOff: r._count.handoffs > 0 }));
   }
 }

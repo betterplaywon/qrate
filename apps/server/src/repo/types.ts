@@ -259,6 +259,8 @@ export interface ConversationRepository {
 
 /** 자동 해결률 계산에 필요한 대화 한 건의 사실. */
 export interface ConversationOutcome {
+  /** user 메시지가 1개 이상. 방문자 연결 요청만으로 생긴 대화는 false다. */
+  asked: boolean;
   /** assistant 메시지가 1개 이상. */
   answered: boolean;
   /** Handoff 행이 1개 이상(출처·상태 무관). */

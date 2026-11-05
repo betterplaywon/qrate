@@ -84,7 +84,7 @@ run.json의 feature(또는 `--feature`)에 해당하는 여정 `scripts/journeys
 - `console` — 콘솔 문서 CSP → 틀린 키·맞는 키 로그인 → 위젯으로 대화 2건 → 대화 로그·상세 → 큐 상태 이동 → 로그아웃. [features/console.md](features/console.md)
 - `origin-guard` — `/frame` 403 안내 문서, 5174 데모에서 CSP frame-ancestors 거부, 5173 대조군. [features/origin-guard.md](features/origin-guard.md)
 - `top-up` — 콘솔 충전 요청 → 결제 성공(테스트) → 재배달 → 늦은 실패, 같은 `Idempotency-Key` 재전송, 서명 웹훅 재배달·다른 이벤트 id·위조·만료, 원장 한 줄. 서버는 고정 모의 결제 비밀(`QRATE_MOCK_PAYMENT_SECRET`)로 뜬다. [features/top-up.md](features/top-up.md)
-- `metrics` — 위젯 열기(widget_open 사건) → 질문 1건 → 닫고 다시 열기(열림 그대로) → 다른 페이지 로드에서 연결만 요청 → 콘솔 "지표"의 표본 1·p50 = p95·해결 1/2·열림 2와 API 응답 → server.log의 사건 줄 대조. [features/metrics.md](features/metrics.md)
+- `metrics` — 위젯 열기(widget_open 사건) → 질문 1건 → 닫고 다시 열기(열림 그대로) → 다른 페이지 로드에서 연결만 요청 → 콘솔 "지표"의 표본 1·p50 = p95·해결 1/1(연결만 요청한 대화는 분모 밖)·열림 2와 API 응답 → server.log의 사건 줄 대조. [features/metrics.md](features/metrics.md)
 
 목업 엔진의 훅은 메시지 안의 마커다(apps/server/src/engine/mock.ts): `[[handoff]]`(안내 문장 + event: handoff, 인용 없음), `[[fail:429]]`(첫 이벤트 전 503 + Retry-After 2 → "다시 보내기"), `[[fail:401]]`(502, 재시도 불가), `[[fail-mid]]`(5글자 뒤 끊김), `[[refuse]]`(정책 거절). 실제 모델에는 없다.
 
