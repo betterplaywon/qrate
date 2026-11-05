@@ -14,8 +14,8 @@ qrate는 고객 사이트에 스크립트 한 줄로 설치하는 AI 상담 위�
 사용자가 만지는 표면은 셋이다. 선택자는 소스에서 가져온 것이고 placeholder가 아니다.
 
 - **방문자용 위젯** — 데모 페이지 `http://localhost:5173/demo.html`(packages/widget/demo.html을 demo.mjs가 서빙)에 설치 스니펫이 있다. 우하단 런처는 Shadow DOM 안의 버튼 `#qrate-host .launcher`(aria-label "상담 열기")이고, 누르면 서버 오리진의 대화창 iframe `#qrate-host iframe.frame`(src `http://localhost:8787/frame?t=demo&o=http://localhost:5173`)이 열린다. 대화창 안은 머리글 `.title`("무엇을 도와드릴까요?"), "상담원 연결" 버튼 `.handoff`, 닫기 `.close`, 입력 `#qrate-input`, 전송 `.send`, 말풍선 `.msg.user`·`.msg.bot`(스트리밍 중 `aria-busy="true"`), 출처 접기 `.sources`(`summary` "출처 N건", `.source-title`, `.quote q`), 안내 `.msg.notice`(버튼 `.notice-action`), 연락처 폼 `.handoff-form`(`#qrate-contact`, `#qrate-handoff-message`, `button[type="submit"]`, `.cancel`)이다. Playwright 로케이터는 열린 shadow root를 뚫고, iframe은 `page.frameLocator('#qrate-host iframe.frame')`로 들어간다. 출처: packages/widget/src/loader.ts, packages/widget/src/frame/view.ts.
-- **운영자용 콘솔** — 서버가 `http://localhost:8787/console/`로 서빙하는 React 앱. 로그인은 `#tenant`에 테넌트 키 `demo`, `#key`에 콘솔 키, 버튼 "로그인". 해시 라우팅 `#/queue/open`·`#/queue/in_progress`·`#/queue/done`·`#/conversations`·`#/conversations/<id>`. 화면 요소는 data-testid로 잡는다: `tenant-name`, `queue-empty`, `queue-list`, `queue-item`, `tab-<status>`, `move-<status>`, `status`, `conversations-empty`, `conversation-item`, `messages`, `detail-handoffs`. 출처: apps/console/src/views/*.tsx.
-- **HTTP API** — `GET /healthz`, `GET /frame?t=&o=`, `POST /api/chat`(SSE 스트림, 응답 헤더 X-Conversation-Id), `POST /api/handoff`(201), `POST /api/console/login`·`/logout`, `GET /api/console/me`·`/conversations`·`/conversations/:id`·`/handoffs?status=`, `PATCH /api/console/handoffs/:id`, `GET·POST /api/console/top-ups`(POST는 `Idempotency-Key` 헤더), `POST /api/console/top-ups/:id/simulate`, `POST /api/payments/mock/webhook`(서명 헤더 `qrate-mock-signature`, Origin 검사 없음). 상태를 바꾸는 요청은 Origin 헤더가 `http://localhost:8787`이어야 한다(없으면 통과, 다른 값이면 403). 계약: packages/contracts/src/*.ts.
+- **운영자용 콘솔** — 서버가 `http://localhost:8787/console/`로 서빙하는 React 앱. 로그인은 `#tenant`에 테넌트 키 `demo`, `#key`에 콘솔 키, 버튼 "로그인". 해시 라우팅 `#/queue/open`·`#/queue/in_progress`·`#/queue/done`·`#/conversations`·`#/conversations/<id>`·`#/metrics`·`#/billing`. 화면 요소는 data-testid로 잡는다: `tenant-name`, `queue-empty`, `queue-list`, `queue-item`, `tab-<status>`, `move-<status>`, `status`, `conversations-empty`, `conversation-item`, `messages`, `detail-handoffs`, 지표 화면의 `nav-metrics`, `metrics-window`, `metric-ttft-p50`·`metric-ttft-p95`·`metric-ttft-samples`, `metric-resolution-rate`·`metric-resolution-resolved`·`metric-resolution-conversations`, `metric-widget-opens`. 출처: apps/console/src/views/*.tsx.
+- **HTTP API** — `GET /healthz`, `GET /frame?t=&o=`, `POST /api/chat`(SSE 스트림, 응답 헤더 X-Conversation-Id), `POST /api/handoff`(201), `POST /api/events`(대화창의 위젯 사건, 202 본문 없음), `POST /api/console/login`·`/logout`, `GET /api/console/me`·`/conversations`·`/conversations/:id`·`/handoffs?status=`·`/metrics`, `PATCH /api/console/handoffs/:id`, `GET·POST /api/console/top-ups`(POST는 `Idempotency-Key` 헤더), `POST /api/console/top-ups/:id/simulate`, `POST /api/payments/mock/webhook`(서명 헤더 `qrate-mock-signature`, Origin 검사 없음). 상태를 바꾸는 요청은 Origin 헤더가 `http://localhost:8787`이어야 한다(없으면 통과, 다른 값이면 403). 계약: packages/contracts/src/*.ts.
 
 ## Isolate — 나란히 두 개는 못 띄운다
 
@@ -34,7 +34,7 @@ qrate는 고객 사이트에 스크립트 한 줄로 설치하는 AI 상담 위�
 node .claude/skills/verify/scripts/launch.mjs <feature>
 ```
 
-`<feature>`는 feature map의 id 하나다: `widget-chat` | `handoff-queue` | `console` | `origin-guard` | `top-up`. launch는 증거 폴더 `.audit/evidence/<YYYYMMDD-HHMM>-<feature>/`를 만들고 거기에 `run.json`(PID·포트·시작 시각·git HEAD·산출물 mtime)과 각 프로세스의 로그를 두면서 셋을 띄운다.
+`<feature>`는 feature map의 id 하나다: `widget-chat` | `handoff-queue` | `console` | `origin-guard` | `top-up` | `metrics`. launch는 증거 폴더 `.audit/evidence/<YYYYMMDD-HHMM>-<feature>/`를 만들고 거기에 `run.json`(PID·포트·시작 시각·git HEAD·산출물 mtime)과 각 프로세스의 로그를 두면서 셋을 띄운다.
 
 | 이름 | 포트 | 명령(레포 루트 기준) | 환경변수 |
 | --- | --- | --- | --- |
@@ -84,6 +84,7 @@ run.json의 feature(또는 `--feature`)에 해당하는 여정 `scripts/journeys
 - `console` — 콘솔 문서 CSP → 틀린 키·맞는 키 로그인 → 위젯으로 대화 2건 → 대화 로그·상세 → 큐 상태 이동 → 로그아웃. [features/console.md](features/console.md)
 - `origin-guard` — `/frame` 403 안내 문서, 5174 데모에서 CSP frame-ancestors 거부, 5173 대조군. [features/origin-guard.md](features/origin-guard.md)
 - `top-up` — 콘솔 충전 요청 → 결제 성공(테스트) → 재배달 → 늦은 실패, 같은 `Idempotency-Key` 재전송, 서명 웹훅 재배달·다른 이벤트 id·위조·만료, 원장 한 줄. 서버는 고정 모의 결제 비밀(`QRATE_MOCK_PAYMENT_SECRET`)로 뜬다. [features/top-up.md](features/top-up.md)
+- `metrics` — 위젯 열기(widget_open 사건) → 질문 1건 → 닫고 다시 열기(열림 그대로) → 다른 페이지 로드에서 연결만 요청 → 콘솔 "지표"의 표본 1·p50 = p95·해결 1/2·열림 2와 API 응답 → server.log의 사건 줄 대조. [features/metrics.md](features/metrics.md)
 
 목업 엔진의 훅은 메시지 안의 마커다(apps/server/src/engine/mock.ts): `[[handoff]]`(안내 문장 + event: handoff, 인용 없음), `[[fail:429]]`(첫 이벤트 전 503 + Retry-After 2 → "다시 보내기"), `[[fail:401]]`(502, 재시도 불가), `[[fail-mid]]`(5글자 뒤 끊김), `[[refuse]]`(정책 거절). 실제 모델에는 없다.
 
@@ -99,7 +100,7 @@ run.json의 feature(또는 `--feature`)에 해당하는 여정 `scripts/journeys
 - `chat-N.sse.txt` — 위젯이 받은 `POST /api/chat` 응답 원문(상태줄·헤더·SSE 이벤트 전부: delta 조각, event: citation/handoff/done, `data: [DONE]`). `handoff-N.json.txt` — `POST /api/handoff` 응답. 페이지 안에서 응답 복제본을 읽어 남긴 것이라 위젯이 실제로 받은 바이트와 같다.
 - `network.jsonl` — 서버(8787)로 간 요청·응답 메타(메서드·URL·요청 문서·상태·CSP/cache-control/X-Conversation-Id 헤더·요청 본문).
 - `console-*.txt` — 부수 효과를 콘솔 API로 다시 읽은 응답(상태·헤더·본문).
-- `browser-console.log` — 모든 페이지의 콘솔 메시지. `result.json` — 단계 목록과 결과, 파일 목록. `run.json`·`doctor.json`·`server.log`·`demo-5173.log`·`demo-5174.log` — 인스턴스 기록(server.log에는 요청당 `chat_usage` JSON 한 줄이 남는다: 엔진·TTFT·인용 수·핸드오프).
+- `browser-console.log` — 모든 페이지의 콘솔 메시지. `result.json` — 단계 목록과 결과, 파일 목록. `run.json`·`doctor.json`·`server.log`·`demo-5173.log`·`demo-5174.log` — 인스턴스 기록(server.log에는 사건마다 JSON 한 줄이 남는다 — 테넌트를 찾은 `/api/chat` 요청마다 `{"type":"chat_request",…}`(ttftMs, payload에 outcome·엔진·인용 수·핸드오프, 메시지 원문 없음), 위젯 열림마다 `{"type":"widget_open",…}`. 서버가 `NODE_ENV` 없이 떠서 찍힌다. 같은 사건이 메모리 저장소의 이벤트 로그에 들어가 콘솔 지표가 된다).
 
 증거의 기준:
 
