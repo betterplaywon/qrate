@@ -1,11 +1,15 @@
 // 위젯 브라우저 E2E — 런처(Shadow DOM) + 대화창(서버 오리진 iframe) + 목업 서버를 실제 Chromium에서 돌린다.
 //
 // 단위 테스트가 못 보는 것만 본다: 호스트 CSS와의 격리, 오리진 격리(호스트가 대화 DOM에 손댈 수 없음),
-// CSP frame-ancestors와 `o` 대조, postMessage 왕복(ready·close·unread), 대화 API 요청이 어느 문서에서 나가는지, 재시도 정책.
+// CSP frame-ancestors와 `o` 대조, postMessage 왕복(ready·close·unread·greeting), 대화 API 요청이 어느 문서에서 나가는지, 재시도 정책,
+// 인사말 A/B(서버 배정 → 화면 → 이 사이트 localStorage 보존 → 다음 페이지 로드의 v= → 사건의 변형).
+// 첫 방문의 변형은 무작위라 어느 테스트도 특정 변형을 기대하지 않는다. 배정을 관찰해서 단언하고, 특정 변형이 필요하면 방문자 브라우저의
+// localStorage를 만든다(변형 id·문구는 콘솔 지표 API에서 읽는다).
 // 선택자는 런처(src/loader.ts)와 화면(src/frame/view.ts)의 클래스·id다. Playwright 로케이터는 열린 shadow root를 뚫는다.
 // 목업 훅([[fail:429]] 등)은 apps/server/src/engine/mock.ts.
 
-import { expect, test as base, type FrameLocator, type Page } from '@playwright/test';
+import type { ConsoleMetricsResponse, GreetingResponse, WidgetEventBody } from '@qrate/contracts';
+import { expect, test as base, type APIRequestContext, type FrameLocator, type Page, type Response } from '@playwright/test';
 import { CONSOLE_KEY, DEMO_ORIGIN, NOT_ALLOWED_DEMO_ORIGIN, SERVER_ORIGIN } from './servers';
 
 const HOST = '#qrate-host';
@@ -13,6 +17,9 @@ const LAUNCHER = `${HOST} .launcher`;
 const FRAME = `${HOST} iframe.frame`;
 const CHAT_URL = `${SERVER_ORIGIN}/api/chat`;
 const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
+const GREETING_URL = `${SERVER_ORIGIN}/api/greeting`;
+/** 런처가 이 사이트(데모) localStorage에 두는 인사말 변형의 키(src/loader.ts). */
+const VARIANT_KEY = 'qrate.greeting.demo';
 
 // 페이지(모든 프레임)의 콘솔 오류와 예외를 모은다. 정상 흐름에서는 0건이어야 한다.
 const test = base.extend<{ consoleErrors: string[] }>({
@@ -41,6 +48,44 @@ async function send(frame: FrameLocator, message: string): Promise<void> {
 
 /** 끝난(스트리밍이 닫힌) 답변 말풍선. */
 const finishedAnswers = (frame: FrameLocator) => frame.locator('.msg.bot:not([aria-busy])');
+
+/** 대화창이 처음 뜰 때 받는 인사말 배정 응답. 런처를 누르기 전에 기다리기 시작한다. */
+const greetingResponse = (page: Page) => page.waitForResponse((r) => r.url().startsWith(`${GREETING_URL}?`));
+
+async function assignedGreeting(res: Response): Promise<NonNullable<GreetingResponse['greeting']>> {
+  const { greeting } = (await res.json()) as GreetingResponse;
+  expect(greeting).not.toBeNull();
+  return greeting as NonNullable<GreetingResponse['greeting']>;
+}
+
+/** 이 페이지(모든 프레임)가 보낸 위젯 사건 본문. */
+function watchEvents(page: Page): WidgetEventBody[] {
+  const sent: WidgetEventBody[] = [];
+  page.on('request', (r) => {
+    if (r.url() === EVENTS_URL && r.method() === 'POST') sent.push(r.postDataJSON() as WidgetEventBody);
+  });
+  return sent;
+}
+
+const storedVariant = (page: Page) => page.evaluate((key) => localStorage.getItem(key), VARIANT_KEY);
+
+async function iframeVariant(page: Page): Promise<string | null> {
+  return new URL((await page.locator(FRAME).getAttribute('src')) ?? '').searchParams.get('v');
+}
+
+/** 다음 페이지 로드부터 이 사이트의 localStorage에 그 값이 들어 있게 한다 — 그 값을 보존한 재방문자의 브라우저. */
+async function storeBeforeLoad(page: Page, value: string): Promise<void> {
+  await page.addInitScript(([key, v]) => localStorage.setItem(key, v), [VARIANT_KEY, value] as const);
+}
+
+/** 지금 실험의 변형(id·문구). 콘솔 지표 API가 정의 순서로 돌려준다. */
+async function currentVariants(request: APIRequestContext): Promise<{ id: string; text: string }[]> {
+  const login = await request.post(`${SERVER_ORIGIN}/api/console/login`, { headers: { origin: SERVER_ORIGIN }, data: { tenant: 'demo', key: CONSOLE_KEY } });
+  expect(login.status()).toBe(200);
+  const { greeting } = (await (await request.get(`${SERVER_ORIGIN}/api/console/metrics`)).json()) as ConsoleMetricsResponse;
+  expect(greeting?.variants.length).toBeGreaterThan(1);
+  return greeting?.variants ?? [];
+}
 
 test('런처는 Shadow DOM에 격리되고, 열기 전에는 서버에 아무 요청도 보내지 않는다', async ({ page, consoleErrors }) => {
   const serverRequests: string[] = [];
@@ -99,15 +144,17 @@ test('열면 서버 오리진의 iframe이 뜨고, 호스트 문서는 대화 DO
 });
 
 test('처음 열면 대화창 문서가 widget_open 사건을 한 번 보내고, 닫았다 다시 열어도 더 보내지 않는다', async ({ page, consoleErrors }) => {
-  const sent: { frameUrl: string; body: unknown }[] = [];
+  const sent: { frameUrl: string; body: WidgetEventBody }[] = [];
   page.on('request', (r) => {
-    if (r.url() === EVENTS_URL && r.method() === 'POST') sent.push({ frameUrl: r.frame().url(), body: r.postDataJSON() });
+    if (r.url() === EVENTS_URL && r.method() === 'POST') sent.push({ frameUrl: r.frame().url(), body: r.postDataJSON() as WidgetEventBody });
   });
 
+  const greeting = greetingResponse(page);
   const accepted = page.waitForResponse((r) => r.url() === EVENTS_URL);
   const frame = await openWidget(page);
+  const { variant } = await assignedGreeting(await greeting);
   expect((await accepted).status()).toBe(202);
-  expect(sent).toEqual([{ frameUrl: expect.stringMatching(`^${SERVER_ORIGIN}/frame\\?`), body: { tenant: 'demo', type: 'widget_open' } }]);
+  expect(sent).toEqual([{ frameUrl: expect.stringMatching(`^${SERVER_ORIGIN}/frame\\?`), body: { tenant: 'demo', type: 'widget_open', variant } }]);
 
   const launcher = page.locator(LAUNCHER);
   await frame.locator('.close').click();
@@ -116,7 +163,7 @@ test('처음 열면 대화창 문서가 widget_open 사건을 한 번 보내고,
   await expect(launcher).toHaveAttribute('aria-expanded', 'true');
   await send(frame, '환불되나요?');
   await expect(finishedAnswers(frame)).toHaveCount(1);
-  expect(sent).toHaveLength(1);
+  expect(sent.map((s) => s.body.type)).toEqual(['widget_open', 'first_question']);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -349,4 +396,132 @@ test('허용 목록 밖의 사이트에서는 서버가 대화창을 내려주�
   // 브라우저도 CSP frame-ancestors 위반으로 프레임 표시를 거부한다 → ready가 오지 않아 로딩 문구가 남는다
   await expect.poll(() => consoleErrors.some((e) => e.includes('frame-ancestors'))).toBe(true);
   await expect(page.locator(`${HOST} .loading`)).toBeVisible();
+});
+
+test('인사말 A/B: 처음 방문하면 서버가 배정한 인사말이 대화 맨 위에 보이고, 이 사이트가 그 변형을 보존하며, 열림·첫 질문 사건이 같은 변형을 싣는다', async ({
+  page,
+  consoleErrors,
+}) => {
+  const sent = watchEvents(page);
+  const greeting = greetingResponse(page);
+  const frame = await openWidget(page);
+  const res = await greeting;
+  expect(res.status()).toBe(200);
+  expect(res.headers()['cache-control']).toBe('no-store');
+  expect(new URL(res.url()).searchParams.has('variant')).toBe(false);
+  expect(await iframeVariant(page)).toBeNull();
+  const assigned = await assignedGreeting(res);
+
+  // 인사말은 답변(.msg.bot)이 아니라 대화 맨 위의 .msg.greeting이고, 머리글은 그대로다
+  await expect(frame.locator('.msgs > .msg').first()).toHaveClass(/\bgreeting\b/);
+  await expect(frame.locator('.msg.greeting')).toHaveText(assigned.text);
+  await expect(frame.locator('.title')).toHaveText('무엇을 도와드릴까요?');
+  await expect.poll(() => storedVariant(page)).toBe(assigned.variant);
+
+  await send(frame, '환불되나요?');
+  await expect(finishedAnswers(frame)).toHaveCount(1);
+  await expect(frame.locator('.msg.greeting')).toHaveCount(1);
+  expect(sent).toEqual([
+    { tenant: 'demo', type: 'widget_open', variant: assigned.variant },
+    { tenant: 'demo', type: 'first_question', variant: assigned.variant },
+  ]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('인사말 A/B: 다시 로드하면 런처가 보존한 변형을 v=로 넘기고 같은 인사말을 본다', async ({ page, consoleErrors }) => {
+  const sent = watchEvents(page);
+  const first = greetingResponse(page);
+  await openWidget(page);
+  const assigned = await assignedGreeting(await first);
+  await expect.poll(() => storedVariant(page)).toBe(assigned.variant);
+
+  const again = greetingResponse(page);
+  const frame = await openWidget(page);
+  const res = await again;
+  expect(await iframeVariant(page)).toBe(assigned.variant);
+  expect(new URL(res.url()).searchParams.get('variant')).toBe(assigned.variant);
+  expect(await assignedGreeting(res)).toEqual(assigned);
+  await expect(frame.locator('.msg.greeting')).toHaveText(assigned.text);
+  await expect.poll(() => sent.length).toBe(2);
+  expect(sent.map((b) => b.variant)).toEqual([assigned.variant, assigned.variant]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('인사말 A/B: 다른 변형을 보존한 재방문자는 그 변형의 인사말을 본다', async ({ page, request, consoleErrors }) => {
+  for (const { id, text } of await currentVariants(request)) {
+    await storeBeforeLoad(page, id);
+    const greeting = greetingResponse(page);
+    const frame = await openWidget(page);
+    expect(await iframeVariant(page)).toBe(id);
+    expect(await assignedGreeting(await greeting)).toEqual({ variant: id, text });
+    await expect(frame.locator('.msg.greeting')).toHaveText(text);
+  }
+  expect(consoleErrors).toEqual([]);
+});
+
+test('인사말 A/B: 보존값이 지금 실험에 없으면 서버가 새로 배정해 런처가 덮어쓰고, 형식이 틀린 값은 URL에 싣지 않는다', async ({
+  page,
+  request,
+  context,
+  consoleErrors,
+}) => {
+  const ids = (await currentVariants(request)).map((v) => v.id);
+
+  // 옛 실험의 값(형식은 맞다) → v=로 넘어가지만 서버가 무시하고 새로 배정한다
+  await storeBeforeLoad(page, 'greet-old.z');
+  const greeting = greetingResponse(page);
+  await openWidget(page);
+  expect(await iframeVariant(page)).toBe('greet-old.z');
+  const assigned = await assignedGreeting(await greeting);
+  expect(ids).toContain(assigned.variant);
+  await expect.poll(() => storedVariant(page)).toBe(assigned.variant);
+
+  // 호스트 스크립트가 형식이 틀린 값을 넣었다 → 런처가 싣지 않는다
+  const other = await context.newPage();
+  await storeBeforeLoad(other, 'not a variant!');
+  const reassigned = greetingResponse(other);
+  await openWidget(other);
+  expect(await iframeVariant(other)).toBeNull();
+  expect(ids).toContain((await assignedGreeting(await reassigned)).variant);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('인사말 A/B: 이 사이트의 저장소가 막힌 브라우저에서도 대화창은 인사말과 함께 뜨고, 보존만 빠진다', async ({ page, consoleErrors }) => {
+  await page.addInitScript((origin) => {
+    if (location.origin !== origin) return;
+    Object.defineProperty(window, 'localStorage', {
+      get() {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+  }, DEMO_ORIGIN);
+
+  for (let load = 0; load < 2; load += 1) {
+    const greeting = greetingResponse(page);
+    const frame = await openWidget(page);
+    expect(await iframeVariant(page)).toBeNull();
+    await expect(frame.locator('.msg.greeting')).toHaveText((await assignedGreeting(await greeting)).text);
+  }
+  expect(consoleErrors).toEqual([]);
+});
+
+test('인사말 A/B: 인사말 요청이 실패하면 기다리지 않고 변형 없이 열림 사건을 보내고, 인사말 없이 대화창이 뜬다', async ({ page, consoleErrors }) => {
+  await page.route(`${GREETING_URL}?**`, (route) =>
+    route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'internal_error' }) }),
+  );
+  const sent = watchEvents(page);
+  await page.goto('/demo.html');
+  const opened = page.waitForRequest((r) => r.url() === EVENTS_URL && r.method() === 'POST');
+  const clickedAt = Date.now();
+  await page.locator(LAUNCHER).click();
+  await opened;
+  // 인사말을 기다리는 상한(3초)까지 가지 않는다
+  expect(Date.now() - clickedAt).toBeLessThan(2_500);
+  expect(sent).toEqual([{ tenant: 'demo', type: 'widget_open' }]);
+
+  const frame = page.frameLocator(FRAME);
+  await expect(frame.locator('#qrate-input')).toBeVisible();
+  await expect(frame.locator('.msg.greeting')).toHaveCount(0);
+  expect(await storedVariant(page)).toBeNull();
+  expect(consoleErrors.filter((e) => !e.startsWith('Failed to load resource'))).toEqual([]);
 });

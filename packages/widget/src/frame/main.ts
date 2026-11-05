@@ -1,7 +1,9 @@
 // 대화창 앱 — 서버 오리진의 iframe 문서(GET /frame?t=테넌트&o=부모 오리진)에서 돈다.
 //
 // 역할: 화면(view.ts)과 대화 API 스트림(stream.ts)을 잇고, 런처와 postMessage(../protocol.ts)로 열림·닫힘·안 읽은 수를 주고받는다.
-// 열림을 아는 곳이 여기뿐이라(런처는 서버를 부르지 않는다) 첫 열림을 위젯 사건으로 서버에 알린다(events.ts).
+// 처음 뜰 때 서버가 배정한 인사말을 묻고(greeting.ts), 받으면 대화 맨 위에 붙이고 그 변형을 런처에 알려 이 방문자에게 보존하게 한다.
+// 열림·질문을 아는 곳이 여기뿐이라(런처는 서버를 부르지 않는다) 페이지 로드당 첫 열림·첫 질문을 위젯 사건으로 서버에 알린다
+// (page-events.ts가 횟수와 실을 변형을 정하고 events.ts가 보낸다).
 // 서버와 같은 오리진이라 상대 경로로 API를 부르고, 호스트 사이트의 스크립트는 이 문서에 손댈 수 없다(ADR-0003 하이브리드).
 //
 // 설정은 URL 쿼리에서 읽는다. 서버가 t(테넌트)와 o(부모 오리진 — 테넌트의 허용 목록에 있는지)를 검사한 뒤에야 이 문서를 내려주므로,
@@ -18,7 +20,9 @@
 import { MAX_UNREAD, parseLauncherMessage, toWire, type FrameMessage } from '../protocol';
 import { Composer } from './composer';
 import { sendWidgetEvent } from './events';
+import { fetchGreeting } from './greeting';
 import { requestHandoff as postHandoffRequest, type HandoffResult } from './handoff';
+import { PageLoadEvents } from './page-events';
 import { streamChat } from './stream';
 import { Turn } from './turn';
 import { createView, type ChatView } from './view';
@@ -28,13 +32,15 @@ interface FrameConfig {
   tenant: string;
   /** 런처가 있는 고객 사이트의 오리진. postMessage를 보내는 상대이자 받을 때 확인하는 기준이다. */
   parentOrigin: string;
+  /** 런처가 보존해 둔 인사말 변형 id(v). 대화창은 해석하지 않고 서버에 그대로 넘긴다. */
+  variant: string | null;
 }
 
 function readConfig(): FrameConfig | null {
   const params = new URLSearchParams(location.search);
   const tenant = params.get('t')?.trim();
   const parentOrigin = params.get('o')?.trim();
-  return tenant && parentOrigin ? { tenant, parentOrigin } : null;
+  return tenant && parentOrigin ? { tenant, parentOrigin, variant: params.get('v') || null } : null;
 }
 
 /** 접수 실패 → 안내 문구. 연락처 문제만 따로 알리고 나머지는 "나중에 다시". */
@@ -47,9 +53,10 @@ function handoffFailureText(result: Extract<HandoffResult, { ok: false }>): stri
 class FrameApp {
   private readonly view: ChatView;
   private readonly composer: Composer;
+  private readonly events: PageLoadEvents;
+  /** 인사말 요청이 끝났다(성공·실패·시간 초과 모두). 거부되지 않는다. */
+  private readonly greetingSettled: Promise<void>;
   private visible = false;
-  /** widget_open은 페이지 로드당 첫 열림에 한 번. 다시 열기는 세지 않는다. */
-  private openReported = false;
   private unread = 0;
   private conversationId: string | null = null;
 
@@ -75,8 +82,19 @@ class FrameApp {
       if (event.key === 'Escape') this.send({ type: 'close' });
     });
 
+    this.events = new PageLoadEvents(config.tenant, (body) => void sendWidgetEvent(body));
+
     // 런처는 이 메시지를 받은 뒤에야 열림 상태를 보낸다(그 전에는 받을 리스너가 없다).
     this.send({ type: 'ready' });
+    this.greetingSettled = this.loadGreeting();
+  }
+
+  private async loadGreeting(): Promise<void> {
+    const greeting = await fetchGreeting({ tenant: this.config.tenant, variant: this.config.variant });
+    if (!greeting) return;
+    // 첫 질문이 먼저 나가 인사말을 그리지 않는 페이지 로드여도 배정은 유효하다 — 보존은 언제나 맡긴다.
+    this.send({ type: 'greeting', variant: greeting.variant });
+    if (this.events.showGreeting(greeting.variant)) this.view.showGreeting(greeting.text);
   }
 
   private send(msg: FrameMessage): void {
@@ -91,10 +109,8 @@ class FrameApp {
     if (this.visible) {
       this.unread = 0;
       this.view.focusInput();
-      if (!this.openReported) {
-        this.openReported = true;
-        void sendWidgetEvent({ tenant: this.config.tenant, type: 'widget_open' });
-      }
+      // 열림은 인사말 요청이 끝난 뒤(최대 3초)에 센다 — 변형을 실은 열림이 곧 인사말이 실제로 보인 열림이 되게.
+      void this.greetingSettled.then(() => this.events.open());
     }
   }
 
@@ -121,7 +137,10 @@ class FrameApp {
 
   private async ask(message: string, opts: { retry?: boolean } = {}): Promise<void> {
     if (this.composer.isBusy()) return;
-    if (!opts.retry) this.view.addUser(message);
+    if (!opts.retry) {
+      this.view.addUser(message);
+      this.events.question();
+    }
     this.composer.setBusy(true);
 
     // 턴은 화면만 그리고, 앱 상태를 바꾸는 일은 여기 콜백으로 돌아온다.

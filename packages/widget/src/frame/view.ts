@@ -37,6 +37,8 @@ export interface ChatView {
   /** busy면 전송만 막고(다음 질문은 미리 쓸 수 있다), locked면 입력란까지 막는다. */
   setComposer(state: ComposerState): void;
   addUser(text: string): void;
+  /** 서버가 배정한 인사말을 대화 맨 위에 붙인다. 답변(.msg.bot)이 아니다 — 출처·스트리밍이 없고 답변 수에 들지 않는다. */
+  showGreeting(text: string): void;
   startAnswer(): AnswerView;
   addNotice(text: string, action?: NoticeAction): void;
   /** 연락처(이메일)와 남길 말을 받는 폼을 대화에 붙인다. 이미 열려 있으면 그 폼으로 초점만 옮긴다. */
@@ -128,6 +130,10 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
 
     addUser(text) {
       append(el('p', 'msg user', text));
+    },
+
+    showGreeting(text) {
+      msgs.prepend(el('p', 'msg greeting', text));
     },
 
     startAnswer() {
