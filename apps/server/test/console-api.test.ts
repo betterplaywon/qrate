@@ -2,6 +2,7 @@ import type {
   ConsoleSessionResponse,
   ConversationDetailResponse,
   ConversationListResponse,
+  CreditsResponse,
   HandoffListResponse,
   HandoffQueueItemDto,
 } from '@qrate/contracts';
@@ -297,6 +298,30 @@ describe('대화 로그·미응답 큐', () => {
     expect((await patch(`/handoffs/${visitor?.id}`, cookie, {})).status).toBe(400);
     expect((await patch('/handoffs/missing', cookie, { status: 'done' })).status).toBe(404);
     expect((await patch(`/handoffs/${visitor?.id}`, null, { status: 'done' })).status).toBe(401);
+  });
+
+  it('잔액은 원장 합계, 원장은 최근순·커서로 이어 받고 접두사 있는 멱등 키를 싣는다. 세션 없으면 401, limit 틀리면 400', async () => {
+    const before = await repos.credits.balance('demo');
+    await repos.credits.append('demo', { delta: -1, reason: 'turn', idempotencyKey: 'turn:console-test' });
+
+    const res = await get('/credits?limit=1', cookie);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const page = (await res.json()) as CreditsResponse;
+    expect(page.balance).toBe(before - 1);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({ delta: -1, reason: 'turn', idempotencyKey: 'turn:console-test' });
+    expect(typeof page.items[0]?.createdAt).toBe('string');
+    expect(page.nextCursor).toEqual(expect.any(String));
+
+    const next = (await (await get(`/credits?limit=1&cursor=${encodeURIComponent(page.nextCursor as string)}`, cookie)).json()) as CreditsResponse;
+    expect(next.balance).toBe(before - 1);
+    expect(next.items[0]).toMatchObject({ delta: seed.initialCredits, reason: 'seed', idempotencyKey: 'seed:initial' });
+    expect(next.nextCursor).toBeNull();
+
+    expect((await get('/credits', null)).status).toBe(401);
+    expect((await get('/credits?limit=0', cookie)).status).toBe(400);
+    expect(await (await get('/credits?cursor=junk', cookie)).json()).toEqual({ error: 'invalid_cursor' });
   });
 
   it('처리 중 예외는 500 JSON과 보고 통로로 — 본문은 넘기지 않는다', async () => {

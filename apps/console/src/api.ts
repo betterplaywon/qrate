@@ -5,6 +5,7 @@ import {
   type ConsoleSessionResponse,
   type ConversationDetailResponse,
   type ConversationListResponse,
+  type CreditsResponse,
   type HandoffListResponse,
   type HandoffQueueItemDto,
   type HandoffStatus,
@@ -54,6 +55,7 @@ export const api = {
   conversations: (cursor: string | null) =>
     run(client.get('conversations', { searchParams: search({ cursor }) }).json<ConversationListResponse>()),
   conversation: (id: string) => run(client.get(`conversations/${encodeURIComponent(id)}`).json<ConversationDetailResponse>()),
+  credits: (cursor: string | null) => run(client.get('credits', { searchParams: search({ cursor }) }).json<CreditsResponse>()),
   handoffs: (status: HandoffStatus | null, cursor: string | null) =>
     run(client.get('handoffs', { searchParams: search({ status, cursor }) }).json<HandoffListResponse>()),
   updateHandoff: (id: string, status: HandoffStatus) =>

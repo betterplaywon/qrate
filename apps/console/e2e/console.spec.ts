@@ -1,4 +1,4 @@
-// 운영 콘솔 E2E — 실제 Chromium에서 로그인(쿠키 세션) → 대화 로그 → 미응답 큐 상태 변경 → 로그아웃.
+// 운영 콘솔 E2E — 실제 Chromium에서 로그인(쿠키 세션) → 대화 로그 → 미응답 큐 상태 변경 → 크레딧 잔액·원장 → 로그아웃.
 // 대화는 대화 API(POST /api/chat, 목업 엔진)로 만든다. 목업 훅 [[handoff]]가 모델 신호를 낸다(apps/server/src/engine/mock.ts).
 // 단위 테스트가 못 보는 것만 본다: 브라우저가 HttpOnly 쿠키를 실어 주는지, CSP 아래에서 번들이 도는지, 화면 흐름.
 
@@ -33,7 +33,7 @@ test('콘솔 문서는 CSP와 함께 내려오고, 로그인 전 API는 401', as
   expect((await request.get('/api/console/me')).status()).toBe(401);
 });
 
-test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화가 생기면 로그·상세·큐에 보이고 상태를 옮길 수 있다 → 로그아웃', async ({
+test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화가 생기면 로그·상세·큐에 보이고 상태를 옮길 수 있다 → 크레딧 98 → 로그아웃', async ({
   page,
   request,
   consoleErrors,
@@ -77,6 +77,16 @@ test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화
   await page.getByTestId('tab-in_progress').click();
   await expect(page.getByTestId('queue-item')).toHaveCount(1);
   await expect(page.getByTestId('status')).toHaveText('처리 중');
+
+  // 크레딧: 시드 100에서 답이 있는 턴 둘이 빠져 98. 원장은 최근순 — 답변 -1, 답변 -1, 초기 지급 +100
+  await page.getByTestId('nav-billing').click();
+  await expect(page.getByTestId('credit-balance')).toHaveText('98');
+  const entries = page.getByTestId('credit-entry');
+  await expect(entries).toHaveCount(3);
+  await expect(entries.first()).toContainText('답변');
+  await expect(entries.first()).toContainText('-1');
+  await expect(entries.last()).toContainText('초기 지급');
+  await expect(entries.last()).toContainText('+100');
 
   await page.getByRole('button', { name: '로그아웃' }).click();
   await expect(page.getByRole('button', { name: '로그인' })).toBeVisible();
