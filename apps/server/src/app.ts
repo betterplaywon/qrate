@@ -14,6 +14,7 @@ import { createEventRoute } from './http/events.js';
 import { createFrameHandler } from './http/frame.js';
 import { createHandoffRoute } from './http/handoff.js';
 import { createWebhookRoute } from './http/payments.js';
+import { jsonRateLimit } from './http/rate-limit.js';
 import { requireOwnOrigin } from './origin.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import type { Repositories } from './repo/types.js';
@@ -57,6 +58,8 @@ export interface AppOptions {
   handoffRequests?: { max: number; windowMs: number };
   /** 위젯 사건(POST /api/events)의 IP당 요율 제한. 기본 30회/분. 테스트가 줄여서 쓴다. */
   eventRequests?: { max: number; windowMs: number };
+  /** 대화 요청(POST /api/chat)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
+  chatRequests?: { max: number; windowMs: number };
   payments?: PaymentProviders;
 }
 
@@ -72,6 +75,7 @@ export function createApp({
   consoleAssetsDir,
   handoffRequests,
   eventRequests,
+  chatRequests = { max: 20, windowMs: 60_000 },
   payments = {},
 }: AppOptions): express.Express {
   const app = express();
@@ -97,10 +101,12 @@ export function createApp({
   // 대화창 문서. 어느 고객 사이트가 iframe으로 넣을 수 있는지는 이 응답의 CSP frame-ancestors가 정한다. (http/frame.ts)
   app.get(FRAME_PATH, createFrameHandler({ repos }));
 
-  // 대화 API. 순서가 곧 비용 순서다: Origin 검사(헤더만 봄) → 본문 파싱(32kb 상한) → 처리.
+  // 대화 API. 순서가 곧 비용 순서다: Origin 검사(헤더만 봄) → IP당 요율 제한(다른 오리진의 403은 세지 않는다) → 본문 파싱(32kb 상한) → 처리.
+  // Origin 없는 호출(curl)은 검사를 지나므로, 공개 키로 크레딧·모델 비용을 쓰거나 행을 쌓는 속도는 요율 제한이 누른다.
   app.post(
     CHAT_PATH,
     requireOwnOrigin(publicOrigin),
+    jsonRateLimit({ ...chatRequests, code: 'too_many_requests' }),
     express.json({ limit: '32kb' }), // 채팅 입력에 32kb면 충분 — 과대 페이로드 차단
     createChatHandler({ chat, recordEvent, reportError }),
   );

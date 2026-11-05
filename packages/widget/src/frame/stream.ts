@@ -54,7 +54,7 @@ export interface StreamOptions {
   signal?: AbortSignal;
 }
 
-/** Retry-After 상한. 서버는 지금 2초를 보낸다. 엉뚱하게 큰 값에 버튼이 오래 잠기지 않게 자른다. */
+/** Retry-After 상한. 서버는 엔진 장애에 2초, 대화 요율 제한(429)에 창이 끝날 때까지(최대 60초)를 보낸다. 엉뚱하게 큰 값에 버튼이 오래 잠기지 않게 자른다. */
 const MAX_RETRY_AFTER_MS = 60_000;
 
 /** Retry-After는 초(정수) 또는 HTTP 날짜다. 서버는 초를 보낸다. 날짜 형식은 지금 쓰지 않아 null로 둔다. */

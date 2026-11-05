@@ -2,6 +2,7 @@
 //
 //   POST /api/chat   본문 ChatRequestBody. 성공이면 SSE 스트림(ChatStreamEvent의 연속)과 응답 헤더 X-Conversation-Id.
 //                    첫 이벤트 전에 실패하면 HTTP 상태 + ApiErrorBody(재시도 가능하면 Retry-After 헤더).
+//                    IP당 요율 제한을 넘으면 429 too_many_requests + Retry-After(창이 끝날 때까지 남은 초).
 //   GET  /frame?t=   대화창 문서. 테넌트 키가 없으면 400, 모르는 키면 404 (ApiErrorBody).
 //   그 밖의 실패 — 본문을 읽을 수 없음(400·413), 모르는 경로(404), 처리 중 예외(500) — 도 ApiErrorBody로 답한다.
 //
@@ -61,8 +62,9 @@ export type ApiErrorCode =
   | 'invalid_limit'
   | 'invalid_cursor'
   | 'invalid_status'
-  /** 상담원 연결 요청(handoff.ts). 연락처가 이메일이 아니거나 너무 긺(400), 공개 엔드포인트의 요율 제한(429). */
+  /** 상담원 연결 요청(handoff.ts). 연락처가 이메일이 아니거나 너무 긺(400). */
   | 'invalid_contact'
+  /** 공개 엔드포인트(대화·상담원 연결·위젯 사건)의 IP당 요율 제한(429, Retry-After). */
   | 'too_many_requests'
   /** 위젯 사건(events.ts). 종류가 없거나 화이트리스트 밖(400) — 서버 사건(chat_request)도 밖에서는 이 코드로 막힌다. */
   | 'invalid_event'
