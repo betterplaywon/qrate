@@ -4,9 +4,18 @@
 // 메모리 구현은 W3 이후에도 단위 테스트용으로 남기고, 두 구현에 같은 계약 테스트를 돌린다.
 // 메모리 구현은 UNIQUE 제약·트랜잭션·정렬 규칙에서 실제 DB와 다를 수 있다 — 계약 테스트가 그 차이를 잡는다.
 
-import type { CreditReason, HandoffReason, HandoffSource, HandoffStatus } from '@qrate/contracts';
+import type {
+  CreditReason,
+  HandoffReason,
+  HandoffSource,
+  HandoffStatus,
+  PaymentProviderName,
+  PaymentResult,
+  SettleOutcome,
+  TopUpStatus,
+} from '@qrate/contracts';
 
-export type { CreditReason, HandoffSource, HandoffStatus };
+export type { CreditReason, HandoffSource, HandoffStatus, PaymentProviderName, PaymentResult, SettleOutcome, TopUpStatus };
 
 export interface Tenant {
   id: string;
@@ -124,6 +133,60 @@ export interface CreditRepository {
   list(tenantId: string, opts: { limit: number; cursor?: string | null }): Promise<CreditPage>;
 }
 
+export interface TopUp {
+  id: string;
+  tenantId: string;
+  requestKey: string;
+  packageId: string;
+  credits: number;
+  amount: number;
+  provider: PaymentProviderName;
+  status: TopUpStatus;
+  settledAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NewTopUp {
+  requestKey: string;
+  packageId: string;
+  credits: number;
+  amount: number;
+  provider: PaymentProviderName;
+}
+
+export interface Settlement {
+  topUpId: string;
+  tenantId: string;
+  event: { provider: PaymentProviderName; eventId: string; result: PaymentResult };
+  to: Exclude<TopUpStatus, 'pending'>;
+  from: readonly TopUpStatus[];
+  credit: NewCreditEntry | null;
+}
+
+export interface SettleResult {
+  outcome: SettleOutcome;
+  replayed: boolean;
+  topUp: TopUp;
+}
+
+export interface TopUpPage {
+  items: TopUp[];
+  nextCursor: string | null;
+}
+
+export interface TopUpRepository {
+  /** 같은 (tenantId, requestKey)면 새로 만들지 않고 기존 주문과 created=false. 동시에 와도 주문은 하나다. */
+  create(tenantId: string, input: NewTopUp): Promise<{ topUp: TopUp; created: boolean }>;
+  /** 웹훅 전용 — 테넌트 조건이 없다. 콘솔은 findForTenant를 쓴다. */
+  findById(id: string): Promise<TopUp | null>;
+  /** 다른 테넌트의 주문은 null. */
+  findForTenant(id: string, tenantId: string): Promise<TopUp | null>;
+  list(tenantId: string, opts: { limit: number; cursor?: string | null }): Promise<TopUpPage>;
+  /** 한 트랜잭션: 이벤트 기록을 먼저 차지하고(이미 있으면 처음 outcome을 replayed로), from에 있을 때만 to로 옮기고, 옮겼을 때만 credit을 넣는다. */
+  settle(settlement: Settlement): Promise<SettleResult>;
+}
+
 /** 콘솔 대화 로그 목록의 한 줄. 메시지 전문은 싣지 않는다 — 상세는 find. */
 export interface ConversationSummary {
   id: string;
@@ -195,6 +258,7 @@ export interface Repositories {
   conversations: ConversationRepository;
   handoffs: HandoffRepository;
   credits: CreditRepository;
+  topUps: TopUpRepository;
 }
 
 /** 목록 커서가 이 구현이 만든 값이 아닐 때. HTTP 계층은 400으로 옮긴다. */

@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '../src/generated/prisma/client.js';
 import type { HandoffReason } from '../src/engine/types.js';
+import type { PaymentResult } from '../src/repo/types.js';
 import { applySeed, createPrismaClient, createPrismaRepositories } from '../src/repo/prisma.js';
 import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
-import { describeRepositoryContract, turn } from './repo-contract.js';
+import { deliver, describeRepositoryContract, order, turn } from './repo-contract.js';
 
 // Postgres(Prisma) 저장소 — 메모리와 같은 계약 테스트 + DB에서만 뜻이 있는 케이스.
 // 전용 테스트 DB가 필요하다: QRATE_TEST_DATABASE_URL(.env의 QRATE_TEST_* 만 vitest.config.ts가 올린다).
@@ -30,6 +31,9 @@ describe.skipIf(!url)('Postgres 저장소', () => {
     await prisma.handoff.deleteMany();
     await prisma.message.deleteMany();
     await prisma.conversation.deleteMany();
+    await prisma.paymentEvent.deleteMany();
+    await prisma.creditTopUp.deleteMany();
+    await prisma.creditLedger.deleteMany({ where: { reason: 'topup' } });
     await applySeed(prisma, seed);
     await prisma.knowledgeItem.deleteMany({ where: { tenantId: OTHER_TENANT.id } });
     // 계약 테스트의 크레딧 검증은 0에서 시작하고 고정 멱등 키를 쓴다 — 지난 실행의 원장 행을 비운다(테스트 DB는 실행 사이에 남는다)
@@ -110,6 +114,59 @@ describe.skipIf(!url)('Postgres 저장소', () => {
       expect(results.filter((r) => !r.duplicate)).toHaveLength(1);
       expect(new Set(results.map((r) => r.entry.id)).size).toBe(1);
       expect(await prisma.creditLedger.count({ where: { tenantId: OTHER_TENANT.id, idempotencyKey: key } })).toBe(1);
+    });
+
+    describe('충전의 동시성 — 웹훅 재배달·재시도가 겹쳐 도착해도 원장은 한 번만 움직인다(READ COMMITTED)', () => {
+      const t = seed.tenant.id;
+      const ledgerLines = (topUpId: string) => prisma.creditLedger.count({ where: { tenantId: t, idempotencyKey: `topup:${topUpId}` } });
+
+      it('같은 이벤트 다섯 개가 동시에: 이벤트 기록 한 줄·원장 한 줄, 응답 다섯은 모두 applied이고 넷은 replayed', async () => {
+        const repos = createPrismaRepositories(prisma);
+        const { topUp } = await repos.topUps.create(t, order());
+        const before = await repos.credits.balance(t);
+        const eventId = `evt-${randomUUID()}`;
+        const results = await Promise.all(Array.from({ length: 5 }, () => deliver(repos, topUp.id, eventId, 'paid')));
+        expect(results.map((r) => r.outcome)).toEqual(['applied', 'applied', 'applied', 'applied', 'applied']);
+        expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+        expect(results.every((r) => r.topUp.status === 'paid')).toBe(true);
+        expect(await prisma.paymentEvent.count({ where: { topUpId: topUp.id } })).toBe(1);
+        expect(await ledgerLines(topUp.id)).toBe(1);
+        expect(await repos.credits.balance(t)).toBe(before + 100);
+      });
+
+      it('같은 주문에 다른 이벤트 다섯 개(모두 결제 완료)가 동시에: 원장 한 줄, 이벤트 기록 다섯 줄(applied 1 · stale 4)', async () => {
+        const repos = createPrismaRepositories(prisma);
+        const { topUp } = await repos.topUps.create(t, order());
+        const before = await repos.credits.balance(t);
+        const results = await Promise.all(Array.from({ length: 5 }, () => deliver(repos, topUp.id, `evt-${randomUUID()}`, 'paid')));
+        expect(results.filter((r) => r.outcome === 'applied')).toHaveLength(1);
+        expect(results.every((r) => !r.replayed)).toBe(true);
+        const events = await prisma.paymentEvent.groupBy({ by: ['outcome'], where: { topUpId: topUp.id }, _count: true });
+        expect(Object.fromEntries(events.map((e) => [e.outcome, e._count]))).toEqual({ applied: 1, stale: 4 });
+        expect(await ledgerLines(topUp.id)).toBe(1);
+        expect(await repos.credits.balance(t)).toBe(before + 100);
+      });
+
+      it('결제 완료·실패가 섞여 동시에: 어떤 순서로 커밋되든 끝은 paid, 원장 한 줄', async () => {
+        const repos = createPrismaRepositories(prisma);
+        const { topUp } = await repos.topUps.create(t, order());
+        const before = await repos.credits.balance(t);
+        const results: PaymentResult[] = ['failed', 'paid', 'failed', 'paid', 'failed'];
+        await Promise.all(results.map((r) => deliver(repos, topUp.id, `evt-${randomUUID()}`, r)));
+        expect((await repos.topUps.findById(topUp.id))?.status).toBe('paid');
+        expect(await prisma.paymentEvent.count({ where: { topUpId: topUp.id, result: 'paid', outcome: 'applied' } })).toBe(1);
+        expect(await ledgerLines(topUp.id)).toBe(1);
+        expect(await repos.credits.balance(t)).toBe(before + 100);
+      });
+
+      it('같은 요청 키로 주문 다섯 개가 동시에: 주문 하나, created는 한 번', async () => {
+        const repos = createPrismaRepositories(prisma);
+        const key = `req-${randomUUID()}`;
+        const results = await Promise.all(Array.from({ length: 5 }, () => repos.topUps.create(t, order(key))));
+        expect(results.filter((r) => r.created)).toHaveLength(1);
+        expect(new Set(results.map((r) => r.topUp.id)).size).toBe(1);
+        expect(await prisma.creditTopUp.count({ where: { tenantId: t, requestKey: key } })).toBe(1);
+      });
     });
 
     it('시드의 초기 크레딧은 한 번만 — 다시 시드해도, 숫자를 바꿔도 원장은 그대로', async () => {

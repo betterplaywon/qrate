@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 import { MAX_MESSAGE_CHARS } from './chat.js';
-import { CONSOLE_LIST_LIMIT, HANDOFF_STATUSES } from './console.js';
+import { CONSOLE_LIST_LIMIT, HANDOFF_STATUSES, PAYMENT_RESULTS, TOP_UP_PACKAGE_IDS } from './console.js';
 import { MAX_HANDOFF_CONTACT_CHARS, MAX_HANDOFF_MESSAGE_CHARS } from './handoff.js';
 
 /** 이전 응답 헤더의 대화 id. 없거나 비어 있거나 문자열이 아니면 새 대화로 본다(거부하지 않는다 — 옛 위젯과의 호환). */
@@ -50,3 +50,13 @@ export const consoleListQuerySchema = z.object({
   status: handoffStatusSchema.optional(),
 });
 export type ConsoleListQuery = z.infer<typeof consoleListQuerySchema>;
+
+/** 충전 요청의 Idempotency-Key 헤더. 콘솔은 UUID를 쓴다. */
+export const idempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
+
+/** POST /api/console/top-ups 본문. 금액은 받지 않는다 — 서버의 상품표에서만 온다. */
+export const createTopUpSchema = z.object({ packageId: z.enum(TOP_UP_PACKAGE_IDS) });
+export type CreateTopUpInput = z.infer<typeof createTopUpSchema>;
+
+/** POST /api/console/top-ups/:id/simulate 본문. */
+export const simulatePaymentSchema = z.object({ result: z.enum(PAYMENT_RESULTS) });

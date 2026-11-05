@@ -23,6 +23,8 @@ export const TENANT_NAME = '마루인보이스';
 // packages/widget/e2e/servers.ts의 CONSOLE_KEY와 같은 값 — 서버가 시작 때 해시해 데모 테넌트의 콘솔 키로 쓴다.
 export const CONSOLE_KEY = 'e2e-widget-console-key';
 const CONSOLE_SECRET = 'verify-session-secret-0123';
+// 모의 결제 제공자의 웹훅 서명 비밀. 여정이 같은 비밀로 서명한 웹훅을 HTTP로 직접 보내 재배달·위조를 재현한다.
+export const MOCK_PAYMENT_SECRET = 'verify-mock-payment-secret-01';
 
 /**
  * 이 스킬이 띄우는 프로세스. 포트는 바꿀 수 없다 — 5173은 시드 테넌트의 allowedOrigins(apps/server/seed/demo-tenant.json)에
@@ -41,6 +43,8 @@ export const PROCESSES = [
       QRATE_PUBLIC_ORIGIN: SERVER_ORIGIN,
       QRATE_DEMO_CONSOLE_KEY: CONSOLE_KEY,
       QRATE_CONSOLE_SECRET: CONSOLE_SECRET,
+      QRATE_PAYMENT_PROVIDER: 'mock',
+      QRATE_MOCK_PAYMENT_SECRET: MOCK_PAYMENT_SECRET,
     },
   },
   { name: 'demo', port: 5173, script: 'packages/widget/demo.mjs', log: 'demo-5173.log', env: { PORT: '5173' } },

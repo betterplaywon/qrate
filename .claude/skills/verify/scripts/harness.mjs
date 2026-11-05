@@ -21,7 +21,15 @@ export const LAUNCHER = `${HOST} .launcher`;
 export const FRAME = `${HOST} iframe.frame`;
 export const LOADING = `${HOST} .loading`;
 
-const KEPT_HEADERS = ['content-type', 'content-security-policy', 'cache-control', 'x-conversation-id', 'retry-after', 'set-cookie'];
+const KEPT_HEADERS = [
+  'content-type',
+  'content-security-policy',
+  'cache-control',
+  'x-conversation-id',
+  'retry-after',
+  'set-cookie',
+  'idempotent-replayed',
+];
 
 function pick(headers, names) {
   return Object.fromEntries(names.filter((n) => n in headers).map((n) => [n, headers[n]]));

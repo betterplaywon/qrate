@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { NewTurn, Repositories } from '../src/repo/types.js';
+import { decideSettlement } from '../src/billing/settlement.js';
+import type { NewTopUp, NewTurn, PaymentResult, Repositories, SettleResult } from '../src/repo/types.js';
 
 // 저장소 계약 테스트 — 메모리(repo.test.ts)와 Postgres(repo-postgres.test.ts) 두 구현이 똑같이 통과해야 한다.
 // 구현별로만 뜻이 있는 것(FK, 트랜잭션 되돌리기, 프로세스가 바뀌어도 남는지)은 각 파일이 더한다.
@@ -18,6 +19,20 @@ export const turn = (question: string, answer: string | null, handoff: NewTurn['
   answer: answer === null ? null : { role: 'assistant', content: answer },
   handoff,
 });
+
+export const order = (requestKey = `req-${randomUUID()}`): NewTopUp => ({
+  requestKey,
+  packageId: 'credits_100',
+  credits: 100,
+  amount: 10_000,
+  provider: 'mock',
+});
+
+export async function deliver(repos: Repositories, orderId: string, eventId: string, result: PaymentResult): Promise<SettleResult> {
+  const decision = decideSettlement(await repos.topUps.findById(orderId), { provider: 'mock', eventId, orderId, result, amount: 10_000 });
+  if (decision.kind !== 'settle') throw new Error(`settlement ignored: ${decision.reason}`);
+  return repos.topUps.settle(decision.settlement);
+}
 
 export function describeRepositoryContract(name: string, setup: () => Promise<RepositoryContractContext>): void {
   describe(`저장소 계약 — ${name}`, () => {
@@ -294,6 +309,105 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect(p2.items.map((e) => e.reason)).toEqual(['adjustment']);
       expect(p2.nextCursor).toBeNull();
       expect((await credits.list(ctx.tenantId, { limit: 100 })).items.some((e) => e.idempotencyKey === 'adj:contract-grant')).toBe(false);
+    });
+
+    it('충전 주문: 같은 요청 키는 같은 주문(created=false), 키의 범위는 테넌트, 콘솔 조회는 테넌트 경계 안에서만', async () => {
+      const topUps = ctx.repos.topUps;
+      const t = ctx.otherTenantId;
+      const key = `req-${randomUUID()}`;
+      const first = await topUps.create(t, order(key));
+      expect(first.created).toBe(true);
+      expect(first.topUp).toMatchObject({
+        tenantId: t,
+        requestKey: key,
+        packageId: 'credits_100',
+        credits: 100,
+        amount: 10_000,
+        provider: 'mock',
+        status: 'pending',
+        settledAt: null,
+      });
+      expect(await topUps.create(t, order(key))).toEqual({ topUp: first.topUp, created: false });
+
+      const elsewhere = await topUps.create(ctx.tenantId, order(key));
+      expect(elsewhere.created).toBe(true);
+      expect(elsewhere.topUp.id).not.toBe(first.topUp.id);
+
+      expect(await topUps.findForTenant(first.topUp.id, t)).toEqual(first.topUp);
+      expect(await topUps.findForTenant(first.topUp.id, ctx.tenantId)).toBeNull();
+      expect(await topUps.findById(first.topUp.id)).toEqual(first.topUp);
+      expect(await topUps.findById('missing')).toBeNull();
+    });
+
+    it('결제 완료: 주문이 paid로 가고 원장에 topup:<주문 id> 한 줄. 같은 이벤트 재배달은 처음 판정 그대로(replayed), 원장은 그대로', async () => {
+      const t = ctx.tenantId;
+      const { topUp } = await ctx.repos.topUps.create(t, order());
+      const before = await ctx.repos.credits.balance(t);
+      const eventId = `evt-${randomUUID()}`;
+
+      const first = await deliver(ctx.repos, topUp.id, eventId, 'paid');
+      expect(first).toMatchObject({ outcome: 'applied', replayed: false, topUp: { id: topUp.id, status: 'paid' } });
+      expect(first.topUp.settledAt).toBeInstanceOf(Date);
+      expect(await ctx.repos.credits.balance(t)).toBe(before + 100);
+
+      for (let i = 0; i < 3; i += 1) {
+        const again = await deliver(ctx.repos, topUp.id, eventId, 'paid');
+        expect(again).toMatchObject({ outcome: 'applied', replayed: true, topUp: { id: topUp.id, status: 'paid' } });
+      }
+      expect(await ctx.repos.credits.balance(t)).toBe(before + 100);
+      const lines = (await ctx.repos.credits.list(t, { limit: 100 })).items.filter((e) => e.idempotencyKey === `topup:${topUp.id}`);
+      expect(lines).toEqual([expect.objectContaining({ delta: 100, reason: 'topup' })]);
+    });
+
+    it('다른 이벤트 id로 온 같은 결과는 stale — 원장 키가 주문 id라 두 줄이 되지 않고, stale도 기록돼 재배달하면 stale 그대로', async () => {
+      const t = ctx.tenantId;
+      const { topUp } = await ctx.repos.topUps.create(t, order());
+      const before = await ctx.repos.credits.balance(t);
+      expect((await deliver(ctx.repos, topUp.id, `evt-a-${topUp.id}`, 'paid')).outcome).toBe('applied');
+      expect(await deliver(ctx.repos, topUp.id, `evt-b-${topUp.id}`, 'paid')).toMatchObject({ outcome: 'stale', replayed: false });
+      expect(await deliver(ctx.repos, topUp.id, `evt-b-${topUp.id}`, 'paid')).toMatchObject({ outcome: 'stale', replayed: true });
+      expect(await ctx.repos.credits.balance(t)).toBe(before + 100);
+    });
+
+    it('순서 뒤바뀜: 실패 뒤에 온 결제 완료는 paid로 가며 충전, 결제 완료 뒤에 온 실패는 stale이고 paid 그대로', async () => {
+      const t = ctx.tenantId;
+      const before = await ctx.repos.credits.balance(t);
+
+      const late = (await ctx.repos.topUps.create(t, order())).topUp;
+      expect(await deliver(ctx.repos, late.id, `evt-${randomUUID()}`, 'failed')).toMatchObject({ outcome: 'applied', topUp: { status: 'failed' } });
+      expect(await ctx.repos.credits.balance(t)).toBe(before);
+      expect(await deliver(ctx.repos, late.id, `evt-${randomUUID()}`, 'paid')).toMatchObject({ outcome: 'applied', topUp: { status: 'paid' } });
+      expect(await ctx.repos.credits.balance(t)).toBe(before + 100);
+
+      const early = (await ctx.repos.topUps.create(t, order())).topUp;
+      await deliver(ctx.repos, early.id, `evt-${randomUUID()}`, 'paid');
+      expect(await deliver(ctx.repos, early.id, `evt-${randomUUID()}`, 'failed')).toMatchObject({ outcome: 'stale', topUp: { status: 'paid' } });
+      expect((await ctx.repos.topUps.findById(early.id))?.status).toBe('paid');
+      expect(await ctx.repos.credits.balance(t)).toBe(before + 200);
+    });
+
+    it('충전 목록: 테넌트별 최근순, 커서로 이어 받기, 깨진 커서는 거부', async () => {
+      const t = ctx.otherTenantId;
+      for (let i = 0; i < 3; i += 1) await ctx.repos.topUps.create(t, order());
+      const all = await ctx.repos.topUps.list(t, { limit: 100 });
+      expect(all.items.length).toBeGreaterThanOrEqual(3);
+      expect(all.items.every((x) => x.tenantId === t)).toBe(true);
+      const times = all.items.map((x) => x.createdAt.getTime());
+      expect(times).toEqual([...times].sort((a, b) => b - a));
+
+      const paged: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const page = await ctx.repos.topUps.list(t, { limit: 2, cursor });
+        paged.push(...page.items.map((x) => x.id));
+        cursor = page.nextCursor;
+      } while (cursor);
+      expect(paged).toEqual(all.items.map((x) => x.id));
+
+      const seedIds = (await ctx.repos.topUps.list(ctx.tenantId, { limit: 100 })).items.map((x) => x.id);
+      expect(seedIds.some((id) => paged.includes(id))).toBe(false);
+      await expect(ctx.repos.topUps.list(t, { limit: 2, cursor: 'bad' })).rejects.toThrow(/cursor/);
+      await expect(ctx.repos.topUps.list(t, { limit: 0 })).rejects.toThrow(/limit/);
     });
 
     it('돌려준 객체를 바꿔도 저장소는 변하지 않는다', async () => {

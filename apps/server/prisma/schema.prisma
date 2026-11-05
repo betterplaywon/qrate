@@ -37,6 +37,7 @@ model Tenant {
   knowledge      KnowledgeItem[]
   handoffs       Handoff[]
   credits        CreditLedger[]
+  topUps         CreditTopUp[]
 }
 
 // 답변 근거(FAQ). 문단(blocks) 하나가 인용의 최소 단위다(ADR-0004).
@@ -155,6 +156,59 @@ model CreditLedger {
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, createdAt])
+}
+
+// 충전 주문과 결제 제공자 이벤트(W4). 원장이 한 번만 움직이게 하는 제약은 넷이다 — 주문 (tenantId, requestKey) UNIQUE(콘솔 재시도),
+// 이벤트 (provider, eventId) PK(재배달), 주문 상태의 조건부 UPDATE(순서 뒤바뀜, src/billing/settlement.ts), 원장 topup:<주문 id> 키(마지막 방어선).
+enum TopUpStatus {
+  pending
+  failed
+  paid
+}
+
+enum PaymentProviderName {
+  mock
+}
+
+enum PaymentResult {
+  paid
+  failed
+}
+
+enum SettleOutcome {
+  applied
+  stale
+}
+
+model CreditTopUp {
+  id         String              @id @default(cuid())
+  tenantId   String
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  requestKey String
+  packageId  String
+  credits    Int
+  amount     Int // 원(KRW)
+  provider   PaymentProviderName
+  status     TopUpStatus         @default(pending)
+  settledAt  DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  events     PaymentEvent[]
+
+  @@unique([tenantId, requestKey])
+  @@index([tenantId, createdAt])
+}
+
+model PaymentEvent {
+  provider   PaymentProviderName
+  eventId    String
+  topUpId    String
+  topUp      CreditTopUp         @relation(fields: [topUpId], references: [id])
+  result     PaymentResult
+  outcome    SettleOutcome
+  receivedAt DateTime            @default(now())
+
+  @@id([provider, eventId])
 }
 
 // 이벤트 로그(W4): A/B 변형 비교·퍼널 분석의 원천 데이터.

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --conditions=source --env-file-if-exists=.env src/index.ts",
+    "dev": "NODE_ENV=development tsx watch --conditions=source --env-file-if-exists=.env src/index.ts",
     "build": "prisma generate && rm -rf dist && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc -p tsconfig.json",
@@ -28,7 +28,8 @@
     "cookie": "2.0.1",
     "express": "^5.1.0",
     "express-rate-limit": "8.7.3",
-    "jose": "6.2.15"
+    "jose": "6.2.15",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

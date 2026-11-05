@@ -1,9 +1,12 @@
-// 운영 콘솔 E2E — 실제 Chromium에서 로그인(쿠키 세션) → 대화 로그 → 미응답 큐 상태 변경 → 크레딧 잔액·원장 → 로그아웃.
+// 운영 콘솔 E2E — 실제 Chromium에서 로그인(쿠키 세션) → 대화 로그 → 미응답 큐 상태 변경 → 크레딧 잔액·원장 → 로그아웃,
+// 그리고 충전(모의 결제 제공자): 끊긴 요청의 재시도 · 결제 결과 흉내 · 같은 이벤트 재배달 · 늦은 실패 · 웹훅 원문 재전송과 위조.
 // 대화는 대화 API(POST /api/chat, 목업 엔진)로 만든다. 목업 훅 [[handoff]]가 모델 신호를 낸다(apps/server/src/engine/mock.ts).
 // 단위 테스트가 못 보는 것만 본다: 브라우저가 HttpOnly 쿠키를 실어 주는지, CSP 아래에서 번들이 도는지, 화면 흐름.
 
 import { expect, test as base, type Page } from '@playwright/test';
-import { CONSOLE_KEY, SERVER_ORIGIN } from './servers';
+import { MOCK_SIGNATURE_HEADER, paymentWebhookPath, type TopUpListResponse } from '@qrate/contracts';
+import { createHmac } from 'node:crypto';
+import { CONSOLE_KEY, MOCK_PAYMENT_SECRET, SERVER_ORIGIN } from './servers';
 
 // 브라우저는 4xx 응답도 콘솔 오류로 찍는다. 세션 확인(/me)과 틀린 키의 401은 이 흐름에서 정상이라 그 한 줄만 거른다.
 const EXPECTED_401 = /status of 401/;
@@ -93,4 +96,90 @@ test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화
   expect((await request.get('/api/console/me')).status()).toBe(401);
 
   expect(consoleErrors).toEqual([]);
+});
+
+function signWebhook(rawBody: string, secret = MOCK_PAYMENT_SECRET): string {
+  const t = Math.floor(Date.now() / 1000);
+  return `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex')}`;
+}
+
+test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성공(테스트) +100 → 같은 이벤트 재배달·늦은 실패·웹훅 원문 재전송·위조는 잔액을 움직이지 않는다', async ({
+  page,
+  consoleErrors,
+}) => {
+  await page.goto('/console/#/billing');
+  await login(page, CONSOLE_KEY);
+  const balance = page.getByTestId('credit-balance');
+  await expect(balance).toHaveText(/^\d+$/);
+  const start = Number(await balance.textContent());
+
+  // 첫 충전 요청은 서버가 처리한 뒤 응답만 끊는다(네트워크 재시도 상황).
+  let dropped = false;
+  await page.route('**/api/console/top-ups', async (route) => {
+    if (route.request().method() !== 'POST' || dropped) return route.continue();
+    dropped = true;
+    await route.fetch();
+    await route.abort('connectionreset');
+  });
+  await expect(page.getByTestId('package-credits_100')).toBeChecked();
+  await page.getByRole('button', { name: '충전 요청' }).click();
+  await expect(page.getByTestId('top-up-error')).toContainText('같은 요청으로');
+  const retried = page.waitForResponse((r) => r.url().endsWith('/api/console/top-ups') && r.request().method() === 'POST');
+  await page.getByRole('button', { name: '충전 요청' }).click();
+  const retry = await retried;
+  expect(retry.status()).toBe(201);
+  expect(retry.headers()['idempotent-replayed']).toBe('true');
+  const orders = page.getByTestId('top-up-item');
+  await expect(orders).toHaveCount(1);
+  await expect(orders.first().getByTestId('top-up-status')).toHaveText('결제 대기');
+  await expect(balance).toHaveText(String(start));
+
+  const result = page.getByTestId('simulate-result');
+  await orders.first().getByRole('button', { name: '결제 성공(테스트)' }).click();
+  await expect(result).toHaveText('100크레딧을 충전했어요.');
+  await expect(balance).toHaveText(String(start + 100));
+  await expect(orders.first().getByTestId('top-up-status')).toHaveText('결제 완료');
+  await expect(page.getByTestId('credit-entry').first()).toContainText('충전');
+  await expect(page.getByTestId('credit-entry').first()).toContainText('+100');
+
+  await orders.first().getByRole('button', { name: '결제 성공(테스트)' }).click();
+  await expect(result).toHaveText('같은 이벤트가 다시 왔어요. 처리 결과는 처음과 같고 잔액은 그대로예요.');
+  await expect(balance).toHaveText(String(start + 100));
+
+  await orders.first().getByRole('button', { name: '결제 실패(테스트)' }).click();
+  await expect(result).toHaveText('이미 처리된 주문이라 상태가 바뀌지 않았어요.');
+  await expect(orders.first().getByTestId('top-up-status')).toHaveText('결제 완료');
+
+  const list = (await (await page.request.get('/api/console/top-ups')).json()) as TopUpListResponse;
+  const order = list.items[0];
+  if (!order) throw new Error('주문이 없다');
+  const webhook = (rawBody: string, signature: string) =>
+    page.request.post(paymentWebhookPath('mock'), {
+      headers: { 'content-type': 'application/json', [MOCK_SIGNATURE_HEADER]: signature },
+      data: rawBody,
+    });
+  const event = (id: string, amount = order.amount) =>
+    JSON.stringify({ id, type: 'payment.paid', created: Math.floor(Date.now() / 1000), data: { orderId: order.id, amount } });
+
+  const redelivered = event(`evt_${order.id}_paid`);
+  const again = await webhook(redelivered, signWebhook(redelivered));
+  expect(again.status()).toBe(200);
+  expect(again.headers()['idempotent-replayed']).toBe('true');
+  expect(await again.json()).toEqual({ outcome: 'applied' });
+
+  const another = event(`evt-e2e-${order.id}`);
+  const stale = await webhook(another, signWebhook(another));
+  expect(stale.status()).toBe(200);
+  expect(await stale.json()).toEqual({ outcome: 'stale' });
+
+  const forged = await webhook(event(`evt-forged-${order.id}`, 1_000_000), signWebhook(another));
+  expect(forged.status()).toBe(401);
+  const wrongSecret = await webhook(another, signWebhook(another, 'attacker-secret-0123456789'));
+  expect(wrongSecret.status()).toBe(401);
+
+  await page.reload();
+  await expect(balance).toHaveText(String(start + 100));
+  await expect(page.getByTestId('credit-entry').filter({ hasText: '충전' })).toHaveCount(1);
+
+  expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET/.test(e))).toEqual([]);
 });

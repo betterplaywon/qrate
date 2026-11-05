@@ -1,4 +1,11 @@
-import type { ConsoleLoginBody, ConsoleTenant, HandoffQueueItemDto, HandoffStatus } from '@qrate/contracts';
+import type {
+  ConsoleLoginBody,
+  ConsoleTenant,
+  CreateTopUpBody,
+  HandoffQueueItemDto,
+  HandoffStatus,
+  PaymentResult,
+} from '@qrate/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from './api';
 import { ME_KEY } from './queryClient';
@@ -12,6 +19,7 @@ export const keys = {
   conversation: (id: string) => ['conversation', id] as const,
   handoffs: (status: HandoffStatus) => ['handoffs', status] as const,
   credits: ['credits'] as const,
+  topUps: ['topUps'] as const,
 };
 
 /** 세션 조회. 401은 오류가 아니라 "로그인 필요"(null)다. */
@@ -78,6 +86,32 @@ export function useCredits() {
     queryFn: ({ pageParam }) => api.credits(pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
+  });
+}
+
+export function useTopUps() {
+  return useInfiniteQuery({
+    queryKey: keys.topUps,
+    queryFn: ({ pageParam }) => api.topUps(pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+  });
+}
+
+export function useCreateTopUp() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ body, key }: { body: CreateTopUpBody; key: string }) => api.createTopUp(body, key),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.topUps }),
+  });
+}
+
+export function useSimulatePayment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, result }: { id: string; result: PaymentResult }) => api.simulatePayment(id, { result }),
+    onSuccess: () =>
+      Promise.all([client.invalidateQueries({ queryKey: keys.topUps }), client.invalidateQueries({ queryKey: keys.credits })]),
   });
 }
 
