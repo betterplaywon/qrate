@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { MAX_MESSAGE_CHARS } from './chat.js';
 import { CONSOLE_LIST_LIMIT, HANDOFF_STATUSES, PAYMENT_RESULTS, TOP_UP_PACKAGE_IDS } from './console.js';
+import { WIDGET_EVENT_TYPES } from './events.js';
 import { MAX_HANDOFF_CONTACT_CHARS, MAX_HANDOFF_MESSAGE_CHARS } from './handoff.js';
 
 /** 이전 응답 헤더의 대화 id. 없거나 비어 있거나 문자열이 아니면 새 대화로 본다(거부하지 않는다 — 옛 위젯과의 호환). */
@@ -29,6 +30,12 @@ export const handoffRequestSchema = z.object({
     .max(MAX_HANDOFF_MESSAGE_CHARS)
     .nullish()
     .transform((v) => v || null),
+});
+
+/** POST /api/events 본문. 출력에 tenant·type만 있다 — 본문의 다른 값이 사건에 옮겨질 길이 없다. 모르는 키는 버린다. */
+export const widgetEventSchema = z.object({
+  tenant: z.string().min(1),
+  type: z.enum(WIDGET_EVENT_TYPES),
 });
 
 /** 콘솔 로그인 본문. 두 값 모두 사람이 적는 짧은 문자열이다 — 상한은 무차별 대입의 본문 크기를 제한한다. */

@@ -1,4 +1,4 @@
-import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, FRAME_PATH, HANDOFF_PATH, PAYMENT_WEBHOOK_ROUTE } from '@qrate/contracts';
+import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, EVENTS_PATH, FRAME_PATH, HANDOFF_PATH, PAYMENT_WEBHOOK_ROUTE } from '@qrate/contracts';
 import express from 'express';
 import type { PaymentProviders } from './billing/provider.js';
 import { createBillingService } from './billing/service.js';
@@ -10,6 +10,7 @@ import { createChatHandler } from './http/chat.js';
 import { createConsoleRouter } from './http/console/router.js';
 import { consoleStatic } from './http/console/static.js';
 import { createErrorHandler, notFound } from './http/errors.js';
+import { createEventRoute } from './http/events.js';
 import { createFrameHandler } from './http/frame.js';
 import { createHandoffRoute } from './http/handoff.js';
 import { createWebhookRoute } from './http/payments.js';
@@ -19,7 +20,7 @@ import type { Repositories } from './repo/types.js';
 
 // 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
 //   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, chat_request 사건,
-//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts),
+//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts), 위젯 사건 수집(events.ts),
 //             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, top-ups 충전, static 페이지 서빙),
 //             결제 제공자 웹훅(payments.ts)
 //   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
@@ -54,6 +55,8 @@ export interface AppOptions {
   consoleAssetsDir?: string;
   /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
   handoffRequests?: { max: number; windowMs: number };
+  /** 위젯 사건(POST /api/events)의 IP당 요율 제한. 기본 30회/분. 테스트가 줄여서 쓴다. */
+  eventRequests?: { max: number; windowMs: number };
   payments?: PaymentProviders;
 }
 
@@ -68,6 +71,7 @@ export function createApp({
   console: consoleOptions,
   consoleAssetsDir,
   handoffRequests,
+  eventRequests,
   payments = {},
 }: AppOptions): express.Express {
   const app = express();
@@ -106,6 +110,13 @@ export function createApp({
     HANDOFF_PATH,
     requireOwnOrigin(publicOrigin),
     ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
+  );
+
+  // 위젯 사건(대화창의 widget_open). 상담원 연결과 같은 순서: Origin 검사 → 요율 제한(자기 카운터) → 본문 → 처리(http/events.ts).
+  app.post(
+    EVENTS_PATH,
+    requireOwnOrigin(publicOrigin),
+    ...createEventRoute({ repos, recordEvent, ...(eventRequests ? { requestLimit: eventRequests } : {}) }),
   );
 
   app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));

@@ -60,7 +60,7 @@ export {
   type TopUpStatus,
   type UpdateHandoffBody,
 } from './console.js';
-export { WIDGET_EVENT_TYPES, type WidgetEventType } from './events.js';
+export { EVENTS_PATH, WIDGET_EVENT_TYPES, type WidgetEventBody, type WidgetEventType } from './events.js';
 export {
   HANDOFF_PATH,
   MAX_HANDOFF_CONTACT_CHARS,
