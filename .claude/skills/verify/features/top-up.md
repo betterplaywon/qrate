@@ -9,9 +9,9 @@
 - `top-up-pay` "결제 성공(테스트)" → "100크레딧을 충전했어요.", 상태 "결제 완료", 잔액 200.
 - `top-up-redelivery` 같은 버튼을 다시 누름(같은 이벤트 id) → 재배달 안내, 잔액 200 그대로.
 - `top-up-late-failure` "결제 실패(테스트)" → "이미 처리된 주문이라 상태가 바뀌지 않았어요.", 결제 완료 유지.
-- `top-up-request-replay` 같은 `Idempotency-Key`로 충전 요청을 다시 보내면 같은 201·본문 + `Idempotent-Replayed: true`, 같은 키·다른 묶음은 422 `idempotency_key_reused`.
+- `top-up-request-replay` 같은 `Idempotency-Key`로 충전 요청을 다시 보내면 같은 201·본문 + `Idempotent-Replayed: true`, 같은 키·다른 묶음은 422 `idempotency_key_reused`, 그 주문이 결제된 뒤의 재요청도 처음 본문(`pending`)이다.
 - `top-up-webhook` 서명한 웹훅을 `POST /api/payments/mock/webhook`으로 직접: 재배달 200 `applied` + `Idempotent-Replayed: true`, 다른 이벤트 id 200 `stale`, 변조·다른 비밀·만료(301초 전) 401 `invalid_signature`.
-- `top-up-ledger` 콘솔 API 원장에 `topup:<주문 id>` 한 줄(+100), 잔액 200. 새로 고쳐도 200.
+- `top-up-ledger` 콘솔 API 원장에 주문마다 `topup:<주문 id>` 한 줄(+100), 잔액 300(시드 100 + 두 주문). 새로 고쳐도 300.
 
 ## How to get to it (user POV)
 
@@ -30,9 +30,9 @@ Preconditions:
 - **결제 성공(`top-up-pay`).** 그 주문 행의 "결제 성공(테스트)" → `getByTestId('simulate-result')` "100크레딧을 충전했어요." → 상태 "결제 완료" → 잔액 "200".
 - **재배달(`top-up-redelivery`).** 같은 버튼 → simulate 응답 `{ outcome: 'applied', replayed: true }` → 안내 "같은 이벤트가 다시 왔어요. 처리 결과는 처음과 같고 잔액은 그대로예요." → 잔액 "200".
 - **늦은 실패(`top-up-late-failure`).** "결제 실패(테스트)" → `{ outcome: 'stale' }` → 안내 "이미 처리된 주문이라 상태가 바뀌지 않았어요." → 상태 "결제 완료", 잔액 "200".
-- **요청 재전송(`top-up-request-replay`).** 브라우저 세션 쿠키로 같은 키 `POST /api/console/top-ups` 두 번(500크레딧) → 둘 다 201·같은 본문, 두 번째만 `idempotent-replayed: true` → 같은 키·100크레딧 → 422.
+- **요청 재전송(`top-up-request-replay`).** 브라우저 세션 쿠키로 같은 키 `POST /api/console/top-ups` 두 번(100크레딧) → 둘 다 201·같은 본문, 두 번째만 `idempotent-replayed: true` → 같은 키·500크레딧 → 422 → 그 주문을 `POST /api/console/top-ups/:id/simulate {result: paid}` → 같은 키 재요청이 201 + 헤더 + 처음 본문(`status: pending`).
 - **서명 웹훅(`top-up-webhook`).** 같은 비밀로 서명한 `payment.paid`를 `evt_<주문 id>_paid`로 보내면 200 `{"outcome":"applied"}` + 헤더, 새 이벤트 id면 200 `stale`, 본문 금액을 바꾼 것·다른 비밀·`t`가 301초 전인 것은 401.
-- **원장(`top-up-ledger`).** `GET /api/console/credits` → 잔액 200, `topup:<주문 id>` 한 줄(+100) → 새로 고침 뒤 잔액 "200".
+- **원장(`top-up-ledger`).** `GET /api/console/credits` → 잔액 300, 두 주문 각각 `topup:<주문 id>` 한 줄(+100) → 새로 고침 뒤 잔액 "300".
 - **Proof.** `steps.md`, `01-top-up-open.png`~`08-top-up-ledger.png`(04: 재배달 안내와 잔액 200, 원장 두 줄), `top-up-request*.txt`, `webhook-*.txt`(상태·헤더·본문), `console-credits.json`, `server.log`(`payments=mock`), `trace.zip`.
 
 ## Gotchas

@@ -84,26 +84,38 @@ export async function run(h) {
     return 'simulate {outcome: stale} · 결제 완료 유지 · 잔액 200';
   });
 
-  await h.step('top-up-request-replay', '같은 Idempotency-Key로 충전 요청을 다시 보내면 같은 201·본문 + Idempotent-Replayed, 다른 상품이면 422', async () => {
+  let replayOrder;
+  await h.step('top-up-request-replay', '같은 Idempotency-Key 재요청은 같은 201·본문 + Idempotent-Replayed, 다른 상품은 422, 그 주문이 결제된 뒤의 재요청도 처음 본문', async () => {
     const key = randomUUID();
     const post = (packageId) =>
       page.request.post('/api/console/top-ups', {
         headers: { origin: SERVER_ORIGIN, 'idempotency-key': key },
         data: { packageId },
       });
-    const first = await post('credits_500');
-    const again = await post('credits_500');
-    const other = await post('credits_100');
+    const first = await post('credits_100');
+    const again = await post('credits_100');
+    const other = await post('credits_500');
     await h.evidence.saveApiResponse('top-up-request-first.txt', first);
     await h.evidence.saveApiResponse('top-up-request-replay.txt', again);
     await h.evidence.saveApiResponse('top-up-request-other-package.txt', other);
-    const [a, b] = [await first.json(), await again.json()];
+    replayOrder = await first.json();
+    const firstBody = JSON.stringify(replayOrder);
     assert(first.status() === 201 && again.status() === 201, `상태 ${first.status()} / ${again.status()}`);
-    assert(JSON.stringify(a) === JSON.stringify(b), '재요청 본문이 첫 응답과 다르다');
+    assert(JSON.stringify(await again.json()) === firstBody, '재요청 본문이 첫 응답과 다르다');
     assert(first.headers()['idempotent-replayed'] === undefined, '첫 응답에 Idempotent-Replayed가 있다');
     assert(again.headers()['idempotent-replayed'] === 'true', `재요청 헤더 ${again.headers()['idempotent-replayed']}`);
     assert(other.status() === 422 && (await other.json()).error === 'idempotency_key_reused', `다른 상품 ${other.status()}`);
-    return `201 주문 ${a.id} → 재요청 201 같은 본문 + Idempotent-Replayed: true → 다른 상품 422 idempotency_key_reused`;
+
+    const paid = await page.request.post(`/api/console/top-ups/${replayOrder.id}/simulate`, {
+      headers: { origin: SERVER_ORIGIN },
+      data: { result: 'paid' },
+    });
+    assert(paid.status() === 200 && (await paid.json()).topUp.status === 'paid', `simulate ${paid.status()}`);
+    const afterPaid = await post('credits_100');
+    await h.evidence.saveApiResponse('top-up-request-replay-after-paid.txt', afterPaid);
+    assert(afterPaid.status() === 201 && afterPaid.headers()['idempotent-replayed'] === 'true', `결제 뒤 재요청 ${afterPaid.status()}`);
+    assert(JSON.stringify(await afterPaid.json()) === firstBody, '결제 뒤 재요청 본문이 첫 응답과 다르다');
+    return `201 주문 ${replayOrder.id} → 재요청 201 같은 본문 + 헤더 → 다른 상품 422 → 결제 뒤 재요청도 201 처음 본문(pending)`;
   });
 
   await h.step('top-up-webhook', '제공자 쪽으로 서명한 웹훅을 HTTP로 보낸다: 재배달은 같은 outcome + 헤더, 다른 이벤트 id는 stale, 변조·다른 비밀·만료는 401', async () => {
@@ -127,14 +139,16 @@ export async function run(h) {
     return '재배달 200 applied + Idempotent-Replayed · 다른 이벤트 id 200 stale · 변조·다른 비밀·만료 모두 401 invalid_signature';
   });
 
-  await h.step('top-up-ledger', '원장을 다시 읽으면 충전은 topup:<주문 id> 한 줄이고 잔액은 200이다', async () => {
+  await h.step('top-up-ledger', '원장을 다시 읽으면 주문마다 충전은 topup:<주문 id> 한 줄이고 잔액은 300(시드 100 + 두 주문)이다', async () => {
     const ledger = await credits();
     await h.evidence.saveJson('console-credits.json', ledger);
-    const topups = ledger.items.filter((e) => e.idempotencyKey === `topup:${order.id}`);
-    assert(ledger.balance === SEED_BALANCE + 100, `잔액 ${ledger.balance}`);
-    assert(topups.length === 1 && topups[0].delta === 100, `충전 항목 ${JSON.stringify(topups)}`);
+    for (const o of [order, replayOrder]) {
+      const lines = ledger.items.filter((e) => e.idempotencyKey === `topup:${o.id}`);
+      assert(lines.length === 1 && lines[0].delta === 100, `topup:${o.id} 항목 ${JSON.stringify(lines)}`);
+    }
+    assert(ledger.balance === SEED_BALANCE + 200, `잔액 ${ledger.balance}`);
     await page.reload();
-    await expect(balance).toHaveText(String(SEED_BALANCE + 100));
-    return `잔액 ${ledger.balance} · topup:${order.id} 한 줄(+100) · 원장 ${ledger.items.length}줄`;
+    await expect(balance).toHaveText(String(SEED_BALANCE + 200));
+    return `잔액 ${ledger.balance} · topup:${order.id}·topup:${replayOrder.id} 각 한 줄(+100) · 원장 ${ledger.items.length}줄`;
   });
 }
