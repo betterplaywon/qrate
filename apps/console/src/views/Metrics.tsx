@@ -32,8 +32,8 @@ function Cards({ metrics: { window, ttft, autoResolution, widget } }: { metrics:
             </dl>
           )}
           <p className="metric-def">
-            표본 <span data-testid="metric-ttft-samples">{ttft.samples}</span>건 · 질문을 받은 때부터 첫 답변 조각을 보낼 때까지,
-            조각을 보낸 요청만
+            표본 <span data-testid="metric-ttft-samples">{ttft.samples}</span>건 · 질문을 받은 때부터 공백이 아닌 첫 답변 조각을 보낼
+            때까지, 그런 조각을 보낸 요청만
           </p>
         </article>
         <article className="metric" data-testid="metric-resolution">

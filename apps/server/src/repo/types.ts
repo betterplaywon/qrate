@@ -310,7 +310,7 @@ type EventBase = {
 export type ChatRequestEvent = EventBase & {
   type: 'chat_request';
   conversationId: string;
-  /** 요청 수신 → 첫 delta 전송(ms). 첫 조각 전에 끝났으면 null. */
+  /** 요청 수신 → 공백이 아닌 첫 delta 전송(ms). 그런 조각 없이 끝났으면 null(공백뿐인 답은 답이 없는 턴이다 — chat/service.ts). */
   ttftMs: number | null;
   payload: ChatRequestPayload;
 };

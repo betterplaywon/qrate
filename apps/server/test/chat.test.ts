@@ -7,6 +7,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { MockEngine } from '../src/engine/mock.js';
+import type { AnswerEngine, EngineEvent } from '../src/engine/types.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { AppEvent } from '../src/repo/types.js';
 import { CapturingEngine } from './helpers/capturing-engine.js';
@@ -430,6 +431,65 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(entries).toHaveLength(1); // 두 번 기록하지 않는다
       expect(await repos.conversations.find(conversationId, seed.tenant.id)).toBeNull();
+    } finally {
+      await close();
+    }
+  });
+
+  it('TTFT는 공백이 아닌 첫 조각에서 잰다 — 줄바꿈만 내고 연결 신호로 끝난 턴은 표본이 아니다', async () => {
+    const entries: AppEvent[] = [];
+    const done: EngineEvent = {
+      type: 'done',
+      stopReason: 'end_turn',
+      refusalCategory: null,
+      model: 'scripted',
+      servedBy: 'scripted',
+      fallbackUsed: false,
+      usage: { inputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, outputTokens: 0 },
+    };
+    const scripted: AnswerEngine = {
+      name: 'scripted',
+      model: 'scripted',
+      async *stream({ message }) {
+        yield { type: 'delta', text: '\n' };
+        if (message === '줄바꿈 뒤 연결') {
+          yield { type: 'handoff', reason: 'needs_human', summary: null };
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          yield { type: 'delta', text: '답입니다' };
+        }
+        yield done;
+      },
+    };
+    const repos = createRepositoriesFromSeed(seed);
+    const app = createApp({
+      engine: scripted,
+      repos,
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      recordEvent: (event) => entries.push(event),
+      reportError: () => undefined,
+    });
+    const { url, close } = await serve(app);
+    const send = async (message: string): Promise<void> => {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, tenant: 'demo' }),
+      });
+      expect(res.status).toBe(200);
+      await res.text();
+    };
+    try {
+      await send('줄바꿈 뒤 연결');
+      await send('줄바꿈 뒤 답');
+      await expect.poll(() => entries.length, { timeout: 2_000 }).toBe(2);
+      const [blank, late] = entries;
+      expect(blank).toMatchObject({ ttftMs: null, payload: { outcome: 'done', handoff: 'needs_human' } });
+      const saved = await repos.conversations.find(blank?.conversationId ?? '', seed.tenant.id);
+      expect(saved?.messages.map((m) => m.role)).toEqual(['user']);
+      // 줄바꿈 조각은 바로 나가고 글자 조각은 60ms 뒤에 나간다 — 표본은 뒤쪽 시각이어야 한다
+      expect(late?.type === 'chat_request' ? late.ttftMs : null).toBeGreaterThanOrEqual(50);
     } finally {
       await close();
     }

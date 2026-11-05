@@ -143,7 +143,8 @@ export function createChatHandler({ chat, recordEvent, reportError = reportToStd
     try {
       for (let r = first; !r.done; r = await events.next()) {
         const ev = r.value;
-        if (ev.type === 'delta' && ttftMs === null) ttftMs = Date.now() - receivedAt.getTime();
+        // 공백뿐인 조각은 첫 응답이 아니다 — 유스케이스도 공백뿐인 답을 답 없음으로 저장한다(chat/service.ts recordTurn).
+        if (ev.type === 'delta' && ttftMs === null && ev.text.trim() !== '') ttftMs = Date.now() - receivedAt.getTime();
         if (ev.type === 'citation') citations += 1;
         if (ev.type === 'handoff') handoff = ev.reason;
         if (ev.type === 'done') done = ev;

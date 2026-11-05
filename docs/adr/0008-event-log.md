@@ -62,7 +62,7 @@ stdout 줄은 남겼다. 같은 통로가 `NODE_ENV`가 production이 아닐 때
 | --- | --- | --- |
 | 정의의 자리 | `apps/server/src/events/metrics.ts` 한 곳. 저장소는 사실(값 목록·대화별 사실·개수)만 | 저장소마다 SQL·JS로 따로 |
 | TTFT 백분위 | nearest-rank(⌈p·n/100⌉번째) = Postgres `percentile_disc` | `percentile_cont`(보간) |
-| TTFT 표본 | 창 안 `chat_request` 중 첫 답변 조각을 보낸 요청(`ttftMs` 있음) | 모든 요청 |
+| TTFT 표본 | 창 안 `chat_request` 중 공백이 아닌 답변 조각을 보낸 요청(`ttftMs` 있음). 공백뿐인 조각은 첫 응답이 아니다(유스케이스도 공백뿐인 답은 답 없음) | 모든 요청, 공백 조각도 첫 응답으로 |
 | 해결률 원천 | `Conversation`·`Message`·`Handoff` 표 | 사건 |
 | 해결률 분모 | 창 안에 시작해 질문(방문자 메시지)이 있었던 대화. 질문 없이 연결만 요청한 대화는 분모·분자 모두에서 뺀다 | 창 안에 시작한 대화 전부(공개 `/api/handoff`만으로 분모가 부풀었다), 마지막 메시지 뒤 30분 무활동인 대화만 |
 | 해결률 분자 | 답 ≥ 1, Handoff 행 0(출처·상태 무관) | 모델 신호만 |

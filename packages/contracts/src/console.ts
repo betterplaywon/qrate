@@ -196,7 +196,7 @@ export interface ConsoleMetricsResponse {
   /** 집계 창 [from, to). to는 응답을 만든 시각. */
   window: { from: string; to: string };
   /**
-   * 첫 답변 조각을 보낸 대화 요청의 TTFT(요청 수신 → 첫 조각, ms). nearest-rank 백분위(= Postgres percentile_disc)라
+   * 공백이 아닌 답변 조각을 보낸 대화 요청의 TTFT(요청 수신 → 그런 첫 조각, ms). nearest-rank 백분위(= Postgres percentile_disc)라
    * 값은 언제나 실제 한 요청의 값이다. samples가 0이면 둘 다 null.
    */
   ttft: { samples: number; p50Ms: number | null; p95Ms: number | null };
