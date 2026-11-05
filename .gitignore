@@ -21,3 +21,8 @@ docs/blog/
 
 # Prisma가 생성한 클라이언트(apps/server/src/generated) — prisma generate로 다시 만든다
 **/src/generated/
+
+# 에이전트 자율 실행 기록(결정 로그·증거·보고서) — 로컬 전용
+.audit/
+# Claude Code 개인 설정
+.claude/settings.local.json

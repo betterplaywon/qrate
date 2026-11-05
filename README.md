@@ -87,3 +87,4 @@ docker compose up --build             # Postgres → 마이그레이션·시드(
 - 결제·인증·SSE·모더레이션 코드는 줄 단위로 읽는다 — [PR 템플릿](.github/pull_request_template.md)
 - AI 생성 코드에서 실제 발견한 문제만 [docs/reviews.md](docs/reviews.md)에 기록
 - 주 1회: [면접 질문 뱅크](docs/interview)에 코드 안 보고 답하기 → 블로그로 발행(`pnpm blog:new`)
+- 에이전트 규칙은 [CLAUDE.md](CLAUDE.md) — [pstack](https://github.com/michael-denyer/pstack-claude)(Claude Code 포트, 원작은 [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack)) 플레이북으로 일하고, 커밋·push·PR·머지는 장치(가드 훅·CI·코드를 쓰지 않은 에이전트의 검증)를 지나면 자동. 결제·인증·모더레이션·마이그레이션·CI·장치 자체는 사람이 머지
