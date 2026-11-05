@@ -138,11 +138,11 @@ export function createApp({
     ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
   );
 
-  // 위젯 사건(대화창의 widget_open). 상담원 연결과 같은 순서: Origin 검사 → 요율 제한(자기 카운터) → 본문 → 처리(http/events.ts).
+  // 위젯 사건(대화창의 widget_open·first_question). 상담원 연결과 같은 순서: Origin 검사 → 요율 제한(자기 카운터) → 본문 → 처리(http/events.ts).
   app.post(
     EVENTS_PATH,
     requireOwnOrigin(publicOrigin),
-    ...createEventRoute({ repos, recordEvent, ...(eventRequests ? { requestLimit: eventRequests } : {}) }),
+    ...createEventRoute({ repos, recordEvent, greeting, ...(eventRequests ? { requestLimit: eventRequests } : {}) }),
   );
 
   app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));

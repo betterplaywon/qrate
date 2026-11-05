@@ -17,6 +17,7 @@ import type {
   WidgetEventType,
 } from '@qrate/contracts';
 import type { EngineErrorCode, Usage } from '../engine/types.js';
+import type { GreetingVariantId } from '../greeting/experiment.js';
 
 export type { CreditReason, HandoffSource, HandoffStatus, PaymentProviderName, PaymentResult, SettleOutcome, TopUpStatus };
 
@@ -315,10 +316,14 @@ export type ChatRequestEvent = EventBase & {
   payload: ChatRequestPayload;
 };
 
-/** 대화창이 POST /api/events로 보낸 사건. payload는 서버가 만드는 빈 객체 — 요청 본문에서 아무것도 옮기지 않는다. */
+/**
+ * 대화창이 POST /api/events로 보낸 사건. payload는 서버가 만드는 빈 객체 — 요청 본문에서 아무것도 옮기지 않는다.
+ * variant는 서버가 지금 인사말 실험에서 찾은 변형 id이거나 null이다. 요청 본문의 문자열은 브랜드가 없어 그대로 들어올 수 없다.
+ */
 export type WidgetEvent = EventBase & {
   type: WidgetEventType;
   conversationId: null;
+  variant: GreetingVariantId | null;
   payload: Record<string, never>;
 };
 

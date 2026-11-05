@@ -63,7 +63,7 @@ describe.skipIf(!url)('Postgres 저장소', () => {
     it('없는 테넌트의 사건은 기록되지 않는다 (FK) — 메모리 구현은 이걸 잡지 못한다', async () => {
       const repos = createPrismaRepositories(prisma);
       await expect(
-        repos.events.record({ type: 'widget_open', tenantId: 'no-such-tenant', createdAt: new Date(), conversationId: null, payload: {} }),
+        repos.events.record({ type: 'widget_open', tenantId: 'no-such-tenant', createdAt: new Date(), conversationId: null, variant: null, payload: {} }),
       ).rejects.toThrow();
       expect(await prisma.event.count({ where: { tenantId: 'no-such-tenant' } })).toBe(0);
     });

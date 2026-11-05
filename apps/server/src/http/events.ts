@@ -2,6 +2,7 @@ import { type ApiErrorBody, type ApiErrorCode } from '@qrate/contracts';
 import { widgetEventSchema } from '@qrate/contracts/schemas';
 import express, { type RequestHandler } from 'express';
 import type { EventSink } from '../events/sink.js';
+import { findVariant, type GreetingExperiment } from '../greeting/experiment.js';
 import type { Repositories } from '../repo/types.js';
 import { jsonRateLimit } from './rate-limit.js';
 
@@ -22,12 +23,17 @@ function bodyError(issues: readonly { path: PropertyKey[] }[]): ApiErrorCode {
 export interface EventRouteOptions {
   repos: Pick<Repositories, 'tenants'>;
   recordEvent: EventSink;
-  /** IP당 고정 창 요율 제한. 기본 30회/분 — 방문자 한 명은 페이지 로드당 1건이라 NAT 뒤 여럿을 견딘다. 테스트가 줄여서 쓴다. */
+  /** 사건의 variant를 대조할 인사말 실험. null이면 variant는 언제나 null로 남는다. */
+  greeting: GreetingExperiment | null;
+  /**
+   * IP당 고정 창 요율 제한. 기본 30회/분 — 방문자 한 명은 페이지 로드당 최대 2건(첫 열림·첫 질문)이라 NAT 뒤 여럿을 견딘다.
+   * 테스트가 줄여서 쓴다.
+   */
   requestLimit?: { max: number; windowMs: number };
 }
 
 /** Origin 검사 뒤에 붙는 핸들러 묶음: 요율 제한 → JSON 본문(1kb) → 처리. 저장은 기다리지 않는다 — 202가 그 뜻이다. */
-export function createEventRoute({ repos, recordEvent, requestLimit = DEFAULT_REQUEST_LIMIT }: EventRouteOptions): RequestHandler[] {
+export function createEventRoute({ repos, recordEvent, greeting, requestLimit = DEFAULT_REQUEST_LIMIT }: EventRouteOptions): RequestHandler[] {
   const limiter = jsonRateLimit({ ...requestLimit, code: 'too_many_requests' });
 
   const handler: RequestHandler = async (req, res) => {
@@ -41,7 +47,9 @@ export function createEventRoute({ repos, recordEvent, requestLimit = DEFAULT_RE
       res.status(404).json({ error: 'unknown_tenant' } satisfies ApiErrorBody);
       return;
     }
-    recordEvent({ type: parsed.data.type, tenantId: tenant.id, conversationId: null, createdAt: new Date(), payload: {} });
+    // 지금 실험의 변형이 아닌 값(옛 탭의 대화창, 실험을 바꾼 직후, 꾸민 값)은 400이 아니라 null — 열림·질문 수는 지키고 변형만 버린다.
+    const variant = greeting ? (findVariant(greeting, parsed.data.variant)?.id ?? null) : null;
+    recordEvent({ type: parsed.data.type, tenantId: tenant.id, conversationId: null, variant, createdAt: new Date(), payload: {} });
     res.status(202).end();
   };
 

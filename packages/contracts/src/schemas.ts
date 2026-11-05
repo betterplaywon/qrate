@@ -38,6 +38,7 @@ export const handoffRequestSchema = z.object({
 export const widgetEventSchema = z.object({
   tenant: z.string().min(1),
   type: z.enum(WIDGET_EVENT_TYPES),
+  variant: lenientText,
 });
 
 /** GET /api/greeting 쿼리. ?variant=a&variant=b 같은 배열은 보존값 없음으로 본다. */

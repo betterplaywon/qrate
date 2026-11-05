@@ -18,7 +18,7 @@ export function toEventRow(event: AppEvent): EventRow {
     tenantId: event.tenantId,
     type: event.type,
     conversationId: event.conversationId,
-    variant: null,
+    variant: event.type === 'chat_request' ? null : event.variant,
     ttftMs: event.type === 'chat_request' ? event.ttftMs : null,
     createdAt: event.createdAt,
     payload: event.payload,
