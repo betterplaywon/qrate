@@ -4,9 +4,18 @@
 // 메모리 구현은 W3 이후에도 단위 테스트용으로 남기고, 두 구현에 같은 계약 테스트를 돌린다.
 // 메모리 구현은 UNIQUE 제약·트랜잭션·정렬 규칙에서 실제 DB와 다를 수 있다 — 계약 테스트가 그 차이를 잡는다.
 
-import type { CreditReason, HandoffReason, HandoffSource, HandoffStatus } from '@qrate/contracts';
+import type {
+  CreditReason,
+  HandoffReason,
+  HandoffSource,
+  HandoffStatus,
+  PaymentProviderName,
+  PaymentResult,
+  SettleOutcome,
+  TopUpStatus,
+} from '@qrate/contracts';
 
-export type { CreditReason, HandoffSource, HandoffStatus };
+export type { CreditReason, HandoffSource, HandoffStatus, PaymentProviderName, PaymentResult, SettleOutcome, TopUpStatus };
 
 export interface Tenant {
   id: string;
@@ -124,6 +133,71 @@ export interface CreditRepository {
   list(tenantId: string, opts: { limit: number; cursor?: string | null }): Promise<CreditPage>;
 }
 
+/** 충전 주문. id가 결제 제공자에게 넘기는 orderId이고, credits·amount는 주문 때 상품표에서 굳힌 값이다. */
+export interface TopUp {
+  id: string;
+  tenantId: string;
+  /** 콘솔이 만든 Idempotency-Key. 테넌트 안에서 유일하다. */
+  requestKey: string;
+  packageId: string;
+  credits: number;
+  /** 원. 웹훅의 금액은 이 값과 대조한다. */
+  amount: number;
+  provider: PaymentProviderName;
+  status: TopUpStatus;
+  settledAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NewTopUp {
+  requestKey: string;
+  packageId: string;
+  credits: number;
+  amount: number;
+  provider: PaymentProviderName;
+}
+
+/** 제공자 이벤트 하나를 주문에 적용하는 지시. billing/settlement.ts의 decideSettlement가 만든다 — 저장소는 전이 규칙도 원장 키 형식도 모른다. */
+export interface Settlement {
+  topUpId: string;
+  tenantId: string;
+  event: { provider: PaymentProviderName; eventId: string; result: PaymentResult };
+  to: Exclude<TopUpStatus, 'pending'>;
+  /** 지금 상태가 이 중 하나일 때만 to로 옮긴다. */
+  from: readonly TopUpStatus[];
+  /** 옮겨졌을 때만 같은 트랜잭션에서 원장에 넣는다. paid로 가는 이벤트만 있다. */
+  credit: NewCreditEntry | null;
+}
+
+export interface SettleResult {
+  outcome: SettleOutcome;
+  /** 이미 받은 이벤트(같은 provider·eventId)다. outcome은 처음 기록한 값이다. */
+  replayed: boolean;
+  topUp: TopUp;
+}
+
+export interface TopUpPage {
+  items: TopUp[];
+  nextCursor: string | null;
+}
+
+export interface TopUpRepository {
+  /** 같은 (tenantId, requestKey)면 새로 만들지 않고 기존 주문과 created=false. 동시에 와도 주문은 하나다. */
+  create(tenantId: string, input: NewTopUp): Promise<{ topUp: TopUp; created: boolean }>;
+  /** 웹훅용. 웹훅은 테넌트를 모른다 — 테넌트는 주문 행에서 나온다. */
+  findById(id: string): Promise<TopUp | null>;
+  /** 콘솔용. 다른 테넌트의 주문은 null. */
+  findForTenant(id: string, tenantId: string): Promise<TopUp | null>;
+  /** 최근순 목록. 커서는 listByTenant와 같은 규칙. */
+  list(tenantId: string, opts: { limit: number; cursor?: string | null }): Promise<TopUpPage>;
+  /**
+   * 한 트랜잭션: 이벤트를 먼저 기록해 차지하고(이미 있으면 처음 outcome을 replayed로 돌려준다),
+   * 지금 상태가 from에 있을 때만 to로 옮기고(아니면 stale), 옮겼고 credit이 있으면 원장에 넣는다.
+   */
+  settle(settlement: Settlement): Promise<SettleResult>;
+}
+
 /** 콘솔 대화 로그 목록의 한 줄. 메시지 전문은 싣지 않는다 — 상세는 find. */
 export interface ConversationSummary {
   id: string;
@@ -195,6 +269,7 @@ export interface Repositories {
   conversations: ConversationRepository;
   handoffs: HandoffRepository;
   credits: CreditRepository;
+  topUps: TopUpRepository;
 }
 
 /** 목록 커서가 이 구현이 만든 값이 아닐 때. HTTP 계층은 400으로 옮긴다. */

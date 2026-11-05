@@ -8,6 +8,7 @@ import {
   MemoryKnowledgeRepository,
   MemoryStore,
   MemoryTenantRepository,
+  MemoryTopUpRepository,
 } from './memory.js';
 import { appendCredit } from './memory/credits.js';
 import type { KnowledgeItem, Repositories, Tenant } from './types.js';
@@ -105,5 +106,6 @@ export function createRepositoriesFromSeed(
     conversations: new MemoryConversationRepository(store),
     handoffs: new MemoryHandoffRepository(store),
     credits: new MemoryCreditRepository(store),
+    topUps: new MemoryTopUpRepository(store),
   };
 }

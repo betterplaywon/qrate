@@ -43,6 +43,10 @@ export {
   type HandoffSource,
   type HandoffStatus,
   type MessageDto,
+  type PaymentProviderName,
+  type PaymentResult,
+  type SettleOutcome,
+  type TopUpStatus,
   type UpdateHandoffBody,
 } from './console.js';
 export {

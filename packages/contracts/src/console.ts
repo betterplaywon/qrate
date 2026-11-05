@@ -120,3 +120,11 @@ export interface CreditsResponse {
   items: CreditEntryDto[];
   nextCursor: string | null;
 }
+
+/** 충전 주문의 상태. 앞으로만 간다(pending → failed → paid). 실패 뒤에 결제 완료가 오면 paid로 옮겨 충전한다. */
+export type TopUpStatus = 'pending' | 'failed' | 'paid';
+export type PaymentProviderName = 'mock';
+/** 결제 제공자 이벤트가 알리는 결과. 곧 주문의 목표 상태다. */
+export type PaymentResult = 'paid' | 'failed';
+/** applied = 이벤트가 주문 상태를 옮겼다. stale = 이미 그 이상이라 그대로다. 재배달에는 처음 판정을 그대로 돌려준다. */
+export type SettleOutcome = 'applied' | 'stale';
