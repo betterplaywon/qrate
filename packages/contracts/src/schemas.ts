@@ -9,20 +9,23 @@ import { CONSOLE_LIST_LIMIT, HANDOFF_STATUSES, PAYMENT_RESULTS, TOP_UP_PACKAGE_I
 import { WIDGET_EVENT_TYPES } from './events.js';
 import { MAX_HANDOFF_CONTACT_CHARS, MAX_HANDOFF_MESSAGE_CHARS } from './handoff.js';
 
-/** 이전 응답 헤더의 대화 id. 없거나 비어 있거나 문자열이 아니면 새 대화로 본다(거부하지 않는다 — 옛 위젯과의 호환). */
-const lenientConversationId = z.unknown().optional().transform((v) => (typeof v === 'string' && v ? v : null));
+/**
+ * 비어 있지 않은 문자열이면 그대로, 아니면(없음·빈 문자열·배열·숫자) null. 거부하지 않는다 — 요청 전체를 지키고 이 값만 버린다.
+ * 대화 id(없으면 새 대화, 옛 위젯과의 호환)와 인사말 변형(없으면 보존값 없음·실험 밖)이 쓴다.
+ */
+const lenientText = z.unknown().optional().transform((v) => (typeof v === 'string' && v ? v : null));
 
 /** POST /api/chat 본문. message는 앞뒤 공백을 뗀 뒤 비어 있지 않고 MAX_MESSAGE_CHARS 이하. */
 export const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(MAX_MESSAGE_CHARS),
   tenant: z.string().min(1),
-  conversationId: lenientConversationId,
+  conversationId: lenientText,
 });
 
 /** POST /api/handoff 본문. contact는 이메일, message는 선택(빈 문자열은 없음으로). */
 export const handoffRequestSchema = z.object({
   tenant: z.string().min(1),
-  conversationId: lenientConversationId,
+  conversationId: lenientText,
   contact: z.string().trim().max(MAX_HANDOFF_CONTACT_CHARS).pipe(z.email()),
   message: z
     .string()
@@ -36,6 +39,9 @@ export const widgetEventSchema = z.object({
   tenant: z.string().min(1),
   type: z.enum(WIDGET_EVENT_TYPES),
 });
+
+/** GET /api/greeting 쿼리. ?variant=a&variant=b 같은 배열은 보존값 없음으로 본다. */
+export const greetingQuerySchema = z.object({ tenant: z.string().min(1), variant: lenientText });
 
 /** 콘솔 로그인 본문. 두 값 모두 사람이 적는 짧은 문자열이다 — 상한은 무차별 대입의 본문 크기를 제한한다. */
 export const consoleLoginSchema = z.object({

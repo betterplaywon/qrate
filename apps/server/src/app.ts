@@ -1,4 +1,13 @@
-import { CHAT_PATH, CONSOLE_API_PATH, CONSOLE_PATH, EVENTS_PATH, FRAME_PATH, HANDOFF_PATH, PAYMENT_WEBHOOK_ROUTE } from '@qrate/contracts';
+import {
+  CHAT_PATH,
+  CONSOLE_API_PATH,
+  CONSOLE_PATH,
+  EVENTS_PATH,
+  FRAME_PATH,
+  GREETING_PATH,
+  HANDOFF_PATH,
+  PAYMENT_WEBHOOK_ROUTE,
+} from '@qrate/contracts';
 import express from 'express';
 import type { PaymentProviders } from './billing/provider.js';
 import { createBillingService } from './billing/service.js';
@@ -6,12 +15,14 @@ import { createChatService } from './chat/service.js';
 import { createSessionCodec } from './console/session.js';
 import type { AnswerEngine } from './engine/types.js';
 import { createEventSink, type EventSink } from './events/sink.js';
+import { GREETING_EXPERIMENT, type GreetingExperiment } from './greeting/experiment.js';
 import { createChatHandler } from './http/chat.js';
 import { createConsoleRouter } from './http/console/router.js';
 import { consoleStatic } from './http/console/static.js';
 import { createErrorHandler, notFound } from './http/errors.js';
 import { createEventRoute } from './http/events.js';
 import { createFrameHandler } from './http/frame.js';
+import { createGreetingHandler } from './http/greeting.js';
 import { createHandoffRoute } from './http/handoff.js';
 import { createWebhookRoute } from './http/payments.js';
 import { jsonRateLimit } from './http/rate-limit.js';
@@ -21,7 +32,7 @@ import type { Repositories } from './repo/types.js';
 
 // 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
 //   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, chat_request 사건,
-//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts), 위젯 사건 수집(events.ts),
+//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts), 위젯 사건 수집(events.ts), 인사말 배정(greeting.ts),
 //             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, top-ups 충전, static 페이지 서빙),
 //             결제 제공자 웹훅(payments.ts)
 //   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
@@ -29,6 +40,7 @@ import type { Repositories } from './repo/types.js';
 //   billing/  충전 유스케이스 — 결제 제공자 경계(provider)·모의 제공자(mock)·이벤트 판정(settlement, 순수)·충전 요청과 웹훅(service). Express를 모른다
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
 //   events/   이벤트 로그 — 사건 기록 통로(sink), 콘솔 지표 정의(metrics, 순수 계산). Express를 모른다
+//   greeting/ 인사말 A/B 실험의 정의(변형 목록·문구·비율)와 배정. Express를 모른다
 //   repo/     저장소 계약과 구현(메모리; W3에서 Postgres)
 //   origin.ts 오리진 규칙(설정 해석·시드 검증·Origin 검사가 함께 쓴다)
 //   report.ts 예외 보고 통로(reportError). index.ts가 Sentry를 꽂는다
@@ -61,6 +73,8 @@ export interface AppOptions {
   /** 대화 요청(POST /api/chat)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
   chatRequests?: { max: number; windowMs: number };
   payments?: PaymentProviders;
+  /** 인사말 실험. 없으면 GREETING_EXPERIMENT, null이면 실험 없음. 테스트는 가중치 0인 변형을 넣어 새 배정을 고정한다. */
+  greeting?: GreetingExperiment | null;
 }
 
 export function createApp({
@@ -77,6 +91,7 @@ export function createApp({
   eventRequests,
   chatRequests = { max: 20, windowMs: 60_000 },
   payments = {},
+  greeting: greetingOption,
 }: AppOptions): express.Express {
   const app = express();
   // Express 기본 `X-Powered-By: Express` 헤더를 끈다. 서버 구현을 알리는 정보일 뿐 기능이 없고,
@@ -85,6 +100,8 @@ export function createApp({
   const chat = createChatService({ engine, repos, reportError });
   const billing = createBillingService({ repos, providers: payments, reportError });
   const recordEvent = recordEventOption ?? createEventSink({ repo: repos.events, reportError });
+  // 실험의 주인은 이 앱 하나다. 배정(GET /api/greeting)·사건 검증·콘솔 지표가 모두 이 값을 본다.
+  const greeting = greetingOption === undefined ? GREETING_EXPERIMENT : greetingOption;
 
   // CORS 헤더는 없다 (W1의 전체 허용 `*` 제거 — 테넌트 검증 단계).
   // 대화 API를 부르는 브라우저 문서는 이 서버 오리진의 iframe 하나뿐이라(ADR-0003 하이브리드) 같은 오리진 요청이고,
@@ -100,6 +117,9 @@ export function createApp({
 
   // 대화창 문서. 어느 고객 사이트가 iframe으로 넣을 수 있는지는 이 응답의 CSP frame-ancestors가 정한다. (http/frame.ts)
   app.get(FRAME_PATH, createFrameHandler({ repos }));
+
+  // 대화창이 처음 뜰 때 묻는 인사말 배정(http/greeting.ts). 같은 오리진의 대화창만 — 대화 API와 같은 Origin 검사. 행을 만들지 않는다.
+  app.get(GREETING_PATH, requireOwnOrigin(publicOrigin), createGreetingHandler({ repos, experiment: greeting }));
 
   // 대화 API. 순서가 곧 비용 순서다: Origin 검사(헤더만 봄) → IP당 요율 제한(다른 오리진의 403은 세지 않는다) → 본문 파싱(32kb 상한) → 처리.
   // Origin 없는 호출(curl)은 검사를 지나므로, 공개 키로 크레딧·모델 비용을 쓰거나 행을 쌓는 속도는 요율 제한이 누른다.
