@@ -20,7 +20,6 @@ export const turn = (question: string, answer: string | null, handoff: NewTurn['
   handoff,
 });
 
-/** 100크레딧 · 10,000원 주문. 요청 키를 안 주면 매번 새 키. */
 export const order = (requestKey = `req-${randomUUID()}`): NewTopUp => ({
   requestKey,
   packageId: 'credits_100',
@@ -29,7 +28,6 @@ export const order = (requestKey = `req-${randomUUID()}`): NewTopUp => ({
   provider: 'mock',
 });
 
-/** 제공자 이벤트 하나를 웹훅과 같은 순서로 적용한다 — 주문 읽기 → 판정 → 저장. 서명 검증은 billing 테스트의 몫. */
 export async function deliver(repos: Repositories, orderId: string, eventId: string, result: PaymentResult): Promise<SettleResult> {
   const decision = decideSettlement(await repos.topUps.findById(orderId), { provider: 'mock', eventId, orderId, result, amount: 10_000 });
   if (decision.kind !== 'settle') throw new Error(`settlement ignored: ${decision.reason}`);
@@ -313,8 +311,6 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect((await credits.list(ctx.tenantId, { limit: 100 })).items.some((e) => e.idempotencyKey === 'adj:contract-grant')).toBe(false);
     });
 
-    // 아래 충전 케이스는 크레딧 케이스 뒤에 둔다 — 그 케이스가 다른 테넌트의 잔액 0에서 시작한다. 잔액은 전후 차이로 본다.
-
     it('충전 주문: 같은 요청 키는 같은 주문(created=false), 키의 범위는 테넌트, 콘솔 조회는 테넌트 경계 안에서만', async () => {
       const topUps = ctx.repos.topUps;
       const t = ctx.otherTenantId;
@@ -339,12 +335,12 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
 
       expect(await topUps.findForTenant(first.topUp.id, t)).toEqual(first.topUp);
       expect(await topUps.findForTenant(first.topUp.id, ctx.tenantId)).toBeNull();
-      expect(await topUps.findById(first.topUp.id)).toEqual(first.topUp); // 웹훅은 테넌트를 모르고 id로 찾는다
+      expect(await topUps.findById(first.topUp.id)).toEqual(first.topUp);
       expect(await topUps.findById('missing')).toBeNull();
     });
 
     it('결제 완료: 주문이 paid로 가고 원장에 topup:<주문 id> 한 줄. 같은 이벤트 재배달은 처음 판정 그대로(replayed), 원장은 그대로', async () => {
-      const t = ctx.otherTenantId;
+      const t = ctx.tenantId;
       const { topUp } = await ctx.repos.topUps.create(t, order());
       const before = await ctx.repos.credits.balance(t);
       const eventId = `evt-${randomUUID()}`;
@@ -364,7 +360,7 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
     });
 
     it('다른 이벤트 id로 온 같은 결과는 stale — 원장 키가 주문 id라 두 줄이 되지 않고, stale도 기록돼 재배달하면 stale 그대로', async () => {
-      const t = ctx.otherTenantId;
+      const t = ctx.tenantId;
       const { topUp } = await ctx.repos.topUps.create(t, order());
       const before = await ctx.repos.credits.balance(t);
       expect((await deliver(ctx.repos, topUp.id, `evt-a-${topUp.id}`, 'paid')).outcome).toBe('applied');
@@ -374,7 +370,7 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
     });
 
     it('순서 뒤바뀜: 실패 뒤에 온 결제 완료는 paid로 가며 충전, 결제 완료 뒤에 온 실패는 stale이고 paid 그대로', async () => {
-      const t = ctx.otherTenantId;
+      const t = ctx.tenantId;
       const before = await ctx.repos.credits.balance(t);
 
       const late = (await ctx.repos.topUps.create(t, order())).topUp;
@@ -392,7 +388,7 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
 
     it('충전 목록: 테넌트별 최근순, 커서로 이어 받기, 깨진 커서는 거부', async () => {
       const t = ctx.otherTenantId;
-      await ctx.repos.topUps.create(t, order());
+      for (let i = 0; i < 3; i += 1) await ctx.repos.topUps.create(t, order());
       const all = await ctx.repos.topUps.list(t, { limit: 100 });
       expect(all.items.length).toBeGreaterThanOrEqual(3);
       expect(all.items.every((x) => x.tenantId === t)).toBe(true);

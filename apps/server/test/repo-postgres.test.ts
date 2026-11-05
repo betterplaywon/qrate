@@ -33,6 +33,7 @@ describe.skipIf(!url)('Postgres 저장소', () => {
     await prisma.conversation.deleteMany();
     await prisma.paymentEvent.deleteMany();
     await prisma.creditTopUp.deleteMany();
+    await prisma.creditLedger.deleteMany({ where: { reason: 'topup' } });
     await applySeed(prisma, seed);
     await prisma.knowledgeItem.deleteMany({ where: { tenantId: OTHER_TENANT.id } });
     // 계약 테스트의 크레딧 검증은 0에서 시작하고 고정 멱등 키를 쓴다 — 지난 실행의 원장 행을 비운다(테스트 DB는 실행 사이에 남는다)
@@ -116,7 +117,7 @@ describe.skipIf(!url)('Postgres 저장소', () => {
     });
 
     describe('충전의 동시성 — 웹훅 재배달·재시도가 겹쳐 도착해도 원장은 한 번만 움직인다(READ COMMITTED)', () => {
-      const t = OTHER_TENANT.id;
+      const t = seed.tenant.id;
       const ledgerLines = (topUpId: string) => prisma.creditLedger.count({ where: { tenantId: t, idempotencyKey: `topup:${topUpId}` } });
 
       it('같은 이벤트 다섯 개가 동시에: 이벤트 기록 한 줄·원장 한 줄, 응답 다섯은 모두 applied이고 넷은 replayed', async () => {

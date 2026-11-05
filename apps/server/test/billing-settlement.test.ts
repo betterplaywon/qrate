@@ -4,8 +4,6 @@ import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../
 import type { PaymentProviderName, PaymentResult, Repositories, TopUp, TopUpStatus } from '../src/repo/types.js';
 import { deliver, order } from './repo-contract.js';
 
-// 결제 이벤트 판정과 상태 전이. 판정은 순수 함수지만, 전이의 결과(상태·원장)는 저장소에 실제로 적용해 본다 — 사용자가 보는 것이 그것이다.
-
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const TENANT = seed.tenant.id;
 
@@ -15,8 +13,7 @@ async function fresh(): Promise<{ repos: Repositories; topUp: TopUp; balance: ()
   return { repos, topUp, balance: () => repos.credits.balance(TENANT) };
 }
 
-/** 지금 상태를 만드는 이벤트들. */
-const REACH: Record<TopUpStatus, PaymentResult[]> = { pending: [], failed: ['failed'], paid: ['paid'] };
+const EVENTS_TO_REACH: Record<TopUpStatus, PaymentResult[]> = { pending: [], failed: ['failed'], paid: ['paid'] };
 
 function permutations<T>(items: readonly T[]): T[][] {
   if (items.length <= 1) return [[...items]];
@@ -33,7 +30,7 @@ describe('상태 전이 표 — 상태는 앞으로만 간다(pending < failed <
     { now: 'paid', event: 'failed', status: 'paid', outcome: 'stale', charged: 0, ledger: '그대로' },
   ] as const)('$now 주문에 $event 이벤트 → $status, $outcome, 원장 $ledger', async ({ now, event, status, outcome, charged }) => {
     const { repos, topUp, balance } = await fresh();
-    for (const [i, r] of REACH[now].entries()) await deliver(repos, topUp.id, `evt-setup-${i}`, r);
+    for (const [i, r] of EVENTS_TO_REACH[now].entries()) await deliver(repos, topUp.id, `evt-setup-${i}`, r);
     const before = await balance();
     const result = await deliver(repos, topUp.id, 'evt-under-test', event);
     expect(result).toMatchObject({ outcome, replayed: false, topUp: { status } });
