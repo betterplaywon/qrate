@@ -128,3 +128,14 @@ export type PaymentProviderName = 'mock';
 export type PaymentResult = 'paid' | 'failed';
 /** applied = 이벤트가 주문 상태를 옮겼다. stale = 이미 그 이상이라 그대로다. 재배달에는 처음 판정을 그대로 돌려준다. */
 export type SettleOutcome = 'applied' | 'stale';
+
+/**
+ * 충전 상품표. 금액(원)은 클라이언트가 보내지 않고 서버가 이 표에서만 가져와 주문에 굳힌다 — 웹훅의 금액은 그 값과 대조한다.
+ * 가격은 테스트 모드 기본값(크레딧당 100원).
+ */
+export const TOP_UP_PACKAGES = [
+  { id: 'credits_100', credits: 100, amount: 10_000 },
+  { id: 'credits_500', credits: 500, amount: 50_000 },
+  { id: 'credits_1000', credits: 1000, amount: 100_000 },
+] as const;
+export type TopUpPackageId = (typeof TOP_UP_PACKAGES)[number]['id'];

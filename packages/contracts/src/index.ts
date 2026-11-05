@@ -27,6 +27,7 @@ export {
   CONSOLE_LIST_LIMIT,
   CONSOLE_PATH,
   HANDOFF_STATUSES,
+  TOP_UP_PACKAGES,
   isHandoffStatus,
   type ConsoleLoginBody,
   type ConsoleSessionResponse,
@@ -46,6 +47,7 @@ export {
   type PaymentProviderName,
   type PaymentResult,
   type SettleOutcome,
+  type TopUpPackageId,
   type TopUpStatus,
   type UpdateHandoffBody,
 } from './console.js';
