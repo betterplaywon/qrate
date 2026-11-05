@@ -84,7 +84,7 @@ describe.skipIf(!url)('Postgres 저장소', () => {
             payload: { outcome: 'aborted', engine: 'mock', model: 'mock', durationMs: 1, knowledgeItems: 0, citations: 0, handoff: null, moderation: [] },
           });
         }
-        const metrics = await computeMetrics(repos, t, now);
+        const metrics = await computeMetrics(repos, t, now, null);
         const [row] = await prisma.$queryRaw<{ p: number[]; n: bigint }[]>`
           SELECT percentile_disc(ARRAY[0.5, 0.95]) WITHIN GROUP (ORDER BY "ttftMs") AS p, count(*) AS n
           FROM "Event"

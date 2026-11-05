@@ -12,6 +12,7 @@ import type { PaymentProviders } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
 import type { SessionCodec } from '../../console/session.js';
 import { computeMetrics } from '../../events/metrics.js';
+import type { GreetingExperiment } from '../../greeting/experiment.js';
 import { requireOwnOrigin } from '../../origin.js';
 import type { Repositories } from '../../repo/types.js';
 import { jsonRateLimit } from '../rate-limit.js';
@@ -47,6 +48,8 @@ export interface ConsoleRouterOptions {
   loginAttempts?: { max: number; windowMs: number };
   billing: BillingService;
   providers: PaymentProviders;
+  /** 지표의 인사말 A/B가 보는 실험. 배정·사건 검증과 같은 값을 app.ts가 넘긴다. */
+  greeting: GreetingExperiment | null;
 }
 
 export function createConsoleRouter({
@@ -56,6 +59,7 @@ export function createConsoleRouter({
   loginAttempts = DEFAULT_LOGIN_ATTEMPTS,
   billing,
   providers,
+  greeting,
 }: ConsoleRouterOptions): Router {
   const router = Router();
   const ownOrigin = requireOwnOrigin(publicOrigin);
@@ -142,7 +146,7 @@ export function createConsoleRouter({
 
   // 창은 고정(최근 7일, 쿼리 없음)이다. 정의는 events/metrics.ts 한 곳.
   router.get('/metrics', session, async (_req, res) => {
-    const metrics = await computeMetrics(repos, tenantIdOf(res), new Date());
+    const metrics = await computeMetrics(repos, tenantIdOf(res), new Date(), greeting);
     res.setHeader('Cache-Control', 'no-store');
     res.json(toMetricsDto(metrics) satisfies ConsoleMetricsResponse);
   });

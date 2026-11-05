@@ -215,4 +215,29 @@ export interface ConsoleMetricsResponse {
   };
   /** 방문자 브라우저가 보고한 위젯 열림(페이지 로드당 첫 열림). 공개 키로 꾸밀 수 있어 서버 사건과 비율을 만들지 않는다. */
   widget: { opens: number };
+  /**
+   * 지금 인사말 실험의 변형별 노출 → 첫 질문. 둘 다 방문자 브라우저가 보고한 수라 같은 신뢰 수준끼리의 비율이다(서버 사건과 섞지 않는다).
+   * 단위는 페이지 로드(노출)이고 방문자가 아니다. 실험이 없으면 null.
+   */
+  greeting: {
+    experiment: string;
+    /** 지금 정의의 변형 순서. 사건이 없는 변형도 0으로 나온다. */
+    variants: {
+      /** 변형 id. 콘솔 화면의 testid가 이 값으로 행을 가린다. */
+      id: string;
+      label: string;
+      text: string;
+      /** 창 안 widget_open 중 이 변형을 실은 것. 분모. */
+      exposures: number;
+      /** 창 안 first_question 중 이 변형을 실은 것. 분자. */
+      firstQuestions: number;
+      /** firstQuestions / exposures. exposures가 0이면 null. 반올림·상한 없음(1을 넘으면 열림 사건 유실이나 위조다). */
+      rate: number | null;
+    }[];
+    /**
+     * 창 안 위젯 사건 중 지금 실험의 변형이 없는 것(인사말 실패·첫 질문이 인사말보다 먼저 나간 페이지 로드·실험 전 대화창·옛 실험).
+     * 위 비율에는 넣지 않고, 뺀 수를 숨기지 않게 따로 센다.
+     */
+    outside: { opens: number; questions: number };
+  } | null;
 }
