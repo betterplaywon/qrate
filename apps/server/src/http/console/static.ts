@@ -16,7 +16,6 @@ export function consoleStatic(assetsDir: string): RequestHandler {
     maxAge: '1y',
     immutable: true,
     setHeaders: (res, filePath) => {
-      res.setHeader('X-Content-Type-Options', 'nosniff');
       if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Content-Security-Policy', CONSOLE_CSP);

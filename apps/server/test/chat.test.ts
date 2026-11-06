@@ -638,7 +638,7 @@ describe('테넌트 검증 — Origin 검사와 대화창 문서(/frame)', () =>
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     expect(res.headers.get('content-security-policy')).toBe(
-      `default-src 'self'; frame-ancestors ${seed.tenant.allowedOrigins.join(' ')}`,
+      `default-src 'self'; frame-ancestors ${seed.tenant.allowedOrigins.join(' ')}; base-uri 'none'; form-action 'none'; object-src 'none'`,
     );
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(res.headers.get('x-frame-options')).toBeNull();
@@ -647,6 +647,14 @@ describe('테넌트 검증 — Origin 검사와 대화창 문서(/frame)', () =>
     expect(html).toContain('src="/frame/app.js"');
     expect(html).toContain('href="/frame/app.css"');
     expect(html).not.toContain('<script>'); // 인라인 스크립트 없음 — CSP default-src 'self'와 맞아야 한다
+  });
+
+  it('모든 응답에 nosniff와 Referrer-Policy: no-referrer — 대화창 문서·JSON·404', async () => {
+    for (const p of ['/healthz', `/frame?t=demo&o=${encodeURIComponent(allowedParent)}`, '/frame?t=demo', '/no-such-path']) {
+      const res = await fetch(`${baseUrl}${p}`);
+      expect(res.headers.get('x-content-type-options'), p).toBe('nosniff');
+      expect(res.headers.get('referrer-policy'), p).toBe('no-referrer');
+    }
   });
 
   it('GET /frame — o가 없거나 허용 목록 밖이거나 정규형이 아니면 403 안내 HTML, CSP·no-store는 그대로', async () => {
