@@ -11,6 +11,10 @@ on:
   push:
     branches: [main]
 
+# 이 워크플로우는 저장소를 읽기만 한다. 권한을 파일에 적어 두면 레포 기본 설정이 바뀌어도 토큰이 쓰기 권한을 얻지 않는다.
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -34,12 +38,17 @@ jobs:
       DATABASE_URL: postgresql://qrate:qrate@localhost:5432/qrate_test
       QRATE_TEST_DATABASE_URL: postgresql://qrate:qrate@localhost:5432/qrate_test
     steps:
-      - uses: actions/checkout@v4
+      # 액션은 태그가 아니라 커밋 SHA로 고정한다. 태그는 액션 저장소 쪽에서 다른 커밋으로 옮길 수 있고, 옮겨진 코드가 이 잡의
+      # 테스트 결과(머지 필수 체크)를 바꿀 수 있다. 버전을 올릴 때는 새 릴리스의 커밋 SHA로 바꾸고 주석의 버전도 고친다.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # 토큰을 .git/config에 남기지 않는다. 뒤의 pnpm install이 실행하는 의존성 스크립트가 읽을 수 없게.
+          persist-credentials: false
 
       # packageManager 필드(pnpm@10.x)를 읽어 동일한 pnpm 버전을 설치한다.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm # pnpm 스토어 캐시 — 무엇이 캐시되는지는 면접 질문 5번
@@ -64,7 +73,7 @@ jobs:
       - run: pnpm e2e
 
       # 실패한 테스트의 트레이스. `pnpm --filter @qrate/widget exec playwright show-trace <trace.zip>`으로 재생한다.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: playwright-traces

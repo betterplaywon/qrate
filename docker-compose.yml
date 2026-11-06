@@ -10,8 +10,10 @@ services:
       POSTGRES_USER: qrate
       POSTGRES_PASSWORD: qrate # 로컬 전용. 운영에선 시크릿 관리로 대체(면접 질문 소재)
       POSTGRES_DB: qrate
+    # 이 컴퓨터에서만 연다. 주소를 빼면 Docker가 모든 네트워크 인터페이스에 열어, 같은 와이파이의 기기가
+    # 공개 레포에 적힌 비밀번호(qrate, 슈퍼유저)로 접속할 수 있다.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
       # 볼륨을 처음 만들 때만 실행된다 — 저장소 계약 테스트용 qrate_test DB 생성
@@ -49,7 +51,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-} # 없으면 목업 엔진. 모델 설정(QRATE_*)은 코드 기본값을 쓴다
       QRATE_CONSOLE_SECRET: ${QRATE_CONSOLE_SECRET:-} # 콘솔 세션 서명 비밀(16자 이상). 비우면 컨테이너마다 무작위 → 재시작하면 다시 로그인
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787" # db와 같은 이유. 실제 API 키를 받은 서버를 이 컴퓨터에서만 연다
     depends_on:
       migrate:
         condition: service_completed_successfully
