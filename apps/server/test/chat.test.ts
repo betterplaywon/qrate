@@ -424,6 +424,40 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
     }
   });
 
+  it('4xx status를 단 서버 쪽 예외(외부 SDK 오류 등)도 500으로 답하고 보고한다 — 클라이언트 오류로 숨기지 않는다', async () => {
+    const reported: unknown[] = [];
+    const repos = createRepositoriesFromSeed(seed);
+    const app = createApp({
+      engine: new MockEngine(0),
+      repos: {
+        ...repos,
+        tenants: {
+          findByKey: async () => {
+            throw Object.assign(new Error('upstream rejected the request'), { status: 400 });
+          },
+          findById: async () => null,
+        },
+      },
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      recordEvent: (event) => recorded.push(event),
+      reportError: (err) => void reported.push(err),
+    });
+    const { url, close } = await serve(app);
+    try {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: '안녕', tenant: 'demo' }),
+      });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: 'internal_error' });
+      expect(reported).toHaveLength(1);
+    } finally {
+      await close();
+    }
+  });
+
   it('클라이언트가 스트림 도중 끊으면 엔진의 signal이 abort되고 사건은 aborted 한 번, 대화는 만들어지지 않는다', async () => {
     const entries: AppEvent[] = [];
     const engine = new CapturingEngine(new MockEngine(30)); // 한 글자 30ms — 끊을 시간을 준다
