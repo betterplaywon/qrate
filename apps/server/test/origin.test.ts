@@ -60,11 +60,11 @@ describe('Origin 헤더 검사 (POST /api/chat 앞)', () => {
 describe('대화창 문서 CSP', () => {
   it('허용 사이트를 frame-ancestors로 나열하고, 자원은 서버 자신에게서만', () => {
     expect(frameCsp(['http://localhost:5173', 'https://shop.example.com'])).toBe(
-      "default-src 'self'; frame-ancestors http://localhost:5173 https://shop.example.com",
+      "default-src 'self'; frame-ancestors http://localhost:5173 https://shop.example.com; base-uri 'none'; form-action 'none'; object-src 'none'",
     );
   });
 
   it("허용 사이트가 없으면 'none' — 어디에도 넣을 수 없다", () => {
-    expect(frameCsp([])).toBe("default-src 'self'; frame-ancestors 'none'");
+    expect(frameCsp([])).toBe("default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'");
   });
 });

@@ -19,11 +19,13 @@ import type { Repositories } from '../repo/types.js';
  * - frame-ancestors: 이 문서를 iframe으로 넣을 수 있는 부모 페이지의 오리진. 테넌트의 allowedOrigins가 그대로 들어간다.
  *   비어 있으면 'none' — 어느 사이트에도 넣을 수 없다. 열어 두는 쪽이 아니라 닫아 두는 쪽이 기본값이다.
  * - default-src 'self': 문서 자신의 스크립트·스타일·fetch는 이 서버 오리진에서만. 인라인 스크립트는 못 쓴다.
+ * - base-uri·form-action은 default-src가 덮지 않는다. 주입된 <base>가 상대 경로 스크립트를 다른 곳으로 돌리거나
+ *   주입된 폼이 입력을 밖으로 보내는 길을 닫는다. 대화창의 두 폼은 스크립트가 submit을 막고 fetch로 보낸다(frame/view.ts).
  * X-Frame-Options는 두지 않는다. 허용 목록을 표현할 수 없고, frame-ancestors가 있으면 브라우저가 무시한다.
  */
 export function frameCsp(allowedOrigins: readonly string[]): string {
   const ancestors = allowedOrigins.length > 0 ? allowedOrigins.join(' ') : "'none'";
-  return `default-src 'self'; frame-ancestors ${ancestors}`;
+  return `default-src 'self'; frame-ancestors ${ancestors}; base-uri 'none'; form-action 'none'; object-src 'none'`;
 }
 
 const HEAD = `<meta charset="utf-8">
