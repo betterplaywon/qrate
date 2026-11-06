@@ -43,7 +43,8 @@ RUN pnpm --filter @qrate/server deploy --prod --legacy /out
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build --chown=node:node /out ./
+# 앱 파일은 root 소유로 둔다. 실행 사용자(node)는 읽기만 하므로, 서버가 뚫려도 코드를 고쳐 심어 두지 못한다.
+COPY --from=build /out ./
 # 루트가 아닌 node 사용자로 실행 — 컨테이너 탈출 시 피해 축소. 면접 질문 9번.
 USER node
 EXPOSE 8787
