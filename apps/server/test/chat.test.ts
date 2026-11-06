@@ -295,6 +295,22 @@ describe('POST /api/chat — SSE 계약', () => {
     // 클라이언트 쪽 문제라 보고 통로로 보내지 않는다 (기본 핸들러였다면 요청 본문까지 stderr에 찍혔다)
     expect(reports).toEqual([]);
   });
+
+  it('압축을 풀 수 없는 본문 400, 경로의 퍼센트 인코딩이 깨지면 404 — 둘 다 보고하지 않는다', async () => {
+    const gzipGarbage = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' },
+      body: 'not gzip',
+    });
+    expect(gzipGarbage.status).toBe(400);
+    expect(await gzipGarbage.json()).toEqual({ error: 'invalid_json' });
+
+    const badParam = await fetch(`${baseUrl}/api/payments/%E0%A4%A/webhook`, { method: 'POST', body: '{}' });
+    expect(badParam.status).toBe(404);
+    expect(await badParam.json()).toEqual({ error: 'not_found' });
+
+    expect(reports).toEqual([]);
+  });
 });
 
 describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운다', () => {
@@ -403,6 +419,40 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       expect((reported[0]?.err as Error).message).toBe('db down');
       expect(reported[0]?.context).toEqual({ where: 'express', method: 'POST', path: '/api/chat' });
       expect(recorded).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('4xx status를 단 서버 쪽 예외(외부 SDK 오류 등)도 500으로 답하고 보고한다 — 클라이언트 오류로 숨기지 않는다', async () => {
+    const reported: unknown[] = [];
+    const repos = createRepositoriesFromSeed(seed);
+    const app = createApp({
+      engine: new MockEngine(0),
+      repos: {
+        ...repos,
+        tenants: {
+          findByKey: async () => {
+            throw Object.assign(new Error('upstream rejected the request'), { status: 400 });
+          },
+          findById: async () => null,
+        },
+      },
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      recordEvent: (event) => recorded.push(event),
+      reportError: (err) => void reported.push(err),
+    });
+    const { url, close } = await serve(app);
+    try {
+      const res = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: '안녕', tenant: 'demo' }),
+      });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: 'internal_error' });
+      expect(reported).toHaveLength(1);
     } finally {
       await close();
     }
