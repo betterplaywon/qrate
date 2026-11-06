@@ -25,10 +25,14 @@ export class PageLoadEvents {
     return true;
   }
 
-  /** 첫 열림. 호출자는 인사말 요청이 끝난 뒤에 부른다. */
-  open(): void {
+  /**
+   * 첫 열림. 호출자는 인사말 요청이 끝난 뒤에 부르고, 그때 패널이 열려 있었는지(seen)를 넘긴다.
+   * 닫혀 있었으면 방문자가 인사말을 봤다고 할 수 없어 열림만 세고 이 페이지 로드를 실험 밖에 둔다 — 첫 질문도 변형 없이 나간다.
+   */
+  open(seen: boolean): void {
     if (this.openSent) return;
     this.openSent = true;
+    if (!seen) this.shownVariant = null;
     this.emit(this.body('widget_open'));
   }
 

@@ -10,7 +10,7 @@ export const EVENTS_PATH = '/api/events';
 
 /**
  * 위젯이 보낼 수 있는 사건 종류 — 공개 화이트리스트의 유일한 목록. 여기 없는 종류는 밖에서 쓸 수 없다.
- *   widget_open     페이지 로드당 첫 열림. 인사말이 붙어 있었으면 그 변형을 싣는다(= 인사말 노출).
+ *   widget_open     페이지 로드당 첫 열림. 인사말 요청이 끝난 뒤(최대 3초) 보내고, 그때 인사말이 보이고 있었으면 그 변형을 싣는다(= 인사말 노출).
  *   first_question  페이지 로드당 첫 질문 전송(재시도 아님, 서버 결과와 무관). 그때 화면에 있던 인사말의 변형을 싣는다.
  */
 export const WIDGET_EVENT_TYPES = ['widget_open', 'first_question'] as const;

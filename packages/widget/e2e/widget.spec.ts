@@ -501,25 +501,29 @@ test('인사말 A/B: 이 사이트의 저장소가 막힌 브라우저에서도 
   expect(consoleErrors).toEqual([]);
 });
 
-test('인사말 A/B: 인사말이 오기 전에 닫으면 그 열림은 세지 않고, 다시 열 때 변형을 실어 센다', async ({ page, consoleErrors }) => {
+test('인사말 A/B: 인사말이 오기 전에 닫으면 열림은 변형 없이 세고, 그 페이지 로드는 실험 밖이다', async ({ page, consoleErrors }) => {
   await page.route(`${GREETING_URL}?**`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     await route.continue();
   });
   const sent = watchEvents(page);
   const greeting = greetingResponse(page);
-  await openWidget(page);
+  const frame = await openWidget(page);
   const launcher = page.locator(LAUNCHER);
-  await launcher.click();
-  await expect(launcher).toHaveAttribute('aria-expanded', 'false');
-  const { variant } = await assignedGreeting(await greeting);
-  await page.waitForTimeout(300);
-  expect(sent).toEqual([]);
-
   const opened = page.waitForRequest((r) => r.url() === EVENTS_URL && r.method() === 'POST');
   await launcher.click();
+  await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+  await assignedGreeting(await greeting);
   await opened;
-  expect(sent).toEqual([{ tenant: 'demo', type: 'widget_open', variant }]);
+  expect(sent).toEqual([{ tenant: 'demo', type: 'widget_open' }]);
+
+  await launcher.click();
+  await send(frame, '환불되나요?');
+  await expect(finishedAnswers(frame)).toHaveCount(1);
+  expect(sent).toEqual([
+    { tenant: 'demo', type: 'widget_open' },
+    { tenant: 'demo', type: 'first_question' },
+  ]);
   expect(consoleErrors).toEqual([]);
 });
 
