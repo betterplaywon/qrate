@@ -13,7 +13,6 @@ export interface GreetingVariant {
   /** `${실험 id}.${key}`. 실험 id를 품고 있어 실험을 바꾸면 보존된 값과 옛 사건 행이 저절로 지금 정의에서 빠진다. */
   readonly id: GreetingVariantId;
   readonly key: string;
-  /** 콘솔 표시용 짧은 이름. */
   readonly label: string;
   readonly text: string;
   /** 새 방문자에게 배정할 상대 비율(0 이상 정수). 0이면 새 배정만 멈추고, 이미 이 변형을 가진 방문자는 그대로 본다. */
@@ -90,6 +89,6 @@ export function assignGreeting(experiment: GreetingExperiment, requested: string
     if (target < v.weight) return v;
     target -= v.weight;
   }
-  // 부동소수 끝자락에서 루프를 빠져나오면 마지막 후보. 정의 검사가 가중치 > 0인 변형을 하나 이상 보장한다.
+  // 닿지 않는 줄이다. 정의 검사가 가중치 > 0인 변형을 하나 이상 보장하고 가중치가 정수라 random() < 1이면 루프 안에서 돌려준다. 타입만 그것을 모른다.
   return candidates[candidates.length - 1] as GreetingVariant;
 }

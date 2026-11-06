@@ -223,7 +223,6 @@ export interface ConsoleMetricsResponse {
     experiment: string;
     /** 지금 정의의 변형 순서. 사건이 없는 변형도 0으로 나온다. */
     variants: {
-      /** 변형 id. 콘솔 화면의 testid가 이 값으로 행을 가린다. */
       id: string;
       label: string;
       text: string;

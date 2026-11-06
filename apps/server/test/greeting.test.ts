@@ -18,7 +18,6 @@ const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-greeting-'));
 const A = { key: 'a', label: 'A', weight: 1, text: '가' };
 const B = { key: 'b', label: 'B', weight: 1, text: '나' };
 const EVEN = defineGreetingExperiment({ id: 'exp', variants: [A, B] });
-/** b는 새 배정을 멈췄다 — 새 방문자는 늘 a, 이미 b를 가진 방문자는 b. 무작위 없이 배정을 고정한다. */
 const PAUSED_B = defineGreetingExperiment({ id: 'exp', variants: [A, { ...B, weight: 0 }] });
 
 describe('defineGreetingExperiment', () => {

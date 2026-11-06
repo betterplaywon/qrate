@@ -10,7 +10,6 @@ function fake(respond: (init: RequestInit | undefined) => Promise<Response>) {
   return { fetchImpl, calls };
 }
 
-/** 서버가 답하지 않는 요청. 대화창이 끊으면(abort) 그때 실패한다. */
 const hanging = (init: RequestInit | undefined) =>
   new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
 

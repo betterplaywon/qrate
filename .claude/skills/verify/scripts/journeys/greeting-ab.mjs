@@ -1,8 +1,4 @@
 /* global URL, localStorage */
-// 인사말 A/B — 방문자 경로: 처음 방문(서버 배정 → 대화 맨 위 인사말 → 이 사이트 localStorage 보존 → 열림 사건의 변형) → 다시 로드(v= 같은 값)
-// → 첫 질문(같은 변형) → 다른 변형을 보존한 재방문자 → 지금 실험에 없는 보존값(새로 배정해 덮어씀) → 콘솔 "지표"의 변형별 노출·첫 질문
-// = 브라우저가 보낸 사건 = API → server.log 사건 줄. 첫 방문의 변형은 무작위라 특정 변형을 기대하지 않고 관찰한 값으로 단언한다.
-// 기대값은 packages/widget/e2e/widget.spec.ts의 인사말 A/B 테스트와 같다.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { SERVER_ORIGIN, assert } from '../lib.mjs';
@@ -13,7 +9,6 @@ export const title = '인사말 A/B — 서버 배정 인사말 → 이 사이�
 const QUESTION = '요금제가 뭐가 있나요?';
 const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
 const GREETING_URL = `${SERVER_ORIGIN}/api/greeting`;
-/** 형식은 맞지만 지금 실험에 없는 값 — 실험을 바꾼 뒤 남은 옛 보존값이나 호스트 스크립트가 바꾼 값. */
 const STALE_VARIANT = 'greet-old.z';
 
 const tally = (events) =>
@@ -35,7 +30,6 @@ export async function run(h) {
   const stored = () => page.evaluate((key) => localStorage.getItem(key), variantKey);
   const store = (value) => page.evaluate(([key, v]) => localStorage.setItem(key, v), [variantKey, value]);
   const iframeVariant = async () => new URL((await page.locator(FRAME).getAttribute('src')) ?? '').searchParams.get('v');
-  /** 위젯을 열고, 대화창이 받은 인사말 배정과 그 페이지 로드의 열림 사건을 돌려준다. */
   const openAndObserve = async () => {
     const greeting = page.waitForResponse((r) => r.url().startsWith(`${GREETING_URL}?`));
     const opened = page.waitForResponse((r) => r.url() === EVENTS_URL && r.request().postDataJSON()?.type === 'widget_open');

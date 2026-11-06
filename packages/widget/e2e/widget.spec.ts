@@ -18,7 +18,6 @@ const FRAME = `${HOST} iframe.frame`;
 const CHAT_URL = `${SERVER_ORIGIN}/api/chat`;
 const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
 const GREETING_URL = `${SERVER_ORIGIN}/api/greeting`;
-/** 런처가 이 사이트(데모) localStorage에 두는 인사말 변형의 키(src/loader.ts). */
 const VARIANT_KEY = 'qrate.greeting.demo';
 
 // 페이지(모든 프레임)의 콘솔 오류와 예외를 모은다. 정상 흐름에서는 0건이어야 한다.
@@ -49,7 +48,7 @@ async function send(frame: FrameLocator, message: string): Promise<void> {
 /** 끝난(스트리밍이 닫힌) 답변 말풍선. */
 const finishedAnswers = (frame: FrameLocator) => frame.locator('.msg.bot:not([aria-busy])');
 
-/** 대화창이 처음 뜰 때 받는 인사말 배정 응답. 런처를 누르기 전에 기다리기 시작한다. */
+/** 런처를 누르기 전에 기다리기 시작한다. */
 const greetingResponse = (page: Page) => page.waitForResponse((r) => r.url().startsWith(`${GREETING_URL}?`));
 
 async function assignedGreeting(res: Response): Promise<NonNullable<GreetingResponse['greeting']>> {
@@ -58,7 +57,6 @@ async function assignedGreeting(res: Response): Promise<NonNullable<GreetingResp
   return greeting as NonNullable<GreetingResponse['greeting']>;
 }
 
-/** 이 페이지(모든 프레임)가 보낸 위젯 사건 본문. */
 function watchEvents(page: Page): WidgetEventBody[] {
   const sent: WidgetEventBody[] = [];
   page.on('request', (r) => {
@@ -78,7 +76,6 @@ async function storeBeforeLoad(page: Page, value: string): Promise<void> {
   await page.addInitScript(([key, v]) => localStorage.setItem(key, v), [VARIANT_KEY, value] as const);
 }
 
-/** 지금 실험의 변형(id·문구). 콘솔 지표 API가 정의 순서로 돌려준다. */
 async function currentVariants(request: APIRequestContext): Promise<{ id: string; text: string }[]> {
   const login = await request.post(`${SERVER_ORIGIN}/api/console/login`, { headers: { origin: SERVER_ORIGIN }, data: { tenant: 'demo', key: CONSOLE_KEY } });
   expect(login.status()).toBe(200);
@@ -412,7 +409,6 @@ test('인사말 A/B: 처음 방문하면 서버가 배정한 인사말이 대화
   expect(await iframeVariant(page)).toBeNull();
   const assigned = await assignedGreeting(res);
 
-  // 인사말은 답변(.msg.bot)이 아니라 대화 맨 위의 .msg.greeting이고, 머리글은 그대로다
   await expect(frame.locator('.msgs > .msg').first()).toHaveClass(/\bgreeting\b/);
   await expect(frame.locator('.msg.greeting')).toHaveText(assigned.text);
   await expect(frame.locator('.title')).toHaveText('무엇을 도와드릴까요?');

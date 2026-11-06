@@ -252,7 +252,6 @@ test('지표: 인사말 A/B — 변형 id를 실은 열림·첫 질문은 그 �
   await page.getByTestId('nav-metrics').click();
   await expect(page).toHaveURL(/#\/metrics$/);
 
-  // 변형 id·문구는 하드코딩하지 않는다 — 지금 실험의 정의를 지표 API가 정의 순서로 돌려준다
   const { greeting } = (await (await page.request.get('/api/console/metrics')).json()) as ConsoleMetricsResponse;
   const variants = greeting?.variants ?? [];
   expect(variants.length).toBeGreaterThan(1);
