@@ -501,6 +501,28 @@ test('인사말 A/B: 이 사이트의 저장소가 막힌 브라우저에서도 
   expect(consoleErrors).toEqual([]);
 });
 
+test('인사말 A/B: 인사말이 오기 전에 닫으면 그 열림은 세지 않고, 다시 열 때 변형을 실어 센다', async ({ page, consoleErrors }) => {
+  await page.route(`${GREETING_URL}?**`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await route.continue();
+  });
+  const sent = watchEvents(page);
+  const greeting = greetingResponse(page);
+  await openWidget(page);
+  const launcher = page.locator(LAUNCHER);
+  await launcher.click();
+  await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+  const { variant } = await assignedGreeting(await greeting);
+  await page.waitForTimeout(300);
+  expect(sent).toEqual([]);
+
+  const opened = page.waitForRequest((r) => r.url() === EVENTS_URL && r.method() === 'POST');
+  await launcher.click();
+  await opened;
+  expect(sent).toEqual([{ tenant: 'demo', type: 'widget_open', variant }]);
+  expect(consoleErrors).toEqual([]);
+});
+
 test('인사말 A/B: 인사말 요청이 실패하면 기다리지 않고 변형 없이 열림 사건을 보내고, 인사말 없이 대화창이 뜬다', async ({ page, consoleErrors }) => {
   await page.route(`${GREETING_URL}?**`, (route) =>
     route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'internal_error' }) }),

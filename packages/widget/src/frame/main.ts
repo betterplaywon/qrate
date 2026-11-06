@@ -109,8 +109,11 @@ class FrameApp {
     if (this.visible) {
       this.unread = 0;
       this.view.focusInput();
-      // 열림은 인사말 요청이 끝난 뒤(최대 3초)에 센다 — 변형을 실은 열림이 곧 인사말이 실제로 보인 열림이 되게.
-      void this.greetingSettled.then(() => this.events.open());
+      // 열림은 인사말 요청이 끝났을 때(최대 3초)도 패널이 열려 있어야 센다 — 변형을 실은 열림이 곧 인사말이 실제로 보인 열림이 되게.
+      // 그 사이 닫았으면 다음 열림이 센다.
+      void this.greetingSettled.then(() => {
+        if (this.visible) this.events.open();
+      });
     }
   }
 
