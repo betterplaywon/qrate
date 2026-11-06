@@ -41,8 +41,6 @@ W4 결정(2026-11-05) 다섯 가지 중 이 ADR은 ①결제 제공자 ②멱등
 | 차감 시점 | 턴 저장과 같은 트랜잭션(`appendTurn`의 `charge`) | 답 전송 전 선차감, 따로 차감 |
 | 초기 크레딧 | 시드로 한 번 지급(`seed:initial`) | 0에서 충전만 |
 
-설명 노트(비공개): https://claude.ai/artifact/FLpMoNRQJtVVFeeoJskTsj
-
 ## 결정
 
 ### 멱등 키
