@@ -1,0 +1,7 @@
+# CI 액션을 커밋 SHA로 고정해서(workflows/ci.yml) 새 릴리스가 저절로 들어오지 않는다. 달마다 SHA와 버전 주석을 올리는 PR을 받는다.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
