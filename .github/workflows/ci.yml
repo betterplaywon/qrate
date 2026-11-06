@@ -48,7 +48,7 @@ jobs:
       # packageManager 필드(pnpm@10.x)를 읽어 동일한 pnpm 버전을 설치한다.
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm # pnpm 스토어 캐시 — 무엇이 캐시되는지는 면접 질문 5번
