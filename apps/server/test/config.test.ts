@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
+describe('QRATE_HOST', () => {
+  it('없거나 비면 undefined(모든 인터페이스), 있으면 그 주소에만 연다', () => {
+    expect(loadConfig({}).host).toBeUndefined();
+    expect(loadConfig({ QRATE_HOST: '' }).host).toBeUndefined();
+    expect(loadConfig({ QRATE_HOST: '127.0.0.1' }).host).toBe('127.0.0.1');
+  });
+});
+
 describe('QRATE_PAYMENT_PROVIDER', () => {
   it('auto(기본)는 NODE_ENV가 development·test일 때만 mock이고, 비어 있거나 그 밖이면 none', () => {
     expect(loadConfig({ NODE_ENV: 'development' }).paymentProvider).toBe('mock');
