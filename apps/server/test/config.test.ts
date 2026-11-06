@@ -2,9 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
 describe('QRATE_HOST', () => {
-  it('없거나 비면 undefined(모든 인터페이스), 있으면 그 주소에만 연다', () => {
+  it('개발(NODE_ENV=development)의 기본은 127.0.0.1, 그 밖의 기본은 undefined(모든 인터페이스)', () => {
+    expect(loadConfig({ NODE_ENV: 'development' }).host).toBe('127.0.0.1');
     expect(loadConfig({}).host).toBeUndefined();
+    expect(loadConfig({ NODE_ENV: 'test' }).host).toBeUndefined();
+    expect(loadConfig({ NODE_ENV: 'production' }).host).toBeUndefined();
     expect(loadConfig({ QRATE_HOST: '' }).host).toBeUndefined();
+  });
+
+  it('값이 있으면 개발에서도 그 주소에 연다 — .env로 바꿀 수 있다', () => {
+    expect(loadConfig({ NODE_ENV: 'development', QRATE_HOST: '0.0.0.0' }).host).toBe('0.0.0.0');
     expect(loadConfig({ QRATE_HOST: '127.0.0.1' }).host).toBe('127.0.0.1');
   });
 });

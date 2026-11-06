@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development QRATE_HOST=127.0.0.1 tsx watch --conditions=source --env-file-if-exists=.env src/index.ts",
+    "dev": "NODE_ENV=development tsx watch --conditions=source --env-file-if-exists=.env src/index.ts",
     "build": "prisma generate && rm -rf dist && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc -p tsconfig.json",
