@@ -97,6 +97,13 @@ export function createApp({
   // Express 기본 `X-Powered-By: Express` 헤더를 끈다. 서버 구현을 알리는 정보일 뿐 기능이 없고,
   // 알려진 취약점이 있는 버전을 고르는 데 쓰일 수 있다. (PR #9 컨테이너 점검에서 확인)
   app.disable('x-powered-by');
+  // 모든 응답: 선언한 Content-Type대로만 해석하게 하고(nosniff), 대화창·콘솔에서 나가는 요청에 주소를 싣지 않는다.
+  // 대화창 주소에는 테넌트 키와 고객 사이트 오리진이 들어 있다. 위젯·콘솔의 요청은 전부 fetch라 Origin 헤더는 그대로 간다.
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
   const chat = createChatService({ engine, repos, reportError });
   const billing = createBillingService({ repos, providers: payments, reportError });
   const recordEvent = recordEventOption ?? createEventSink({ repo: repos.events, reportError });
