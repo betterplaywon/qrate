@@ -4,11 +4,7 @@ import * as Sentry from '@sentry/node';
 
 type DataCollection = NonNullable<Sentry.NodeOptions['dataCollection']>;
 
-/**
- * Sentry로 보내는 데이터의 범위. 요청 본문(방문자 메시지·콘솔 로그인 키), 쿠키(콘솔 세션), 요청 헤더, IP, 모델 입력·출력을 보내지 않는다.
- * dataCollection을 주면 SDK가 빠진 항목을 '모두 수집'으로 채운다. 그래서 타입으로 모든 항목을 적게 한다 —
- * SDK가 항목을 늘리면 타입체크가 실패해 그 항목을 정하게 된다.
- */
+/** dataCollection을 주면 SDK가 빠진 항목을 '모두 수집'으로 채운다. */
 const DATA_COLLECTION = {
   userInfo: false,
   cookies: false,
@@ -29,7 +25,7 @@ export function sentryOptions(dsn: string, environment: string): Sentry.NodeOpti
     // 트랜잭션 샘플링 10%: 전수 수집은 비용·노이즈 문제. 장애 조사엔 에러 이벤트가 핵심.
     tracesSampleRate: 0.1,
     dataCollection: DATA_COLLECTION,
-    // 들어오는 요청 본문은 httpBodies가 아니라 이 옵션만 보고 읽는다(SDK 10.78, 2026-11-06 실측). 기본값은 10KB까지 읽는다.
+    // 들어오는 요청 본문은 httpBodies가 아니라 이 옵션만 보고 읽는다(SDK 10.78). 기본값은 10KB까지 읽는다.
     integrations: [Sentry.httpIntegration({ maxIncomingRequestBodySize: 'none' })],
   };
 }

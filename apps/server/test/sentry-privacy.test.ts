@@ -10,9 +10,6 @@ import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import { Sentry, sentryOptions } from '../src/sentry.js';
 
-// Sentry가 실제로 받는 envelope에 방문자 메시지·콘솔 로그인 키·세션 쿠키가 없는지 본다.
-// SDK 기본값은 요청 본문·쿠키·헤더를 오류 이벤트와 트랜잭션(span 속성 포함)에 붙인다. 운영 설정(sentryOptions)이 그것을 막는지가 이 테스트의 대상이다.
-
 const OWN_ORIGIN = 'http://sentry.test';
 const VISITOR_MARKER = 'VISITOR-MESSAGE-MARKER';
 const COOKIE_MARKER = 'COOKIE-MARKER';
@@ -26,7 +23,6 @@ let baseUrl: string;
 beforeAll(async () => {
   Sentry.init({
     ...sentryOptions('http://public@127.0.0.1:9/1', 'test'),
-    // 모든 요청을 트랜잭션으로 남겨 본문·쿠키가 span에 실리는지까지 본다.
     tracesSampleRate: 1,
     transport: (options) =>
       Sentry.createTransport(options, async (request) => {
