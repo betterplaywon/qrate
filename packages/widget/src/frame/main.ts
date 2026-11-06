@@ -94,7 +94,7 @@ class FrameApp {
     if (!greeting) return;
     // 첫 질문이 먼저 나가 인사말을 그리지 않는 페이지 로드여도 배정은 유효하다 — 보존은 언제나 맡긴다.
     this.send({ type: 'greeting', variant: greeting.variant });
-    if (this.events.showGreeting(greeting.variant)) this.view.showGreeting(greeting.text);
+    if (this.events.claimGreeting(greeting.variant)) this.view.showGreeting(greeting.text);
   }
 
   private send(msg: FrameMessage): void {

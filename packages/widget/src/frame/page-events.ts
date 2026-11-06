@@ -19,7 +19,7 @@ export class PageLoadEvents {
   ) {}
 
   /** 인사말을 붙여도 되면 그 변형을 기억하고 true. 사건이 이미 나갔으면 false — 호출자는 그리지 않는다. */
-  showGreeting(variant: string): boolean {
+  claimGreeting(variant: string): boolean {
     if (this.openSent || this.questionSent) return false;
     this.shownVariant = variant;
     return true;

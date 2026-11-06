@@ -19,7 +19,7 @@ describe('PageLoadEvents — 한 페이지 로드의 위젯 사건', () => {
 
   it('인사말을 붙였으면 두 사건 모두 그 변형을 싣는다', () => {
     const { sent, events } = pageLoad();
-    expect(events.showGreeting('exp.b')).toBe(true);
+    expect(events.claimGreeting('exp.b')).toBe(true);
     events.open();
     events.question();
     expect(sent).toEqual([
@@ -41,7 +41,7 @@ describe('PageLoadEvents — 한 페이지 로드의 위젯 사건', () => {
   it('첫 질문이 인사말보다 먼저 나갔으면 인사말을 붙이지 않는다 — 그 페이지 로드는 실험 밖이다', () => {
     const { sent, events } = pageLoad();
     events.question();
-    expect(events.showGreeting('exp.b')).toBe(false);
+    expect(events.claimGreeting('exp.b')).toBe(false);
     events.open();
     expect(sent).toEqual([
       { tenant: 'demo', type: 'first_question' },
@@ -52,7 +52,7 @@ describe('PageLoadEvents — 한 페이지 로드의 위젯 사건', () => {
   it('열림이 이미 나갔으면 인사말을 붙이지 않는다 — 변형 없는 열림 뒤에 변형 있는 첫 질문이 나가지 않게', () => {
     const { sent, events } = pageLoad();
     events.open();
-    expect(events.showGreeting('exp.b')).toBe(false);
+    expect(events.claimGreeting('exp.b')).toBe(false);
     events.question();
     expect(sent.every((b) => !('variant' in b))).toBe(true);
   });
