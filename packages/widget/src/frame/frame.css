@@ -84,7 +84,8 @@ body {
   background: var(--qrate-blue);
 }
 
-.msg.bot {
+.msg.bot,
+.msg.greeting {
   margin-right: 48px;
   background: #f6f8fa;
 }

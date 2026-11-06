@@ -63,6 +63,7 @@ export {
   type UpdateHandoffBody,
 } from './console.js';
 export { EVENTS_PATH, WIDGET_EVENT_TYPES, type WidgetEventBody, type WidgetEventType } from './events.js';
+export { GREETING_PATH, VARIANT_ID_PATTERN, type GreetingResponse } from './greeting.js';
 export {
   HANDOFF_PATH,
   MAX_HANDOFF_CONTACT_CHARS,

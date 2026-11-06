@@ -27,6 +27,13 @@ describe('parseFrameMessage — 런처가 대화창에서 받는 것', () => {
     expect(parseFrameMessage({ ns: 'qrate', v: 1, type: 'unread', count: MAX_UNREAD + 1 })).toBeNull();
   });
 
+  it('greeting은 변형 id 형식(VARIANT_ID_PATTERN)의 문자열일 때만 받는다 — 런처가 그 값을 이 사이트에 저장한다', () => {
+    expect(parseFrameMessage(toWire({ type: 'greeting', variant: 'greet-2026-11.b' }))).toEqual({ type: 'greeting', variant: 'greet-2026-11.b' });
+    for (const variant of ['', 'Greet.B', 'a b', '.a', '<img>', 'x'.repeat(65), 42, null, undefined, ['greet-2026-11.b']]) {
+      expect(parseFrameMessage({ ns: 'qrate', v: 1, type: 'greeting', variant }), JSON.stringify(variant)).toBeNull();
+    }
+  });
+
   it('통과한 필드만 옮긴다 — 덤으로 실린 필드는 버린다', () => {
     const parsed = parseFrameMessage({ ns: 'qrate', v: 1, type: 'unread', count: 2, extra: 'x' });
     expect(parsed).toEqual({ type: 'unread', count: 2 });

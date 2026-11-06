@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeMetrics } from '../src/events/metrics.js';
+import { defineGreetingExperiment } from '../src/greeting/experiment.js';
 import type { ConversationOutcome, EventCount, TimeWindow } from '../src/repo/types.js';
 
 const NOW = new Date('2026-11-05T12:00:00.000Z');
@@ -29,7 +30,7 @@ function sources(facts: { ttft?: number[]; outcomes?: ConversationOutcome[]; cou
 }
 
 async function ttftOf(values: number[]) {
-  return (await computeMetrics(sources({ ttft: values }).repos, TENANT, NOW)).ttft;
+  return (await computeMetrics(sources({ ttft: values }).repos, TENANT, NOW, null)).ttft;
 }
 
 describe('computeMetrics — TTFT (nearest-rank)', () => {
@@ -73,14 +74,14 @@ describe('computeMetrics — 자동 해결률', () => {
       { asked: true, answered: false, handedOff: true },
       { asked: true, answered: true, handedOff: false },
     ];
-    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
+    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW, null);
     expect(autoResolution).toEqual({ conversations: 6, resolved: 3, rate: 0.5, handoffOnly: 0 });
   });
 
   it('질문 없이 연결만 요청한 대화는 몇 건이든 분모·분자 어디에도 들지 않고 handoffOnly로 따로 센다', async () => {
     const handoffOnly: ConversationOutcome = { asked: false, answered: false, handedOff: true };
     const outcomes: ConversationOutcome[] = [{ asked: true, answered: true, handedOff: false }, ...Array.from({ length: 20 }, () => handoffOnly)];
-    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
+    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW, null);
     expect(autoResolution).toEqual({ conversations: 1, resolved: 1, rate: 1, handoffOnly: 20 });
   });
 
@@ -91,14 +92,14 @@ describe('computeMetrics — 자동 해결률', () => {
       { asked: false, answered: false, handedOff: false },
       { asked: false, answered: false, handedOff: true },
     ];
-    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
+    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW, null);
     expect(autoResolution).toEqual({ conversations: 2, resolved: 0, rate: 0, handoffOnly: 1 });
   });
 
   it('대화가 없거나 연결만 요청한 대화뿐이면 rate는 null(0%가 아니다) — 연결만 요청한 대화는 그래도 센다', async () => {
-    expect((await computeMetrics(sources().repos, TENANT, NOW)).autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null, handoffOnly: 0 });
+    expect((await computeMetrics(sources().repos, TENANT, NOW, null)).autoResolution).toEqual({ conversations: 0, resolved: 0, rate: null, handoffOnly: 0 });
     const outcomes: ConversationOutcome[] = [{ asked: false, answered: false, handedOff: true }];
-    expect((await computeMetrics(sources({ outcomes }).repos, TENANT, NOW)).autoResolution).toEqual({
+    expect((await computeMetrics(sources({ outcomes }).repos, TENANT, NOW, null)).autoResolution).toEqual({
       conversations: 0,
       resolved: 0,
       rate: null,
@@ -112,7 +113,7 @@ describe('computeMetrics — 자동 해결률', () => {
       { asked: true, answered: true, handedOff: true },
       { asked: true, answered: true, handedOff: true },
     ];
-    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW);
+    const { autoResolution } = await computeMetrics(sources({ outcomes }).repos, TENANT, NOW, null);
     expect(autoResolution.rate).toBe(1 / 3);
   });
 });
@@ -124,14 +125,82 @@ describe('computeMetrics — 위젯 열림과 창', () => {
       { type: 'widget_open', variant: null, count: 2 },
       { type: 'widget_open', variant: 'b', count: 1 },
     ];
-    expect((await computeMetrics(sources({ counts }).repos, TENANT, NOW)).widget).toEqual({ opens: 3 });
+    expect((await computeMetrics(sources({ counts }).repos, TENANT, NOW, null)).widget).toEqual({ opens: 3 });
   });
 
   it('창은 [now − 7일, now)이고 세 사실 모두 같은 테넌트·같은 창으로 묻는다', async () => {
     const { repos, calls } = sources();
-    const { window } = await computeMetrics(repos, TENANT, NOW);
+    const { window } = await computeMetrics(repos, TENANT, NOW, null);
     expect(window).toEqual({ from: new Date('2026-10-29T12:00:00.000Z'), to: NOW });
     expect(calls.map((c) => c.method).sort()).toEqual(['counts', 'outcomes', 'ttftSamples']);
     for (const c of calls) expect(c).toMatchObject({ tenantId: TENANT, window });
+  });
+});
+
+describe('computeMetrics — 인사말 A/B', () => {
+  const EXPERIMENT = defineGreetingExperiment({
+    id: 'exp',
+    variants: [
+      { key: 'a', label: 'A · 기본', weight: 1, text: '가' },
+      { key: 'b', label: 'B · 자료 안내', weight: 1, text: '나' },
+    ],
+  });
+  const summarize = async (counts: EventCount[]) => computeMetrics(sources({ counts }).repos, TENANT, NOW, EXPERIMENT);
+
+  it('변형별 노출(widget_open)·첫 질문(first_question)·비율. 행은 정의 순서이고 비율은 반올림하지 않는다', async () => {
+    const counts: EventCount[] = [
+      { type: 'first_question', variant: 'exp.a', count: 1 },
+      { type: 'first_question', variant: 'exp.b', count: 3 },
+      { type: 'widget_open', variant: 'exp.a', count: 3 },
+      { type: 'widget_open', variant: 'exp.b', count: 4 },
+    ];
+    expect((await summarize(counts)).greeting).toEqual({
+      experiment: 'exp',
+      variants: [
+        { id: 'exp.a', label: 'A · 기본', text: '가', exposures: 3, firstQuestions: 1, rate: 1 / 3 },
+        { id: 'exp.b', label: 'B · 자료 안내', text: '나', exposures: 4, firstQuestions: 3, rate: 0.75 },
+      ],
+      outside: { opens: 0, questions: 0 },
+    });
+  });
+
+  it('사건이 없는 변형도 0으로 나오고 비율은 null(0%가 아니다)', async () => {
+    const { greeting } = await summarize([]);
+    expect(greeting?.variants.map((v) => [v.id, v.exposures, v.firstQuestions, v.rate])).toEqual([
+      ['exp.a', 0, 0, null],
+      ['exp.b', 0, 0, null],
+    ]);
+  });
+
+  it('변형 없는 사건·옛 실험의 행은 어느 행에도 들지 않고 실험 밖 수로 따로 센다. 위젯 열림 수는 그대로 전부', async () => {
+    const counts: EventCount[] = [
+      { type: 'chat_request', variant: null, count: 5 },
+      { type: 'first_question', variant: null, count: 2 },
+      { type: 'first_question', variant: 'exp.a', count: 1 },
+      { type: 'first_question', variant: 'old.a', count: 1 },
+      { type: 'widget_open', variant: null, count: 2 },
+      { type: 'widget_open', variant: 'exp.a', count: 2 },
+      { type: 'widget_open', variant: 'old.b', count: 3 },
+    ];
+    const metrics = await summarize(counts);
+    expect(metrics.greeting?.variants.map((v) => [v.id, v.exposures, v.firstQuestions])).toEqual([
+      ['exp.a', 2, 1],
+      ['exp.b', 0, 0],
+    ]);
+    expect(metrics.greeting?.outside).toEqual({ opens: 5, questions: 3 });
+    expect(metrics.widget).toEqual({ opens: 7 });
+  });
+
+  it('첫 질문이 노출보다 많아도 자르지 않는다 — 1을 넘는 비율은 열림 사건 유실이나 위조를 드러낸다', async () => {
+    const counts: EventCount[] = [
+      { type: 'first_question', variant: 'exp.a', count: 3 },
+      { type: 'widget_open', variant: 'exp.a', count: 1 },
+    ];
+    expect((await summarize(counts)).greeting?.variants[0]?.rate).toBe(3);
+  });
+
+  it('실험이 꺼져 있으면 greeting은 null', async () => {
+    const counts: EventCount[] = [{ type: 'widget_open', variant: 'exp.a', count: 1 }];
+    expect((await computeMetrics(sources({ counts }).repos, TENANT, NOW, null)).greeting).toBeNull();
   });
 });

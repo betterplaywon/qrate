@@ -7,6 +7,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { MockEngine } from '../src/engine/mock.js';
+import { defineGreetingExperiment } from '../src/greeting/experiment.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { AppEvent } from '../src/repo/types.js';
 
@@ -15,6 +16,13 @@ const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const tenantSeed = { ...seed, tenant: { ...seed.tenant, id: 'tenant-demo-id' } };
 const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-events-'));
 const recorded: AppEvent[] = [];
+const EXPERIMENT = defineGreetingExperiment({
+  id: 'exp',
+  variants: [
+    { key: 'a', label: 'A', weight: 1, text: '가' },
+    { key: 'b', label: 'B', weight: 1, text: '나' },
+  ],
+});
 
 let server: Server;
 let baseUrl: string;
@@ -36,6 +44,7 @@ beforeAll(async () => {
     publicOrigin: OWN_ORIGIN,
     frameAssetsDir,
     recordEvent: (event) => recorded.push(event),
+    greeting: EXPERIMENT,
   });
   ({ server, url: baseUrl } = await serve(app));
 });
@@ -63,8 +72,49 @@ describe('POST /api/events', () => {
     expect(res.status).toBe(202);
     expect(await res.text()).toBe('');
     expect(recorded).toEqual([
-      { type: 'widget_open', tenantId: 'tenant-demo-id', conversationId: null, createdAt: expect.any(Date), payload: {} },
+      { type: 'widget_open', tenantId: 'tenant-demo-id', conversationId: null, variant: null, createdAt: expect.any(Date), payload: {} },
     ]);
+  });
+
+  it('first_question도 받는다 — 페이지 로드당 첫 질문', async () => {
+    const res = await post({ tenant: 'demo', type: 'first_question' });
+    expect(res.status).toBe(202);
+    expect(recorded).toEqual([
+      { type: 'first_question', tenantId: 'tenant-demo-id', conversationId: null, variant: null, createdAt: expect.any(Date), payload: {} },
+    ]);
+  });
+
+  it('variant가 지금 실험의 변형이면 그 id를 싣는다', async () => {
+    expect((await post({ tenant: 'demo', type: 'widget_open', variant: 'exp.b' })).status).toBe(202);
+    expect((await post({ tenant: 'demo', type: 'first_question', variant: 'exp.a' })).status).toBe(202);
+    expect(recorded).toMatchObject([
+      { type: 'widget_open', variant: 'exp.b' },
+      { type: 'first_question', variant: 'exp.a' },
+    ]);
+  });
+
+  it('지금 실험의 변형이 아닌 값은 400이 아니라 null로 남긴다 — 열림·질문 수는 지키고 변형만 버린다', async () => {
+    const others: unknown[] = ['old.a', 'made-up', 'exp.c', '', 42, ['exp.a'], { id: 'exp.a' }, null];
+    for (const variant of others) expect((await post({ tenant: 'demo', type: 'widget_open', variant })).status, JSON.stringify(variant)).toBe(202);
+    expect(recorded).toEqual(others.map(() => expect.objectContaining({ type: 'widget_open', variant: null })));
+  });
+
+  it('실험이 꺼져 있으면 지금 실험의 변형 모양이어도 null로 남긴다', async () => {
+    const app = createApp({
+      engine: new MockEngine(0),
+      repos: createRepositoriesFromSeed(tenantSeed),
+      publicOrigin: OWN_ORIGIN,
+      frameAssetsDir,
+      recordEvent: (event) => recorded.push(event),
+      greeting: null,
+    });
+    const { server: s, url } = await serve(app);
+    try {
+      expect((await post({ tenant: 'demo', type: 'widget_open', variant: 'exp.a' }, { url })).status).toBe(202);
+      expect(recorded).toMatchObject([{ type: 'widget_open', variant: null }]);
+    } finally {
+      await close(s);
+    }
   });
 
   it('본문의 다른 값은 사건에 옮기지 않는다', async () => {

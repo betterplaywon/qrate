@@ -13,6 +13,7 @@ function fakeView(): { view: ChatView; calls: Call[]; notices: { text: string; a
   const view: ChatView = {
     setComposer: (state) => void calls.push(`composer:${state}`),
     addUser: (text) => void calls.push(`user:${text}`),
+    showGreeting: (text) => void calls.push(`greeting:${text}`),
     startAnswer: (): AnswerView => {
       const n = ++bubbles;
       calls.push(`start:${n}`);

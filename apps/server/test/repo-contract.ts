@@ -1,7 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { decideSettlement } from '../src/billing/settlement.js';
-import type { AppEvent, ConversationOutcome, NewTopUp, NewTurn, PaymentResult, Repositories, SettleResult } from '../src/repo/types.js';
+import type { GreetingVariantId } from '../src/greeting/experiment.js';
+import type {
+  AppEvent,
+  ConversationOutcome,
+  NewTopUp,
+  NewTurn,
+  PaymentResult,
+  Repositories,
+  SettleResult,
+  WidgetEvent,
+} from '../src/repo/types.js';
 
 // 저장소 계약 테스트 — 메모리(repo.test.ts)와 Postgres(repo-postgres.test.ts) 두 구현이 똑같이 통과해야 한다.
 // 구현별로만 뜻이 있는 것(FK, 트랜잭션 되돌리기, 프로세스가 바뀌어도 남는지)은 각 파일이 더한다.
@@ -435,7 +445,15 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
           usage: null,
         },
       });
-      const opened = (createdAt: Date, tenantId = t): AppEvent => ({ type: 'widget_open', tenantId, createdAt, conversationId: null, payload: {} });
+      const widget = (type: WidgetEvent['type'], createdAt: Date, variant: string | null = null, tenantId = t): AppEvent => ({
+        type,
+        tenantId,
+        createdAt,
+        conversationId: null,
+        variant: variant as GreetingVariantId | null,
+        payload: {},
+      });
+      const opened = (createdAt: Date, variant: string | null = null, tenantId = t): AppEvent => widget('widget_open', createdAt, variant, tenantId);
       const events: AppEvent[] = [
         answered(120, at('2001-01-08T00:00:00Z')),
         answered(80, at('2001-01-10T12:00:00Z')),
@@ -446,14 +464,24 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
         answered(998, at('2001-01-15T00:00:00Z')),
         opened(at('2001-01-15T00:00:00Z')),
         answered(997, at('2001-01-10T00:00:00Z'), ctx.otherTenantId),
-        opened(at('2001-01-10T00:00:00Z'), ctx.otherTenantId),
+        opened(at('2001-01-10T00:00:00Z'), null, ctx.otherTenantId),
+        opened(at('2001-01-12T00:00:00Z'), 'exp.b'),
+        opened(at('2001-01-12T00:00:01Z'), 'exp.a'),
+        opened(at('2001-01-12T00:00:02Z'), 'exp.b'),
+        widget('first_question', at('2001-01-12T00:00:03Z'), 'exp.b'),
+        widget('first_question', at('2001-01-12T00:00:04Z')),
+        opened(at('2001-01-12T00:00:00Z'), 'exp.a', ctx.otherTenantId),
       ];
       for (const e of events) await ctx.repos.events.record(e);
 
       expect((await ctx.repos.events.ttftSamples(t, window)).sort((a, b) => a - b)).toEqual([80, 120]);
       expect(await ctx.repos.events.counts(t, window)).toEqual([
         { type: 'chat_request', variant: null, count: 3 },
+        { type: 'first_question', variant: null, count: 1 },
+        { type: 'first_question', variant: 'exp.b', count: 1 },
         { type: 'widget_open', variant: null, count: 2 },
+        { type: 'widget_open', variant: 'exp.a', count: 1 },
+        { type: 'widget_open', variant: 'exp.b', count: 2 },
       ]);
       expect(await ctx.repos.events.ttftSamples(ctx.otherTenantId, window)).toEqual([997]);
       const empty = { from: at('2002-01-01T00:00:00Z'), to: at('2002-01-08T00:00:00Z') };

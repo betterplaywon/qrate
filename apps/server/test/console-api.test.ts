@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { hashConsoleKey } from '../src/console/key.js';
 import { MockEngine } from '../src/engine/mock.js';
+import { defineGreetingExperiment } from '../src/greeting/experiment.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
 
@@ -348,6 +349,13 @@ describe('대화 로그·미응답 큐', () => {
 });
 
 describe('지표 — GET /api/console/metrics', () => {
+  const EXPERIMENT = defineGreetingExperiment({
+    id: 'exp',
+    variants: [
+      { key: 'a', label: 'A', weight: 1, text: '가' },
+      { key: 'b', label: 'B', weight: 1, text: '나' },
+    ],
+  });
   let metricsServer: Server;
   let url: string;
   let cookie: string;
@@ -367,6 +375,7 @@ describe('지표 — GET /api/console/metrics', () => {
       publicOrigin: OWN_ORIGIN,
       frameAssetsDir,
       console: { secret: SECRET },
+      greeting: EXPERIMENT,
     });
     ({ server: metricsServer, url } = await serve(app));
     const res = await post('/api/console/login', { tenant: 'demo', key: CONSOLE_KEY });
@@ -386,6 +395,14 @@ describe('지표 — GET /api/console/metrics', () => {
       ttft: { samples: 0, p50Ms: null, p95Ms: null },
       autoResolution: { conversations: 0, resolved: 0, rate: null, handoffOnly: 0 },
       widget: { opens: 0 },
+      greeting: {
+        experiment: 'exp',
+        variants: [
+          { id: 'exp.a', label: 'A', text: '가', exposures: 0, firstQuestions: 0, rate: null },
+          { id: 'exp.b', label: 'B', text: '나', exposures: 0, firstQuestions: 0, rate: null },
+        ],
+        outside: { opens: 0, questions: 0 },
+      },
     });
     expect(Date.parse(body.window.to) - Date.parse(body.window.from)).toBe(METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   });
@@ -401,5 +418,26 @@ describe('지표 — GET /api/console/metrics', () => {
     expect(body.ttft).toEqual({ samples: 2, p50Ms: expect.any(Number), p95Ms: expect.any(Number) });
     expect(body.autoResolution).toEqual({ conversations: 2, resolved: 1, rate: 0.5, handoffOnly: 1 });
     expect(body.widget).toEqual({ opens: 1 });
+    expect(body.greeting?.outside).toEqual({ opens: 1, questions: 0 });
+  });
+
+  it('인사말 A/B — 앱에 넣은 실험의 변형별 노출·첫 질문·비율, 변형 없는 첫 질문은 실험 밖', async () => {
+    const before = await metrics();
+    for (const body of [
+      { type: 'widget_open', variant: 'exp.a' },
+      { type: 'widget_open', variant: 'exp.a' },
+      { type: 'first_question', variant: 'exp.a' },
+      { type: 'widget_open', variant: 'exp.b' },
+      { type: 'first_question' },
+    ]) {
+      expect((await post('/api/events', { tenant: 'demo', ...body })).status).toBe(202);
+    }
+    await expect.poll(async () => (await metrics()).widget.opens, { timeout: 2_000 }).toBe(before.widget.opens + 3);
+    const { greeting } = await metrics();
+    expect(greeting?.variants.map((v) => [v.id, v.exposures, v.firstQuestions, v.rate])).toEqual([
+      ['exp.a', 2, 1, 0.5],
+      ['exp.b', 1, 0, 0],
+    ]);
+    expect(greeting?.outside).toEqual({ opens: before.greeting?.outside.opens, questions: (before.greeting?.outside.questions ?? 0) + 1 });
   });
 });

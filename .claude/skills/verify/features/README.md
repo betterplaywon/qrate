@@ -44,5 +44,6 @@
 - [허용되지 않은 오리진 차단](./origin-guard.md) — `/frame` 403 안내 문서, 브라우저 CSP frame-ancestors 거부, 허용 오리진 대조군.
 - [크레딧 충전](./top-up.md) — 충전 요청 → 결제 성공(테스트) → 재배달 → 늦은 실패, 요청 키 재전송, 서명 웹훅 재배달·위조·만료, 원장 한 줄.
 - [콘솔 지표](./metrics.md) — 위젯 열림 사건 → 답한 질문·연결만 요청한 대화 → 콘솔 "지표"의 TTFT·자동 해결률·위젯 열림 → server.log 사건 줄.
+- [인사말 A/B](./greeting-ab.md) — 서버 배정 인사말 → 이 사이트 localStorage 보존(`v=`) → 열림·첫 질문 사건의 변형 → 다른 변형·지금 실험에 없는 보존값 → 콘솔 변형별 노출·첫 질문 → server.log.
 
 아직 맵에 없는 것(다음 후보): 재시도 정책(`[[fail:429]]`·`[[fail:401]]`), 닫기·안 읽은 배지, 모더레이션 차단(422), 콘솔 "더 보기" 페이지네이션. 기대값은 packages/widget/e2e/widget.spec.ts와 apps/console/e2e/console.spec.ts에 있다.
