@@ -86,7 +86,7 @@ docker compose up --build             # Postgres → 마이그레이션·시드(
 - **DB.** compose의 `qrate`/`qrate`는 로컬 전용이다. 운영 DB는 강한 비밀번호와 비공개 네트워크를 쓰고, 관리형 Postgres면 `DATABASE_URL`에 `sslmode=verify-full`을 붙인다.
 - **시드.** `db:seed`는 공개 데모 테넌트(키 `demo`, 100크레딧)를 넣는다. 운영 DB에 돌리지 않는다. compose의 migrate 서비스도 시드를 돌리므로 compose를 그대로 운영에 쓰지 않는다.
 - **결제.** `QRATE_PAYMENT_PROVIDER=mock`은 결제 없이 크레딧을 채우는 버튼을 연다. 운영에서 켜면 시작 로그에 경고만 남는다.
-- **Sentry.** `SENTRY_DSN`을 켜도 요청 본문·쿠키·요청 헤더·IP는 보내지 않는다(`apps/server/src/sentry.ts`). SDK를 올리면 `test/sentry-privacy.test.ts`가 이를 다시 확인한다.
+- **Sentry.** `SENTRY_DSN`을 켜도 요청 본문·쿠키·요청 헤더·IP는 보내지 않는다(`apps/server/src/sentry.ts`). 경로와 쿼리 문자열은 보낸다(`token` 같은 이름은 SDK가 거른다). SDK를 올리면 `test/sentry-privacy.test.ts`가 방문자 메시지·콘솔 로그인 키·세션 쿠키가 실리지 않는지 다시 확인한다.
 - **trust proxy.** 리버스 프록시 뒤에 두면 Express `trust proxy`를 프록시 홉 수로 설정해야 IP당 요율 제한(대화 API 분당 20회 · 상담원 연결 20회 · 위젯 사건 30회 · 콘솔 로그인 10회)이 방문자별로 센다. 지금은 설정하지 않아서 프록시 뒤에서는 모든 요청이 프록시 IP 하나로 세지고, `X-Forwarded-For`가 처음 올 때 제한마다 express-rate-limit 경고(`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`)가 로그에 한 번 남는다. IPv6는 주소 하나가 아니라 /56 대역 하나로 센다(express-rate-limit 기본값, 주소를 바꿔 가며 우회하는 것을 막는다).
 
 ## AI 워크플로우 (작업 방식)
