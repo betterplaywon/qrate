@@ -23,4 +23,33 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // 대화창과 콘솔은 같은 오리진이다. 대화창에 HTML 주입이 하나라도 생기면 그 스크립트가 콘솔 API를 세션 쿠키째 부를 수 있다.
+    files: ['packages/widget/src/**', 'apps/console/src/**'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        ...['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'setHTMLUnsafe', 'srcdoc', 'createContextualFragment'].map((property) => ({
+          property,
+          message: '문자열을 HTML로 해석하는 API다. textContent(대화창은 view.ts의 el)나 JSX 텍스트로 넣는다.',
+        })),
+        ...['write', 'writeln'].map((property) => ({
+          object: 'document',
+          property,
+          message: 'document.write·writeln은 HTML을 해석한다. DOM API로 노드를 만든다.',
+        })),
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: '문자열을 HTML로 해석한다. JSX 텍스트로 넣는다.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='setAttribute'][arguments.0.value=/^srcdoc$/i]",
+          message: 'srcdoc 속성은 문자열을 HTML 문서로 해석한다. src로 같은 오리진의 문서를 연다.',
+        },
+      ],
+    },
+  },
 );

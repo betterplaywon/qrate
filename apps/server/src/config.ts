@@ -15,6 +15,11 @@ export type PaymentProviderSetting = 'auto' | 'mock' | 'none';
 export interface AppConfig {
   port: number;
   /**
+   * 연결을 받을 주소(QRATE_HOST). 개발(NODE_ENV=development)의 기본은 127.0.0.1이다 — 실제 API 키를 읽는 개발 서버를 같은 네트워크의 다른 기기에 열지 않는다.
+   * 그 밖의 기본은 Node 기본값인 모든 인터페이스다. 컨테이너는 그래야 바깥에서 닿는다.
+   */
+  host: string | undefined;
+  /**
    * 브라우저에 보이는 이 서버의 오리진(scheme://host[:port]). 대화 API Origin 검사의 기준값. (src/origin.ts)
    * 기본값은 로컬 개발용 http://localhost:PORT. 운영에서는 위젯 서버의 공개 주소를 QRATE_PUBLIC_ORIGIN으로 준다.
    */
@@ -78,6 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const paymentSetting = parseEnum(env.QRATE_PAYMENT_PROVIDER, PAYMENT_PROVIDER_SETTINGS, 'auto');
   return {
     port,
+    host: env.QRATE_HOST ? env.QRATE_HOST : env.NODE_ENV === 'development' ? '127.0.0.1' : undefined,
     // 값이 틀리면(http(s)가 아님 등) 여기서 던져 서버가 시작되지 않는다. 조용히 기본값으로 가면 Origin 검사가 전부 403이 된다.
     publicOrigin: parseOrigin(env.QRATE_PUBLIC_ORIGIN ? env.QRATE_PUBLIC_ORIGIN : `http://localhost:${port}`),
     engine: parseEnum(env.QRATE_ENGINE, ENGINE_KINDS, 'auto'),
