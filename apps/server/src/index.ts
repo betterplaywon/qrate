@@ -58,8 +58,10 @@ const app = createApp({
   payments,
 });
 
-app.listen(config.port, () => {
-  console.log(`[server] listening on http://localhost:${config.port}`);
+const onListening = (): void => {
+  console.log(
+    `[server] listening on http://${config.host ?? 'localhost'}:${config.port}${config.host ? '' : ' (모든 인터페이스 — QRATE_HOST로 좁힌다)'}`,
+  );
   console.log(
     `[server] engine=${engine.name} model=${engine.model} thinking=${config.thinking} fallback=${config.fallback ? 'default' : 'off'}`,
   );
@@ -71,4 +73,6 @@ app.listen(config.port, () => {
   console.log(`[server] publicOrigin=${config.publicOrigin} — 대화 API는 이 오리진의 iframe에서 온 요청만 받는다`);
   console.log(`[server] frame assets=${frameAssetsDir}`);
   console.log(`[server] console app=${CONSOLE_PATH}/ assets=${consoleAssetsDir}`);
-});
+};
+if (config.host) app.listen(config.port, config.host, onListening);
+else app.listen(config.port, onListening);
