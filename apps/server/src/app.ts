@@ -18,7 +18,7 @@ import { createEventSink, type EventSink } from './events/sink.js';
 import { GREETING_EXPERIMENT, type GreetingExperiment } from './greeting/experiment.js';
 import { createChatHandler } from './http/chat.js';
 import { createConsoleRouter } from './http/console/router.js';
-import { consoleStatic } from './http/console/static.js';
+import { consoleCsp, consoleStatic } from './http/console/static.js';
 import { createErrorHandler, notFound } from './http/errors.js';
 import { createEventRoute } from './http/events.js';
 import { createFrameHandler } from './http/frame.js';
@@ -155,7 +155,7 @@ export function createApp({
   app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));
 
   // 콘솔 페이지(/console/, http/console/static.ts)와 콘솔 API(http/console/router.ts). 페이지는 로그인 전에도 내려가고 데이터는 API에서 온다.
-  if (consoleAssetsDir) app.use(CONSOLE_PATH, consoleStatic(consoleAssetsDir));
+  if (consoleAssetsDir) app.use(CONSOLE_PATH, consoleStatic(consoleAssetsDir, consoleCsp(payments?.name ?? null)));
   if (consoleOptions) {
     const sessions = createSessionCodec(consoleOptions.secret);
     const loginAttempts = consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {};
