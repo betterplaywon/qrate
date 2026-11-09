@@ -11,13 +11,10 @@ export type ThinkingSetting = 'off' | 'low' | 'medium' | 'high';
 export type EngineKind = 'auto' | 'mock' | 'claude';
 /** auto = DATABASE_URL이 있으면 postgres(Prisma), 없으면 memory(시드 파일). 테스트와 E2E는 memory를 명시한다. */
 export type RepoKind = 'auto' | 'memory' | 'postgres';
-/** auto = NODE_ENV가 development·test면 mock, 아니면 none. 토스는 toss라고 적을 때만 켜진다. */
 export type PaymentProviderSetting = 'auto' | 'mock' | 'toss' | 'none';
 
-/** 켜진 결제 제공자와 그 제공자에만 있는 설정. 제공자마다 필요한 값이 달라 합집합이다. */
 export type PaymentConfig =
   | { provider: 'none' }
-  /** webhookSecret이 없으면 index.ts가 프로세스마다 무작위로 만든다. */
   | { provider: 'mock'; webhookSecret: string | undefined }
   | { provider: 'toss'; clientKey: TossClientKey; secretKey: TossSecretKey };
 
@@ -87,7 +84,6 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 function parsePayments(env: NodeJS.ProcessEnv): PaymentConfig {
   const setting = parseEnum(env.QRATE_PAYMENT_PROVIDER, PAYMENT_PROVIDER_SETTINGS, 'auto');
   const provider = setting === 'auto' ? (isDevelopmentEnv(env.NODE_ENV) ? 'mock' : 'none') : setting;
-  // 모의 제공자가 꺼져 있어도 비밀은 검사한다 — 오타를 그 제공자를 켜는 날이 아니라 지금 알린다.
   const webhookSecret = parseSecret('QRATE_MOCK_PAYMENT_SECRET', env.QRATE_MOCK_PAYMENT_SECRET);
   switch (provider) {
     case 'none':

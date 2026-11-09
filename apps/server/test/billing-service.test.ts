@@ -96,7 +96,6 @@ describe('웹훅 수신', () => {
     const short = mock.signEvent({ orderId: created.topUp.id, amount: 1, result: 'paid' }, NOW);
     expect(await billing.receiveWebhook('mock', short)).toEqual({ status: 'ignored', reason: 'amount_mismatch' });
 
-    // 모르는 주문은 결과를 읽기 전에 거른다 — 사건이 아직 없어 보고에 eventId가 없다.
     expect(reports.map((r) => r.context)).toEqual([
       { where: 'billing.webhook', provider: 'mock', orderId: 'no-such-order' },
       { where: 'billing.webhook', provider: 'mock', eventId: `evt_${created.topUp.id}_paid`, orderId: created.topUp.id },

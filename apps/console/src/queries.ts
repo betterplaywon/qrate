@@ -126,11 +126,9 @@ export function useSimulatePayment() {
 const SETTLED_CONFIRM_FAILURES: ReadonlySet<number> = new Set([400, 404, 422]);
 
 /**
- * 결제창 성공 주소로 돌아온 결제의 확정. 쿼리로 둔 이유: 같은 결제의 확정은 서버·토스 양쪽에서 멱등이라 "이 결제의 확정 결과"를 읽는 일과 같고,
  * 화면이 뜨자마자 한 번 보내는 일을 데이터용 useEffect 없이 하는 방법이 쿼리다(같은 키라 두 번 마운트돼도 요청은 하나).
- * 답을 받은 뒤에는 staleTime이 Infinity라 창 포커스·재마운트로 다시 보내지 않고, 다시 묻는 길은 refetch("다시 확인")다.
  * 실패한 확정은 다시 마운트될 때(세션이 끊겨 다시 로그인한 뒤 등) 한 번 더 묻는다.
- * 결과가 정해지면 주소의 쿼리를 지우고 충전 목록·원장을 다시 읽는다(v5 useQuery에는 onSuccess가 없어 queryFn 안에서).
+ * v5 useQuery에는 onSuccess가 없어 뒤처리를 queryFn 안에서 한다.
  */
 export function useConfirmTopUp(ret: TossSuccess) {
   const client = useQueryClient();
@@ -154,7 +152,6 @@ export function useConfirmTopUp(ret: TossSuccess) {
   });
 }
 
-/** 결제창 열기. data는 결제창이 끝난 모양, 오류는 SDK를 못 불러왔거나 창을 못 그린 것이다. */
 export function useTossPaymentWindow() {
   return useMutation({ mutationFn: openTossPaymentWindow });
 }

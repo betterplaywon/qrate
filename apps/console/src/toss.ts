@@ -4,14 +4,12 @@ import { createContext, useContext } from 'react';
 import { z } from 'zod';
 import { href } from './route';
 
-// 콘솔이 토스에 대해 아는 것은 전부 여기 있다: SDK를 불러오는 법, 결제창을 여는 순서, 결제창에서 돌아온 주소를 읽는 법.
-
 /** 결제창형 SDK v2. 버전 없는 주소라 SRI를 걸 수 없다. 콘솔 CSP의 script-src가 이 호스트를 연다(서버 http/console/static.ts). */
 const SDK_URL = 'https://js.tosspayments.com/v2/standard';
-/** 성공·실패 주소의 표지. 해시 라우팅은 리다이렉트를 받을 수 없어서(토스 문서) # 없는 /console/?toss=… 로 돌아온다. */
+/** 성공·실패 주소에 해시를 넣지 않는다 — 토스가 쿼리를 붙이는 자리를 v2 문서가 정하지 않아서(v1 위젯 문서는 해시 라우팅이면 리다이렉트를 처리할 수 없다고 적는다). */
 const RETURN_PARAM = 'toss';
 
-/** 우리가 부르는 SDK 표면만 적은 타입. npm 패키지는 같은 CDN 스크립트를 넣는 로더라 들이지 않는다. */
+/** npm 패키지는 같은 CDN 스크립트를 넣는 로더라 들이지 않는다. */
 interface TossPaymentsGlobal {
   (clientKey: string): { widgets(options: { customerKey: string }): TossWidgets };
   readonly ANONYMOUS: string;
@@ -48,10 +46,7 @@ const successQuerySchema = z.object({
 });
 const FAIL_CODE = /^[A-Z0-9_]{1,64}$/;
 
-/**
- * 확정 결과가 정해지면 돌아온 주소의 쿼리만 지운다. 그 뒤의 새로고침은 같은 결제를 다시 묻지 않는다.
- * 해시는 그대로 둔다 — 그사이 운영자가 다른 화면으로 옮겼을 수 있고, replaceState는 hashchange를 일으키지 않아 해시를 바꾸면 주소와 화면이 어긋난다.
- */
+/** replaceState는 hashchange를 일으키지 않아 해시를 바꾸면 주소와 화면이 어긋난다. */
 export function clearTossReturn(location: Pick<Location, 'pathname' | 'hash'>, history: Pick<History, 'replaceState'>): void {
   history.replaceState(null, '', `${location.pathname}${location.hash}`);
 }
@@ -77,7 +72,6 @@ export function takeTossReturn(location: Pick<Location, 'pathname' | 'search'>, 
   return { kind: 'fail', code: code && FAIL_CODE.test(code) ? code : null };
 }
 
-/** 부팅 때 읽은 돌아온 주소. 한 번 정해지고 바뀌지 않는 값이라 컨텍스트로 둔다(App·Shell·Billing을 거치는 props 대신). */
 export const TossReturnContext = createContext<TossReturn | null>(null);
 
 export function useTossReturn(): TossReturn | null {
@@ -86,7 +80,6 @@ export function useTossReturn(): TossReturn | null {
 
 let loading: Promise<TossPaymentsGlobal> | null = null;
 
-/** 스크립트는 처음 부를 때 한 번만 넣는다. 진행 중인 Promise를 재사용해 두 번 불러도 태그는 하나다. 실패하면 다음 클릭에 다시 시도한다. */
 function loadSdk(): Promise<TossPaymentsGlobal> {
   loading ??= new Promise<TossPaymentsGlobal>((resolve, reject) => {
     const script = document.createElement('script');
@@ -108,7 +101,6 @@ function loadSdk(): Promise<TossPaymentsGlobal> {
   return loading;
 }
 
-/** requested = 결제를 요청해 곧 성공·실패 주소로 떠난다. canceled = 결제창을 닫았다. request_failed = 결제창은 떴는데 요청이 실패했다. */
 export type TossWindowOutcome = 'requested' | 'canceled' | 'request_failed';
 
 /**

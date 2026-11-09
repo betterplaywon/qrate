@@ -68,14 +68,12 @@ export function toTopUpDto(t: TopUp): TopUpDto {
   };
 }
 
-/** 켜진 제공자 → 콘솔이 결제하는 방법(충전 목록 응답). */
 export function toCheckoutDto(payments: PaymentProvider | null): TopUpCheckout | { provider: null } {
   if (!payments) return { provider: null };
   switch (payments.name) {
     case 'mock':
       return { provider: 'mock' };
     case 'toss':
-      // 시크릿 키는 제공자 객체에 없어(billing/toss.ts의 클로저) 여기로 올 수 없다.
       return { provider: 'toss', clientKey: payments.clientKey };
   }
 }

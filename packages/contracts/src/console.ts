@@ -175,10 +175,7 @@ export interface CreateTopUpBody {
   packageId: TopUpPackageId;
 }
 
-/**
- * 콘솔이 충전 주문을 결제하는 방법. mock = 결제 결과 흉내 버튼, toss = 토스 결제창(clientKey는 SDK를 여는 브라우저용 공개 값).
- * 결제 방법과 그 방법에 필요한 값을 한 값으로 묶어 "토스인데 키 없음"을 표현할 수 없게 한다.
- */
+/** 콘솔이 충전 주문을 결제하는 방법. mock = 결제 결과 흉내 버튼, toss = 토스 결제창(clientKey는 SDK를 여는 브라우저용 공개 값). */
 export type TopUpCheckout = { provider: 'mock' } | { provider: 'toss'; clientKey: string };
 
 /** provider가 null이면 이 서버에서는 충전할 수 없다(운영 기본). */
@@ -197,7 +194,7 @@ export type ConfirmTopUpResponse =
    * replayed = 같은 결과를 이미 반영했었다(재확정·웹훅과 겹침). outcome은 처음 판정이고, 이 요청으로 잔액은 움직이지 않았다.
    */
   | { outcome: SettleOutcome; replayed: boolean; topUp: TopUpDto }
-  /** 토스가 아직 결제를 끝내지 않았거나 답을 받지 못했다. 주문은 그대로이고, 같은 본문을 다시 보내도 두 번 결제되지 않는다. */
+  /** 토스가 아직 결제를 끝내지 않았거나, 그런 결제를 찾지 못했거나, 답을 받지 못했다. 주문은 그대로이고, 같은 본문을 다시 보내도 두 번 결제되지 않는다. */
   | { outcome: 'unconfirmed' };
 
 export interface SimulatePaymentBody {

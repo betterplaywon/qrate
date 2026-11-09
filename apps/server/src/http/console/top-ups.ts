@@ -18,7 +18,6 @@ import { tenantIdOf } from './session.js';
 export interface TopUpRoutesOptions {
   repos: Repositories;
   billing: BillingService;
-  /** 켜진 제공자. mock이면 /:id/simulate, toss면 /:id/confirm이 생긴다. */
   payments: PaymentProvider | null;
   session: RequestHandler;
   ownOrigin: RequestHandler;
@@ -97,7 +96,6 @@ export function createTopUpRoutes({ repos, billing, payments, session, ownOrigin
     });
   }
 
-  // 요율 제한은 아직 두지 않는다(배포 전에 정한다). 확정 한 번이 부르는 토스는 최대 둘(승인 + 조회)이다.
   if (payments?.name === 'toss') {
     router.post('/:id/confirm', session, ownOrigin, json, async (req, res) => {
       const body = confirmTopUpSchema.safeParse(req.body);

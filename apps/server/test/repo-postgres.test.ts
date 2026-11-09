@@ -206,7 +206,6 @@ describe.skipIf(!url)('Postgres 저장소', () => {
         if (created.status !== 'created') throw new Error(created.status);
         const { topUp } = created;
         const paymentKey = toss.authenticate(topUp);
-        // 토스가 이미 승인했다(우리 승인 응답을 잃었다). 확정은 승인 오류 뒤 조회로, 웹훅은 조회로 같은 DONE을 읽는다.
         toss.setStatus(paymentKey, 'DONE');
         const before = await repos.credits.balance(t);
         const rawBody = toss.webhookBody({ paymentKey, orderId: topUp.id, status: 'DONE' });

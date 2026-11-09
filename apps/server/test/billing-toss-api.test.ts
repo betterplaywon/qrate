@@ -21,8 +21,6 @@ import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../
 import type { Repositories } from '../src/repo/types.js';
 import { createFakeToss, type FakeAnswer } from './helpers/fake-toss.js';
 
-// 토스 제공자를 켠 진짜 앱 — 콘솔 확정 API와 토스 웹훅. 토스 자리에는 가짜 토스(fetch 주입)가 있고 실제 토스는 부르지 않는다.
-
 const OWN_ORIGIN = 'http://console.test';
 const CONSOLE_KEY = 'demo-console-key';
 const SESSION_SECRET = 'test-secret-0123456789abcdef';
@@ -151,7 +149,6 @@ describe('충전 확정 — 결제창에서 돌아온 결제를 서버가 토스
     expect(await res.json()).toEqual({ error: 'payment_mismatch' });
     expect(await balance()).toBe(before);
     expect(await statusOf(victim.id)).toBe('pending');
-    // 멱등 키가 (주문, 결제 키)의 함수라 잘못 보낸 승인의 답이 그 결제의 올바른 승인 키로 재생되지 않는다.
     const keyOf = (orderId: string) =>
       toss.calls.find((c) => c.api === 'confirm' && (c.body as { orderId?: unknown }).orderId === orderId)?.idempotencyKey;
     expect(toss.calls[callsBefore]?.idempotencyKey).toBe(keyOf(victim.id));
@@ -187,7 +184,6 @@ describe('충전 확정 — 결제창에서 돌아온 결제를 서버가 토스
 
     expect(await (await confirm(topUp.id, body)).json()).toEqual({ outcome: 'unconfirmed' });
     expect(await statusOf(topUp.id)).toBe('pending');
-    // 같은 멱등 키라 토스는 입금 대기 답을 계속 재생한다 — 지금 상태는 조회만 안다.
     toss.setStatus(paymentKey, 'DONE');
     expect(await (await confirm(topUp.id, body)).json()).toMatchObject({ outcome: 'applied', replayed: false, topUp: { status: 'paid' } });
     expect(await balance()).toBe(before + 100);
@@ -210,7 +206,6 @@ describe('충전 확정 — 결제창에서 돌아온 결제를 서버가 토스
   it('틀린 본문은 400 invalid_payment, 없는·남의 주문은 404, 다른 오리진은 403, 결제 시뮬레이션 경로는 없다', async () => {
     const topUp = await newTopUp();
     const callsBefore = toss.calls.length;
-    // "."·".."는 조회 경로 /v1/payments/<결제 키>에서 점 경로로 접혀 시크릿 키 요청이 /v1/·/v1/payments/로 간다.
     const dotKeys = [{ paymentKey: '..', amount: 10_000 }, { paymentKey: '.', amount: 10_000 }];
     for (const body of [{ paymentKey: 'has space', amount: 10_000 }, { paymentKey: 'tgen_x', amount: -1 }, { paymentKey: 'tgen_x', amount: '10000' }, {}, ...dotKeys]) {
       const res = await confirm(topUp.id, body);
@@ -334,7 +329,7 @@ describe('토스 웹훅 — 본문을 믿지 않고 조회로 판정한다', () 
   it('PAYMENT_STATUS_CHANGED 모양이 아니면 400 invalid_webhook이고 토스를 부르지 않는다', async () => {
     const topUp = await newTopUp();
     const callsBefore = toss.calls.length;
-    // 우리 토스 주문을 가리켜도 결제 키가 "."·".."면 조회 경로가 접히고, 짝 없는 서로게이트는 URL 인코딩이 던진다 — 결제 키로 받지 않는다.
+    // 우리 토스 주문을 가리켜도 짝 없는 서로게이트는 URL 인코딩이 던진다 — 결제 키로 받지 않는다.
     const dotKeys = ['..', '.', '\ud800'].map((paymentKey) => JSON.stringify({ eventType: 'PAYMENT_STATUS_CHANGED', data: { paymentKey, orderId: topUp.id } }));
     for (const body of ['not json', JSON.stringify({ eventType: 'DEPOSIT_CALLBACK', data: {} }), JSON.stringify({ eventType: 'PAYMENT_STATUS_CHANGED' }), ...dotKeys]) {
       const res = await postWebhook(body);

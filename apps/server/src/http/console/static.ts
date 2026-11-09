@@ -9,7 +9,6 @@ type CheckoutDirective = 'script-src' | 'connect-src' | 'frame-src';
 const CHECKOUT_DIRECTIVES: readonly CheckoutDirective[] = ['script-src', 'connect-src', 'frame-src'];
 
 /**
- * 결제 방법마다 콘솔 문서가 더 여는 출처. 키가 PaymentProviderName 전체라 제공자를 늘리면 여기를 정하기 전에는 컴파일되지 않는다.
  * 토스는 결제창형 SDK를 콘솔과 같은 헤더 아래에서 띄워 위반 0을 확인한 호스트만 넣었다(2026-11-09, 테스트 모드, 와일드카드 없음).
  * 인라인 스타일·eval·팝업은 쓰지 않았다. 상점의 결제수단이 달라 목록 밖이 필요해지면 브라우저 콘솔에 CSP 위반이 뜬다.
  */
@@ -22,11 +21,11 @@ const CHECKOUT_SOURCES = {
     'connect-src': [
       'https://api.tosspayments.com', // SDK가 결제창을 그릴 때 부른다(xhr GET)
       'https://apigw-sandbox.tosspayments.com', // 결제하기 뒤의 결제 요청(xhr POST, 테스트 모드 호스트)
-      'https://event.tosspayments.com', // SDK 사용 기록(xhr·fetch POST)
-      'https://log.tosspayments.com', // SDK 로그(fetch POST)
+      'https://event.tosspayments.com',
+      'https://log.tosspayments.com',
     ],
     'frame-src': [
-      'https://payment-widget.tosspayments.com', // 결제창 iframe
+      'https://payment-widget.tosspayments.com',
       'https://payment-gateway-sandbox.tosspayments.com', // 결제하기 뒤 같은 iframe이 옮겨 가는 결제 게이트웨이(테스트 모드 호스트)
       'https://toss.im', // 기본 결제수단 퀵계좌이체에서 게이트웨이가 옮겨 간다 — 빼면 기본 수단이 막힌다
     ],
@@ -47,7 +46,6 @@ export function consoleCsp(provider: PaymentProviderName | null): string {
   return ["default-src 'self'", ...opened, "frame-ancestors 'none'", "base-uri 'none'"].join('; ');
 }
 
-/** csp는 app.ts가 consoleCsp(켜진 제공자)로 만들어 넘긴다. index.html에만 붙는다. */
 export function consoleStatic(assetsDir: string, csp: string): RequestHandler {
   return express.static(assetsDir, {
     index: 'index.html',

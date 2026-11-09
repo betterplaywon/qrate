@@ -54,7 +54,6 @@ export function signMockPayload(secret: string, rawBody: Buffer, t: number): str
 
 export interface MockPaymentProvider {
   readonly name: 'mock';
-  /** 서명이 맞으면 본문이 곧 결과라, read는 검증한 사건을 돌려줄 뿐 바깥을 부르지 않는다. */
   readWebhook(req: WebhookRequest, now: Date): WebhookNotice;
   signEvent(e: { orderId: string; amount: number; result: PaymentResult; eventId?: string }, now: Date): WebhookRequest;
 }

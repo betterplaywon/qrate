@@ -4,9 +4,6 @@ import { z } from 'zod';
 import type { PaymentResult, TopUp } from '../repo/types.js';
 import type { PaymentReading, WebhookNotice, WebhookRequest } from './provider.js';
 
-// 토스페이먼츠 결제창형(SDK v2 widgets) 어댑터. 서버가 토스에 대해 아는 것은 전부 이 파일에 있고, 밖으로는 PaymentReading만 나간다.
-// 시크릿 키는 createTossProvider의 클로저 안에만 있다 — 제공자 객체의 속성이 아니라서 객체를 통째로 로그에 찍어도 나오지 않는다.
-
 /** 설정으로 바꾸지 않는다. 바꿀 수 있으면 잘못 넣은 값 하나로 시크릿 키(Basic 인증)가 다른 호스트로 간다. 시험은 fetch를 꽂는다. */
 const TOSS_API_ORIGIN = 'https://api.tosspayments.com';
 
@@ -17,19 +14,13 @@ const TOSS_API_ORIGIN = 'https://api.tosspayments.com';
 const DEFAULT_TIMEOUTS = { confirmMs: 10_000, lookupMs: 8_000 } as const;
 
 declare const tossKeyKind: unique symbol;
-/** 결제창형 테스트 클라이언트 키(test_gck_…). 브라우저용 공개 값이다. */
 export type TossClientKey = string & { readonly [tossKeyKind]: 'client' };
-/** 결제창형 테스트 시크릿 키(test_gsk_…). 로그·오류 문장·응답 어디에도 넣지 않는다. */
 export type TossSecretKey = string & { readonly [tossKeyKind]: 'secret' };
 
 const CLIENT_KEY_PATTERN = /^test_gck_[A-Za-z0-9_]+$/;
 const SECRET_KEY_PATTERN = /^test_gsk_[A-Za-z0-9_]+$/;
 
-/**
- * 환경변수의 두 키. 둘 다 있어야 하고 둘 다 결제창형 테스트 키여야 한다 — 라이브 키와 API 개별 연동 키(test_ck_·test_sk_)를 막는다.
- * 던지면 서버가 뜨지 않는다. 오류 문장에는 변수 이름과 이유만 넣는다.
- * 같은 세트인지는 여기서 알 수 없다. 섞이면 토스가 인증 오류로 답하고, 그 답은 unavailable로 보고된다.
- */
+/** 같은 세트인지는 여기서 알 수 없다. 섞이면 토스가 인증 오류로 답하고, 그 답은 unavailable로 보고된다. */
 export function parseTossKeys(raw: { clientKey: string | undefined; secretKey: string | undefined }): {
   clientKey: TossClientKey;
   secretKey: TossSecretKey;
@@ -51,11 +42,6 @@ export function parseTossKeys(raw: { clientKey: string | undefined; secretKey: s
 const TOSS_STATUSES = ['READY', 'IN_PROGRESS', 'WAITING_FOR_DEPOSIT', 'DONE', 'CANCELED', 'PARTIAL_CANCELED', 'ABORTED', 'EXPIRED'] as const;
 type TossStatus = (typeof TOSS_STATUSES)[number];
 
-/**
- * 토스 결제 상태 → 우리 판정. 이 표 한 곳에서만 정한다(위 목록과 어긋나면 satisfies가 컴파일을 막는다).
- * ABORTED·EXPIRED를 failed로 두어도 안전하다 — 상태는 앞으로만 가서, 같은 주문의 결제 완료가 나중에 와도 paid로 간다(ALLOWED_FROM).
- * 취소·환불은 범위 밖이라 CANCELED·PARTIAL_CANCELED는 반영하지 않고 기록만 한다.
- */
 const TOSS_STATUS_RESULT = {
   READY: 'open',
   IN_PROGRESS: 'open',
@@ -67,7 +53,7 @@ const TOSS_STATUS_RESULT = {
   PARTIAL_CANCELED: 'out_of_scope',
 } as const satisfies Record<TossStatus, PaymentResult | 'open' | 'out_of_scope'>;
 
-/** 판정에 쓰는 필드만 읽는다. mId는 대조하지 않는다 — 승인·조회는 우리 시크릿 키로만 하므로 돌아온 결제는 이미 우리 상점의 것이다. */
+/** mId는 대조하지 않는다 — 승인·조회는 우리 시크릿 키로만 하므로 돌아온 결제는 이미 우리 상점의 것이다. */
 const paymentSchema = z.object({
   paymentKey: z.string().min(1).max(200),
   orderId: z.string().min(6).max(64),
@@ -78,16 +64,13 @@ type TossPayment = z.infer<typeof paymentSchema>;
 
 const tossErrorSchema = z.object({ code: z.string().min(1).max(100) });
 
-/** PAYMENT_STATUS_CHANGED만 받는다(다른 이벤트 종류는 이 주소에 등록하지 않는다). 본문의 값은 거르기와 조회 대상에만 쓴다. */
 const webhookSchema = z.object({
   eventType: z.literal('PAYMENT_STATUS_CHANGED'),
   data: z.object({ paymentKey: paymentKeySchema, orderId: z.string().min(1).max(64) }),
 });
 
-/** 404에 이 코드면 "그런 결제는 없다"다(위조 웹훅의 답). 그 밖의 실패는 전부 "묻지 못했다"다. */
 const NOT_FOUND_CODES: ReadonlySet<string> = new Set(['NOT_FOUND_PAYMENT', 'NOT_FOUND']);
 
-/** 토스를 한 번 부른 결과. 판정 전의 모양이라 이 파일 밖으로 나가지 않는다. */
 type TossAnswer =
   | { kind: 'payment'; payment: TossPayment }
   | { kind: 'error'; httpStatus: number; code: string }
@@ -131,7 +114,6 @@ function confirmIdempotencyKey(orderId: string, paymentKey: string): string {
   return createHash('sha256').update(`qrate-confirm\n${orderId}\n${paymentKey}`).digest('hex');
 }
 
-/** 결제 객체 → 판정. 주문은 보지 않는다(대조는 decideSettlement 한 곳). 같은 결제의 같은 상태는 승인·웹훅 어느 길로 와도 같은 사건 id다. */
 function judgePayment(payment: TossPayment): PaymentReading {
   const verdict = TOSS_STATUS_RESULT[payment.status];
   if (verdict === 'open' || verdict === 'out_of_scope') return { kind: 'unsettled', scope: verdict, status: payment.status, detail: null };
@@ -161,22 +143,16 @@ function isTimeout(err: unknown): boolean {
 export interface TossProviderOptions {
   clientKey: TossClientKey;
   secretKey: TossSecretKey;
-  /** 시험이 가짜 토스를 꽂는 자리. 기본은 전역 fetch. 오리진은 바꿀 수 없다. */
   fetch?: typeof globalThis.fetch;
-  /** 시험이 시간 초과를 짧게 재현하는 자리. */
   timeouts?: Partial<{ confirmMs: number; lookupMs: number }>;
 }
 
 export interface TossPaymentProvider {
   readonly name: 'toss';
-  /** 콘솔이 SDK를 여는 공개 키. 충전 목록 응답(TopUpCheckout)으로 나간다. */
   readonly clientKey: TossClientKey;
-  /** PAYMENT_STATUS_CHANGED 원문 → 소식. 서명은 보지 않는다(결제창형 상점에는 검증할 보안 키가 없다). read()가 조회 API를 한 번 부른다. */
+  /** 서명은 보지 않는다(결제창형 상점에는 검증할 보안 키가 없다). */
   readWebhook(req: WebhookRequest, now: Date): WebhookNotice;
-  /**
-   * 결제 승인. 답이 결과가 정해진 결제 객체(완료·실패)면 그것으로 판정하고, 아니면 이유를 가리지 않고(아직 끝나지 않은 결제·오류·409 처리 중·
-   * 시간 초과·끊김) 같은 결제를 조회한다. 같은 멱등 키는 첫 답을 계속 재생해서(실측) 첫 답이 오류나 입금 대기였으면 지금 상태는 조회만 안다.
-   */
+  /** 같은 멱등 키는 첫 답을 계속 재생해서(실측) 첫 답이 오류나 입금 대기였으면 지금 상태는 조회만 안다. */
   confirm(order: Pick<TopUp, 'id' | 'amount'>, paymentKey: string): Promise<PaymentReading>;
 }
 

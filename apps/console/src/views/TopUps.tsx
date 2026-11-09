@@ -37,7 +37,6 @@ function windowMessage(outcome: TossWindowOutcome | undefined, failed: boolean):
   return null;
 }
 
-/** 결제창 실패 주소의 코드 → 우리 문구. 주소의 message는 쓰지 않는다(toss.ts). */
 function failMessage(code: string | null): string {
   if (code === null) return '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.';
   if (code === 'PAY_PROCESS_CANCELED' || code === 'USER_CANCEL') return '결제를 취소했어요. 주문은 결제 대기로 남아요.';
@@ -102,7 +101,6 @@ function TossReturnNotice({ ret }: { ret: TossReturn }) {
 function TopUpForm({ checkout }: { checkout: TopUpCheckout }) {
   const create = useCreateTopUp();
   const payWindow = useTossPaymentWindow();
-  // 같은 상품의 재제출은 같은 멱등 키로 보낸다 — 응답만 끊긴 요청을 다시 보내도 주문은 하나다.
   const attempt = useRef<{ packageId: string; key: string } | null>(null);
   const form = useForm<CreateTopUpInput>({ resolver: zodResolver(createTopUpSchema), defaultValues: { packageId: 'credits_100' } });
   const busy = form.formState.isSubmitting || create.isPending || payWindow.isPending;

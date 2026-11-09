@@ -12,8 +12,6 @@ import { MockEngine } from '../src/engine/mock.js';
 import { consoleCsp } from '../src/http/console/static.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 
-// 콘솔 문서 CSP는 사람이 머지하는 보안 경계라 글자 그대로 고정한다. 토스 호스트는 결제창형 SDK를 실제로 띄워 위반 0을 확인한 목록이다.
-
 const BASE = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'";
 const TOSS =
   "default-src 'self'; script-src 'self' https://js.tosspayments.com; " +

@@ -9,7 +9,6 @@ const T = Math.floor(NOW.getTime() / 1000);
 const mock = createMockProvider(SECRET);
 const at = (seconds: number) => new Date(NOW.getTime() + seconds * 1000);
 
-/** 웹훅 원문 → 거절 이유, 또는 read가 돌려준 사건. 모의 제공자는 서명이 맞으면 본문이 곧 결과다. */
 async function verify(req: WebhookRequest, now: Date) {
   const notice = mock.readWebhook(req, now);
   if (!notice.ok) return notice;

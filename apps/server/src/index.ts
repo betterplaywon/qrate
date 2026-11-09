@@ -24,7 +24,6 @@ function createPaymentProvider(payments: PaymentConfig): PaymentProvider | null 
     case 'none':
       return null;
     case 'mock':
-      // 서명하는 쪽(결제 시뮬레이션)과 받는 쪽이 같은 프로세스라 무작위 비밀로도 동작한다.
       return createMockProvider(payments.webhookSecret ?? randomBytes(32).toString('base64url'));
     case 'toss':
       return createTossProvider({ clientKey: payments.clientKey, secretKey: payments.secretKey });

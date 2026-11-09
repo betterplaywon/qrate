@@ -23,11 +23,6 @@ export type Decision = { kind: 'ignore'; reason: IgnoreReason } | { kind: 'settl
 
 export type OrderMatch = { ok: true; order: TopUp } | { ok: false; reason: 'unknown_order' | 'provider_mismatch' };
 
-/**
- * 이 제공자의 소식을 받을 주문인가 — 있고, 그 제공자로 만든 주문이어야 한다.
- * 웹훅은 이것이 통과해야 제공자에게 결과를 묻고, 확정은 이것이 통과해야 제공자에게 승인을 청한다(billing/service.ts).
- * decideSettlement도 먼저 이것을 본다.
- */
 export function matchOrder(order: TopUp | null, provider: PaymentProviderName): OrderMatch {
   if (!order) return { ok: false, reason: 'unknown_order' };
   if (order.provider !== provider) return { ok: false, reason: 'provider_mismatch' };

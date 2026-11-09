@@ -2,8 +2,7 @@ import { IDEMPOTENT_REPLAYED_HEADER, type ApiErrorBody, type WebhookAckBody } fr
 import express, { type RequestHandler } from 'express';
 import type { BillingService } from '../billing/service.js';
 
-// 요율 제한은 두지 않는다 — 서명 확인 전에 드는 비용은 HMAC 한 번이다. 토스 웹훅이 토스를 부르는 것은 우리 장부의 토스 주문일 때뿐이라,
-// 모르는 주문의 웹훅이 드는 비용은 DB 조회 한 번이다.
+// 요율 제한은 아직 두지 않는다(README '배포 전 할 일').
 export function createWebhookRoute(billing: BillingService): RequestHandler[] {
   const handler: RequestHandler = async (req, res) => {
     // 본문이 없으면 파서가 req.body를 채우지 않는다.
