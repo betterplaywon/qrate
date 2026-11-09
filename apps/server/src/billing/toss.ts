@@ -1,3 +1,4 @@
+import { paymentKeySchema } from '@qrate/contracts/schemas';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { PaymentResult, TopUp } from '../repo/types.js';
@@ -80,7 +81,7 @@ const tossErrorSchema = z.object({ code: z.string().min(1).max(100) });
 /** PAYMENT_STATUS_CHANGED만 받는다(다른 이벤트 종류는 이 주소에 등록하지 않는다). 본문의 값은 거르기와 조회 대상에만 쓴다. */
 const webhookSchema = z.object({
   eventType: z.literal('PAYMENT_STATUS_CHANGED'),
-  data: z.object({ paymentKey: z.string().min(1).max(200), orderId: z.string().min(1).max(64) }),
+  data: z.object({ paymentKey: paymentKeySchema, orderId: z.string().min(1).max(64) }),
 });
 
 /** 404에 이 코드면 "그런 결제는 없다"다(위조 웹훅의 답). 그 밖의 실패는 전부 "묻지 못했다"다. */

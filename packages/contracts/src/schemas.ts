@@ -75,10 +75,17 @@ export type CreateTopUpInput = z.infer<typeof createTopUpSchema>;
 export const simulatePaymentSchema = z.object({ result: z.enum(PAYMENT_RESULTS) });
 
 /**
- * POST /api/console/top-ups/:id/confirm 본문. 서버가 paymentKey를 토스 조회 경로와 승인 본문에 넣으므로
- * 공백·제어 문자 없는 ASCII만 받는다(토스 상한 200자). 콘솔은 결제창 성공 주소를 읽을 때 같은 규칙을 쓴다.
+ * 토스가 발급한 결제 키. 토스 안내대로 형식(접두사·길이·문자 구성)은 보지 않고 공백·제어 문자 없는 ASCII와 상한 200자만 본다.
+ * 서버가 이 값을 조회 경로 /v1/payments/<결제 키>에 넣는데, "."·".."는 URL이 점 경로로 접어 시크릿 키 요청이 다른 경로로 가서 받지 않는다.
+ * 확정 본문, 결제창 성공 주소(콘솔), 토스 웹훅 본문(서버)이 모두 이 규칙을 쓴다.
  */
+export const paymentKeySchema = z
+  .string()
+  .regex(/^[\x21-\x7e]{1,200}$/)
+  .refine((key) => key !== '.' && key !== '..');
+
+/** POST /api/console/top-ups/:id/confirm 본문. */
 export const confirmTopUpSchema = z.object({
-  paymentKey: z.string().regex(/^[\x21-\x7e]{1,200}$/),
+  paymentKey: paymentKeySchema,
   amount: z.number().int().nonnegative(),
 });
