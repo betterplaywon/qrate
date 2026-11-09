@@ -310,6 +310,23 @@ describe('토스 웹훅 — 본문을 믿지 않고 조회로 판정한다', () 
     expect(await retried.json()).toEqual({ outcome: 'applied' });
   });
 
+  it('조회한 결제가 아직 끝나지 않았으면(인증만 됨) 503 provider_unavailable, 토스가 결제를 끝낸 뒤 같은 웹훅은 200 applied', async () => {
+    const topUp = await newTopUp();
+    const paymentKey = toss.authenticate(topUp);
+    const body = toss.webhookBody({ paymentKey, orderId: topUp.id, status: 'DONE' });
+
+    const early = await postWebhook(body);
+    expect(early.status).toBe(503);
+    expect(await early.json()).toEqual({ error: 'provider_unavailable' });
+    expect(await statusOf(topUp.id)).toBe('pending');
+
+    toss.setStatus(paymentKey, 'DONE');
+    const later = await postWebhook(body);
+    expect(later.status).toBe(200);
+    expect(await later.json()).toEqual({ outcome: 'applied' });
+    expect(await ledgerLines(topUp.id)).toBe(1);
+  });
+
   it('위조(조회 404)는 200 unverified, 취소는 200 unsettled — 둘 다 주문 그대로', async () => {
     const forgedFor = await newTopUp();
     const forged = await postWebhook(toss.webhookBody({ paymentKey: 'tgen_forged_0003', orderId: forgedFor.id, status: 'DONE' }));

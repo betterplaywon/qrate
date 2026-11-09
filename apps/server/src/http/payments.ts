@@ -25,7 +25,12 @@ export function createWebhookRoute(billing: BillingService): RequestHandler[] {
         return;
       case 'unsettled':
       case 'unverified':
-        // 200이어야 토스가 재전송을 멈춘다. 다시 보내도 답이 같다(아직 끝나지 않은 결제·취소·조회가 찾지 못하는 결제).
+        if (result.status === 'unsettled' && result.scope === 'open') {
+          // 아직 끝나지 않은 결제는 다시 물으면 답이 바뀐다 — 토스가 다시 보내게 한다.
+          res.status(503).json({ error: 'provider_unavailable' } satisfies ApiErrorBody);
+          return;
+        }
+        // 200이어야 토스가 재전송을 멈춘다.
         res.json({ outcome: result.status } satisfies WebhookAckBody);
         return;
       case 'unavailable':

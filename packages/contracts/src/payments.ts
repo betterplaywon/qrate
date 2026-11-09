@@ -14,9 +14,9 @@
 // 우리 장부의 토스 주문일 때만 data.paymentKey로 결제 조회 API를 불러, 그 답(주문 번호·금액·상태)으로만 판정한다.
 //     200 unknown_order·provider_mismatch   우리 토스 주문이 아니다. 토스를 부르지 않는다
 //     200 unverified                       조회가 그런 결제는 없다고 답했다(위조로 본다). 사건을 기록하지 않는다
-//     200 unsettled                        조회한 결제가 아직 끝나지 않았거나 범위 밖이다(취소, 기록만)
+//     200 unsettled                        조회한 결제가 범위 밖이다(취소, 기록만)
 //     200 order_mismatch·amount_mismatch   조회한 결제가 본문이 말한 주문·금액이 아니다
-//     503 provider_unavailable             조회가 8초 안에 답하지 않았거나 실패했다. 토스가 다시 보낸다(최대 7회)
+//     503 provider_unavailable             조회 실패·시간 초과, 또는 결제가 아직 끝나지 않음. 토스가 다시 보낸다(최대 7회)
 //     400 invalid_webhook                  JSON이 아니거나 PAYMENT_STATUS_CHANGED 모양이 아니다
 
 import type { SettleOutcome } from './console.js';
@@ -35,7 +35,7 @@ export type WebhookOutcome =
   /** 제공자가 알려 준 결제가 그 주문의 것이 아니거나 금액이 다르다. */
   | 'order_mismatch'
   | 'amount_mismatch'
-  /** 토스: 조회한 결제가 아직 끝나지 않았거나(READY·IN_PROGRESS·WAITING_FOR_DEPOSIT) 범위 밖이다(취소, 기록만). */
+  /** 토스: 조회한 결제가 범위 밖이다(취소, 기록만). */
   | 'unsettled'
   /** 토스: 조회가 그런 결제는 없다고 답했다. 사건을 기록하지 않는다. */
   | 'unverified';

@@ -205,7 +205,7 @@ describe('웹훅 — 본문을 믿지 않고 조회한 결제로만 판정한다
     const paymentKey = toss.authenticate(topUp);
     toss.setStatus(paymentKey, 'CANCELED');
     const body = toss.webhookBody({ paymentKey, orderId: topUp.id, status: 'CANCELED' });
-    expect(await billing.receiveWebhook('toss', { rawBody: body, headers: {} })).toEqual({ status: 'unsettled' });
+    expect(await billing.receiveWebhook('toss', { rawBody: body, headers: {} })).toEqual({ status: 'unsettled', scope: 'out_of_scope' });
     expect(settle).not.toHaveBeenCalled();
     expect(await status(topUp.id)).toBe('pending');
     expect(reports.map((r) => r.context)).toEqual([

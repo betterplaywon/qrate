@@ -11,7 +11,7 @@ export type TopUpRequestResult =
 type ReadingOutcome =
   | { status: 'ignored'; reason: IgnoreReason }
   | { status: 'settled'; result: SettleResult }
-  | { status: 'unsettled' }
+  | { status: 'unsettled'; scope: 'open' | 'out_of_scope' }
   | { status: 'unverified' }
   | { status: 'unavailable' };
 
@@ -54,7 +54,7 @@ export function createBillingService({ repos, payments, reportError, now = () =>
           scope: reading.scope,
           detail: reading.detail,
         });
-        return { status: 'unsettled' };
+        return { status: 'unsettled', scope: reading.scope };
       case 'not_found':
         reportError(new Error('payment not found at provider'), { ...context, detail: reading.detail });
         return { status: 'unverified' };
