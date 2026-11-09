@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decideSettlement, type SettlementEvent } from '../src/billing/settlement.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
-import type { PaymentProviderName, PaymentResult, Repositories, TopUp, TopUpStatus } from '../src/repo/types.js';
+import type { PaymentResult, Repositories, TopUp, TopUpStatus } from '../src/repo/types.js';
 import { deliver, order } from './repo-contract.js';
 
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
@@ -79,7 +79,7 @@ describe('판정이 무시하는 이벤트', () => {
     };
     const event: SettlementEvent = { provider: 'mock', eventId: 'evt-1', orderId: 'order-1', result: 'paid', amount: 10_000 };
     expect(decideSettlement(null, event)).toEqual({ kind: 'ignore', reason: 'unknown_order' });
-    expect(decideSettlement(pending, { ...event, provider: 'toss' as PaymentProviderName })).toEqual({ kind: 'ignore', reason: 'provider_mismatch' });
+    expect(decideSettlement(pending, { ...event, provider: 'toss' })).toEqual({ kind: 'ignore', reason: 'provider_mismatch' });
     expect(decideSettlement(pending, { ...event, amount: 9_999 })).toEqual({ kind: 'ignore', reason: 'amount_mismatch' });
     expect(decideSettlement(pending, event).kind).toBe('settle');
   });

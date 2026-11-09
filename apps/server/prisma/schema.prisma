@@ -169,6 +169,7 @@ enum TopUpStatus {
 
 enum PaymentProviderName {
   mock
+  toss
 }
 
 enum PaymentResult {

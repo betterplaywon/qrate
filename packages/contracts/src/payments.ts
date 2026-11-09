@@ -17,8 +17,19 @@ export const paymentWebhookPath = (provider: string): string => `/api/payments/$
 /** 소문자로 둔다 — Node는 받은 헤더 이름을 소문자 키로 준다. HTTP 헤더 이름은 대소문자를 가리지 않는다. */
 export const MOCK_SIGNATURE_HEADER = 'qrate-mock-signature';
 
-/** applied·stale은 이벤트를 적용한 결과, 나머지는 서명은 맞았지만 주문과 맞지 않아 무시한 이유. */
-export type WebhookOutcome = SettleOutcome | 'unknown_order' | 'provider_mismatch' | 'amount_mismatch';
+/** applied·stale은 이벤트를 적용한 결과, 나머지는 반영하지 않은 이유. */
+export type WebhookOutcome =
+  | SettleOutcome
+  /** 우리 장부의 그 제공자 주문이 아니다. */
+  | 'unknown_order'
+  | 'provider_mismatch'
+  /** 제공자가 알려 준 결제가 그 주문의 것이 아니거나 금액이 다르다. */
+  | 'order_mismatch'
+  | 'amount_mismatch'
+  /** 토스: 조회한 결제가 아직 끝나지 않았거나(READY·IN_PROGRESS·WAITING_FOR_DEPOSIT) 범위 밖이다(취소, 기록만). */
+  | 'unsettled'
+  /** 토스: 조회가 그런 결제는 없다고 답했다. 사건을 기록하지 않는다. */
+  | 'unverified';
 
 export interface WebhookAckBody {
   outcome: WebhookOutcome;

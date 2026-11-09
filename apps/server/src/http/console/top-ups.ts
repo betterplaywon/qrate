@@ -10,7 +10,7 @@ import { Router, type RequestHandler } from 'express';
 import type { PaymentProvider } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
 import type { Repositories } from '../../repo/types.js';
-import { toTopUpDto } from './dto.js';
+import { toCheckoutDto, toTopUpDto } from './dto.js';
 import { parseListQuery, withCursorErrors } from './query.js';
 import { tenantIdOf } from './session.js';
 
@@ -33,7 +33,7 @@ export function createTopUpRoutes({ repos, billing, payments, session, ownOrigin
     const page = await withCursorErrors(res, () => repos.topUps.list(tenantIdOf(res), { limit: query.limit, cursor: query.cursor }));
     if (!page) return;
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ provider: payments?.name ?? null, items: page.items.map(toTopUpDto), nextCursor: page.nextCursor } satisfies TopUpListResponse);
+    res.json({ ...toCheckoutDto(payments), items: page.items.map(toTopUpDto), nextCursor: page.nextCursor } satisfies TopUpListResponse);
   });
 
   router.post('/', session, ownOrigin, json, async (req, res) => {

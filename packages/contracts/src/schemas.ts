@@ -73,3 +73,12 @@ export type CreateTopUpInput = z.infer<typeof createTopUpSchema>;
 
 /** POST /api/console/top-ups/:id/simulate 본문. */
 export const simulatePaymentSchema = z.object({ result: z.enum(PAYMENT_RESULTS) });
+
+/**
+ * POST /api/console/top-ups/:id/confirm 본문. 서버가 paymentKey를 토스 조회 경로와 승인 본문에 넣으므로
+ * 공백·제어 문자 없는 ASCII만 받는다(토스 상한 200자). 콘솔은 결제창 성공 주소를 읽을 때 같은 규칙을 쓴다.
+ */
+export const confirmTopUpSchema = z.object({
+  paymentKey: z.string().regex(/^[\x21-\x7e]{1,200}$/),
+  amount: z.number().int().nonnegative(),
+});
