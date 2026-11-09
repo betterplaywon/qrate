@@ -1,12 +1,13 @@
 // Sentry가 가장 먼저 로드되어야 한다 — 아래 import 순서는 의도된 것. (src/sentry.ts 참고)
 import { Sentry, sentryEnabled } from './sentry.js';
-import { CONSOLE_API_PATH, CONSOLE_PATH } from '@qrate/contracts';
+import { CONSOLE_API_PATH, CONSOLE_PATH, paymentWebhookPath } from '@qrate/contracts';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { createMockProvider } from './billing/mock.js';
 import type { PaymentProvider } from './billing/provider.js';
+import { createTossProvider } from './billing/toss.js';
 import { isDevelopmentEnv, loadConfig, type PaymentConfig } from './config.js';
 import { createEngine } from './engine/index.js';
 import { createEventSink } from './events/sink.js';
@@ -25,6 +26,8 @@ function createPaymentProvider(payments: PaymentConfig): PaymentProvider | null 
     case 'mock':
       // 서명하는 쪽(결제 시뮬레이션)과 받는 쪽이 같은 프로세스라 무작위 비밀로도 동작한다.
       return createMockProvider(payments.webhookSecret ?? randomBytes(32).toString('base64url'));
+    case 'toss':
+      return createTossProvider({ clientKey: payments.clientKey, secretKey: payments.secretKey });
   }
 }
 
@@ -34,6 +37,8 @@ function describePayments(payments: PaymentConfig): string {
       return 'payments=none';
     case 'mock':
       return `payments=mock webhook secret=${payments.webhookSecret ? 'env' : 'random'}`;
+    case 'toss':
+      return `payments=toss keys=env(결제창형 테스트 키) webhook=${paymentWebhookPath('toss')}(배포 때 개발자센터에 등록)`;
   }
 }
 

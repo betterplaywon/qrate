@@ -39,4 +39,16 @@ describe('QRATE_PAYMENT_PROVIDER', () => {
     });
     expect(loadConfig({ QRATE_PAYMENT_PROVIDER: 'mock' }).payments).toEqual({ provider: 'mock', webhookSecret: undefined });
   });
+
+  it('toss는 적을 때만 켜지고 두 키를 시작 때 검사한다 — auto는 키가 있어도 토스를 켜지 않는다', () => {
+    const keys = { QRATE_TOSS_CLIENT_KEY: 'test_gck_fake0001', QRATE_TOSS_SECRET_KEY: 'test_gsk_fake0001' };
+    expect(loadConfig({ QRATE_PAYMENT_PROVIDER: 'toss', ...keys }).payments).toEqual({
+      provider: 'toss',
+      clientKey: 'test_gck_fake0001',
+      secretKey: 'test_gsk_fake0001',
+    });
+    expect(() => loadConfig({ QRATE_PAYMENT_PROVIDER: 'toss' })).toThrow(/QRATE_TOSS_CLIENT_KEY·QRATE_TOSS_SECRET_KEY/);
+    expect(() => loadConfig({ QRATE_PAYMENT_PROVIDER: 'toss', ...keys, QRATE_TOSS_SECRET_KEY: 'live_gsk_real0001' })).toThrow(/QRATE_TOSS_SECRET_KEY/);
+    expect(loadConfig({ NODE_ENV: 'development', ...keys }).payments.provider).toBe('mock');
+  });
 });

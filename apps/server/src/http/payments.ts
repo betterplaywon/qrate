@@ -2,7 +2,8 @@ import { IDEMPOTENT_REPLAYED_HEADER, type ApiErrorBody, type WebhookAckBody } fr
 import express, { type RequestHandler } from 'express';
 import type { BillingService } from '../billing/service.js';
 
-// 요율 제한은 두지 않는다 — 서명 확인 전에 드는 비용은 HMAC 한 번이다.
+// 요율 제한은 두지 않는다 — 서명 확인 전에 드는 비용은 HMAC 한 번이다. 토스 웹훅이 토스를 부르는 것은 우리 장부의 토스 주문일 때뿐이라,
+// 모르는 주문의 웹훅이 드는 비용은 DB 조회 한 번이다.
 export function createWebhookRoute(billing: BillingService): RequestHandler[] {
   const handler: RequestHandler = async (req, res) => {
     // 본문이 없으면 파서가 req.body를 채우지 않는다.
@@ -22,6 +23,15 @@ export function createWebhookRoute(billing: BillingService): RequestHandler[] {
       case 'settled':
         if (result.result.replayed) res.setHeader(IDEMPOTENT_REPLAYED_HEADER, 'true');
         res.json({ outcome: result.result.outcome } satisfies WebhookAckBody);
+        return;
+      case 'unsettled':
+      case 'unverified':
+        // 200이어야 토스가 재전송을 멈춘다. 다시 보내도 답이 같다(아직 끝나지 않은 결제·취소·조회가 찾지 못하는 결제).
+        res.json({ outcome: result.status } satisfies WebhookAckBody);
+        return;
+      case 'unavailable':
+        // 토스가 다시 보낸다(최대 7회). 조회가 회복되면 그때 판정한다.
+        res.status(503).json({ error: 'provider_unavailable' } satisfies ApiErrorBody);
         return;
     }
   };

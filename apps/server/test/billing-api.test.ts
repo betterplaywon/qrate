@@ -211,6 +211,14 @@ describe('결제 시뮬레이션 — 모의 제공자가 서명한 웹훅을 같
     expect(bad.status).toBe(400);
     expect(await bad.json()).toEqual({ error: 'invalid_result' });
   });
+
+  it('모의 제공자 서버에는 토스 확정 경로가 없다(404)', async () => {
+    const { cookie } = withMock;
+    const topUp = await newTopUp(withMock, cookie);
+    const res = await consolePost(withMock, `/top-ups/${topUp.id}/confirm`, cookie, { paymentKey: 'tgen_x', amount: topUp.amount });
+    expect(res.status).toBe(404);
+    expect((await withMock.repos.topUps.findById(topUp.id))?.status).toBe('pending');
+  });
 });
 
 describe('결제 웹훅 — 재배달·순서 뒤바뀜·위조', () => {
@@ -317,7 +325,7 @@ describe('결제 웹훅 — 재배달·순서 뒤바뀜·위조', () => {
 });
 
 describe('결제 제공자가 없는 서버(운영 기본)', () => {
-  it('목록의 provider는 null, 충전 요청은 503, 결제 시뮬레이션 경로·모의 웹훅은 404', async () => {
+  it('목록의 provider는 null, 충전 요청은 503, 결제 시뮬레이션·확정 경로와 모의 웹훅은 404', async () => {
     const run = withoutPayments;
     const { cookie } = run;
     const list = (await (await fetch(`${run.url}/api/console/top-ups`, { headers: { cookie } })).json()) as TopUpListResponse;
@@ -329,6 +337,7 @@ describe('결제 제공자가 없는 서버(운영 기본)', () => {
 
     const { topUp } = await run.repos.topUps.create(TENANT, { requestKey: randomUUID(), packageId: 'credits_100', credits: 100, amount: 10_000, provider: 'mock' });
     expect((await simulate(run, cookie, topUp.id, 'paid')).status).toBe(404);
+    expect((await consolePost(run, `/top-ups/${topUp.id}/confirm`, cookie, { paymentKey: 'tgen_x', amount: topUp.amount })).status).toBe(404);
 
     const { rawBody, headers } = mock.signEvent({ orderId: topUp.id, amount: topUp.amount, result: 'paid' }, new Date());
     const webhook = await postWebhook(run, rawBody, { [MOCK_SIGNATURE_HEADER]: String(headers[MOCK_SIGNATURE_HEADER]) });

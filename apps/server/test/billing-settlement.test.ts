@@ -67,7 +67,7 @@ describe('배달 순서와 무관하게 같은 끝 상태로 수렴한다', () =
 });
 
 describe('판정이 무시하는 이벤트', () => {
-  it('모르는 주문 · 다른 제공자의 주문 · 금액 불일치는 이유와 함께 무시, 맞는 이벤트만 적용 대상', () => {
+  it('모르는 주문 · 다른 제공자의 주문 · 다른 주문의 결제 · 금액 불일치는 이유와 함께 무시, 맞는 이벤트만 적용 대상', () => {
     const pending: TopUp = {
       id: 'order-1',
       tenantId: TENANT,
@@ -80,6 +80,7 @@ describe('판정이 무시하는 이벤트', () => {
     const event: SettlementEvent = { provider: 'mock', eventId: 'evt-1', orderId: 'order-1', result: 'paid', amount: 10_000 };
     expect(decideSettlement(null, event)).toEqual({ kind: 'ignore', reason: 'unknown_order' });
     expect(decideSettlement(pending, { ...event, provider: 'toss' })).toEqual({ kind: 'ignore', reason: 'provider_mismatch' });
+    expect(decideSettlement(pending, { ...event, orderId: 'order-2' })).toEqual({ kind: 'ignore', reason: 'order_mismatch' });
     expect(decideSettlement(pending, { ...event, amount: 9_999 })).toEqual({ kind: 'ignore', reason: 'amount_mismatch' });
     expect(decideSettlement(pending, event).kind).toBe('settle');
   });

@@ -2,10 +2,11 @@ import {
   IDEMPOTENCY_KEY_HEADER,
   IDEMPOTENT_REPLAYED_HEADER,
   type ApiErrorBody,
+  type ConfirmTopUpResponse,
   type SimulatePaymentResponse,
   type TopUpListResponse,
 } from '@qrate/contracts';
-import { createTopUpSchema, idempotencyKeySchema, simulatePaymentSchema } from '@qrate/contracts/schemas';
+import { confirmTopUpSchema, createTopUpSchema, idempotencyKeySchema, simulatePaymentSchema } from '@qrate/contracts/schemas';
 import { Router, type RequestHandler } from 'express';
 import type { PaymentProvider } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
@@ -17,7 +18,7 @@ import { tenantIdOf } from './session.js';
 export interface TopUpRoutesOptions {
   repos: Repositories;
   billing: BillingService;
-  /** 켜진 제공자. mock이면 /:id/simulate가 생긴다. */
+  /** 켜진 제공자. mock이면 /:id/simulate, toss면 /:id/confirm이 생긴다. */
   payments: PaymentProvider | null;
   session: RequestHandler;
   ownOrigin: RequestHandler;
@@ -93,6 +94,34 @@ export function createTopUpRoutes({ repos, billing, payments, session, ownOrigin
         return;
       }
       throw new Error(`mock webhook not accepted: ${result.status}`);
+    });
+  }
+
+  // 요율 제한은 아직 두지 않는다(배포 전에 정한다). 확정 한 번이 부르는 토스는 최대 둘(승인 + 조회)이다.
+  if (payments?.name === 'toss') {
+    router.post('/:id/confirm', session, ownOrigin, json, async (req, res) => {
+      const body = confirmTopUpSchema.safeParse(req.body);
+      if (!body.success) {
+        res.status(400).json({ error: 'invalid_payment' } satisfies ApiErrorBody);
+        return;
+      }
+      const result = await billing.confirmTopUp(tenantIdOf(res), { orderId: String(req.params.id), ...body.data });
+      switch (result.status) {
+        case 'not_found':
+          res.status(404).json({ error: 'not_found' } satisfies ApiErrorBody);
+          return;
+        case 'mismatch':
+          res.status(422).json({ error: 'payment_mismatch' } satisfies ApiErrorBody);
+          return;
+        case 'unconfirmed':
+          res.json({ outcome: 'unconfirmed' } satisfies ConfirmTopUpResponse);
+          return;
+        case 'settled': {
+          const { outcome, replayed, topUp } = result.result;
+          res.json({ outcome, replayed, topUp: toTopUpDto(topUp) } satisfies ConfirmTopUpResponse);
+          return;
+        }
+      }
     });
   }
 
