@@ -53,7 +53,7 @@ const TOSS_STATUS_RESULT = {
   PARTIAL_CANCELED: 'out_of_scope',
 } as const satisfies Record<TossStatus, PaymentResult | 'open' | 'out_of_scope'>;
 
-/** mId는 대조하지 않는다 — 승인·조회는 우리 시크릿 키로만 하므로 돌아온 결제는 이미 우리 상점의 것이다. */
+/** mId는 대조하지 않는다 — 우리 시크릿 키로 승인·조회한 결제는 우리 상점의 것이라고 본다(토스 문서에 명시는 없고 확인하지 못한 가정). */
 const paymentSchema = z.object({
   paymentKey: z.string().min(1).max(200),
   orderId: z.string().min(6).max(64),
