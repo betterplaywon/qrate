@@ -2,20 +2,24 @@ import { TOP_UP_PACKAGES } from '@qrate/contracts';
 import type { ErrorReporter } from '../report.js';
 import type { Repositories, SettleResult, TopUp } from '../repo/types.js';
 import type { PaymentProvider, PaymentReading, WebhookRequest } from './provider.js';
-import { decideSettlement, matchOrder, type IgnoreReason } from './settlement.js';
+import { decideSettlement, matchOrder, type EventMismatch, type OrderMatchFailure } from './settlement.js';
 
 export type TopUpRequestResult =
   | { status: 'created' | 'replayed'; topUp: TopUp }
   | { status: 'key_reused' | 'unknown_package' | 'unavailable' };
 
 type ReadingOutcome =
-  | { status: 'ignored'; reason: IgnoreReason }
+  | { status: 'ignored'; reason: EventMismatch }
   | { status: 'settled'; result: SettleResult }
   | { status: 'unsettled'; scope: 'open' | 'out_of_scope' }
   | { status: 'unverified' }
   | { status: 'unavailable' };
 
-export type WebhookResult = { status: 'unknown_provider' } | { status: 'rejected'; reason: 'signature' | 'malformed' } | ReadingOutcome;
+export type WebhookResult =
+  | { status: 'unknown_provider' }
+  | { status: 'rejected'; reason: 'signature' | 'malformed' }
+  | { status: 'ignored'; reason: OrderMatchFailure }
+  | ReadingOutcome;
 
 export type ConfirmResult =
   | { status: 'not_found' }
@@ -95,7 +99,6 @@ export function createBillingService({ repos, payments, reportError, now = () =>
       switch (outcome.status) {
         case 'settled':
           return outcome;
-        // 주문을 맞춰 본 뒤라, 판정이 무시하는 경우는 토스가 알려 준 결제가 이 주문·금액의 것이 아닐 때뿐이다.
         case 'ignored':
           return { status: 'mismatch' };
         case 'unsettled':

@@ -17,11 +17,12 @@ export interface SettlementEvent {
   amount: number;
 }
 
-export type IgnoreReason = 'unknown_order' | 'provider_mismatch' | 'order_mismatch' | 'amount_mismatch';
+export type OrderMatchFailure = 'unknown_order' | 'provider_mismatch';
+export type EventMismatch = 'order_mismatch' | 'amount_mismatch';
 
-export type Decision = { kind: 'ignore'; reason: IgnoreReason } | { kind: 'settle'; settlement: Settlement };
+export type OrderMatch = { ok: true; order: TopUp } | { ok: false; reason: OrderMatchFailure };
 
-export type OrderMatch = { ok: true; order: TopUp } | { ok: false; reason: 'unknown_order' | 'provider_mismatch' };
+export type Decision = { kind: 'ignore'; reason: EventMismatch } | { kind: 'settle'; settlement: Settlement };
 
 export function matchOrder(order: TopUp | null, provider: PaymentProviderName): OrderMatch {
   if (!order) return { ok: false, reason: 'unknown_order' };
@@ -29,25 +30,22 @@ export function matchOrder(order: TopUp | null, provider: PaymentProviderName): 
   return { ok: true, order };
 }
 
-export function decideSettlement(order: TopUp | null, event: SettlementEvent): Decision {
-  const matched = matchOrder(order, event.provider);
-  if (!matched.ok) return { kind: 'ignore', reason: matched.reason };
-  const target = matched.order;
+export function decideSettlement(order: TopUp, event: SettlementEvent): Decision {
   // 주문은 요청이 말한 id(확정의 경로, 본문을 믿지 못하는 웹훅의 본문)로 찾고 사건은 제공자의 답에서 만든다. 같은 금액의
   // 다른 주문 결제가 오면, 이 검사가 없을 때 한 결제로 두 주문이 충전된다(이 주문 한 번, 그 결제의 주문 한 번).
-  if (event.orderId !== target.id) return { kind: 'ignore', reason: 'order_mismatch' };
-  if (target.amount !== event.amount) return { kind: 'ignore', reason: 'amount_mismatch' };
+  if (event.orderId !== order.id) return { kind: 'ignore', reason: 'order_mismatch' };
+  if (order.amount !== event.amount) return { kind: 'ignore', reason: 'amount_mismatch' };
   const to = event.result;
   return {
     kind: 'settle',
     settlement: {
-      topUpId: target.id,
-      tenantId: target.tenantId,
+      topUpId: order.id,
+      tenantId: order.tenantId,
       event: { provider: event.provider, eventId: event.eventId, result: event.result },
       to,
       from: ALLOWED_FROM[to],
       // 키가 이벤트 id가 아니라 주문 id다 — 다른 이벤트 id로 온 같은 결과가 두 줄이 되지 않게.
-      credit: to === 'paid' ? { delta: target.credits, reason: 'topup', idempotencyKey: `topup:${target.id}` } : null,
+      credit: to === 'paid' ? { delta: order.credits, reason: 'topup', idempotencyKey: `topup:${order.id}` } : null,
     },
   };
 }
