@@ -77,7 +77,6 @@ async function main() {
   await probe('GET /frame?t=demo&o=5173 → 200 + CSP', `${SERVER_ORIGIN}/frame?t=demo&o=${encodeURIComponent(DEMO_ORIGIN)}`, (r) => r.status === 200 && Boolean(r.headers['content-security-policy']?.includes(`frame-ancestors ${DEMO_ORIGIN}`)));
   await probe('GET /frame?t=demo&o=5174 → 403 (허용 목록이 시드 그대로)', `${SERVER_ORIGIN}/frame?t=demo&o=${encodeURIComponent(NOT_ALLOWED_DEMO_ORIGIN)}`, (r) => r.status === 403);
   await probe('GET /frame/app.js → 200 (위젯 dist/frame)', `${SERVER_ORIGIN}/frame/app.js`, (r) => r.status === 200);
-  // 토스 여정의 서버는 콘솔 문서 CSP에 토스 호스트를 더 연다(apps/server/src/http/console/static.ts). 나머지 여정은 기본 정책 그대로여야 한다.
   const tossRun = run.feature === TOSS_FEATURE;
   await probe(`GET /console/ → 200 + CSP(${tossRun ? '토스 호스트를 연 정책' : '기본 정책'})`, `${SERVER_ORIGIN}/console/`, (r) => {
     const csp = r.headers['content-security-policy'] ?? '';

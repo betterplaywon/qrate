@@ -1,10 +1,4 @@
 /* global URL, window, document */
-// 토스 테스트 결제 — 운영자 경로: 콘솔 #/billing → 결제하기 → 토스 결제창(진짜 SDK, 테스트 키) → 결제창에서 돌아온 주소.
-// 결제는 끝내지 않는다. 결제창의 인증은 사람이 한다. 승인 성공은 사용자가 본인 키로 한 번 직접 하고, 그 결과는 이 여정이 아니라 PR에 적는다.
-// 이 여정이 증명하는 것: 토스일 때만 콘솔 CSP가 측정한 토스 호스트를 연다, 결제하기 전에는 토스로 나가는 요청이 없다,
-// 결제창이 CSP 위반 없이 뜬다, 토스가 모르는 결제 키로 돌아오면 서버가 승인·조회를 물은 뒤 "확인하지 못함"으로 답하고 원장은 그대로다,
-// 실패 주소의 문장(message)은 화면에 쓰지 않는다.
-// 실제 토스 호출은 결제창 1회, 승인 1회, 조회 1회다. 키는 launch가 실행 환경의 QRATE_VERIFY_TOSS_*에서만 받고, 레포와 증거에는 남기지 않는다.
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -15,7 +9,6 @@ export const title = '토스 테스트 결제 — 콘솔 CSP·결제창(진짜 S
 
 const SEED_BALANCE = 100;
 const TOSS_HOST = /(^|\.)(tosspayments\.com|toss\.im)$/;
-// apps/server/src/http/console/static.ts의 CHECKOUT_SOURCES.toss와 같은 값. 서버가 실제로 내는 헤더와 대조한다.
 const EXPECTED_CSP_PARTS = [
   "script-src 'self' https://js.tosspayments.com",
   "connect-src 'self' https://api.tosspayments.com https://apigw-sandbox.tosspayments.com https://event.tosspayments.com https://log.tosspayments.com",
@@ -28,7 +21,7 @@ const masked = (key) => (typeof key === 'string' ? `${key.slice(0, 9)}…(${key.
 export async function run(h) {
   const { expect } = h;
   const page = await h.newPage({ name: 'console', ignoreConsole: /401|Unauthorized/ });
-  // 위반은 문서가 생기자마자 모은다. 토스 결제창 iframe 안의 위반은 토스 문서의 것이라 여기 잡히지 않는다(우리 정책과 무관).
+  // 토스 결제창 iframe 안의 위반은 토스 문서의 것이라 여기 잡히지 않는다(우리 정책과 무관).
   await page.addInitScript(() => {
     window.__cspViolations = [];
     document.addEventListener('securitypolicyviolation', (e) => {
@@ -89,8 +82,7 @@ export async function run(h) {
     assert(order.provider === 'toss' && order.status === 'pending', `주문 ${JSON.stringify(order)}`);
     const widgetFrame = () => page.frames().find((f) => f.url().startsWith('https://payment-widget.tosspayments.com'));
     await expect.poll(() => Boolean(widgetFrame()), { timeout: 20_000, message: '토스 결제창 iframe(payment-widget.tosspayments.com)' }).toBe(true);
-    // 결제창이 결제수단 목록을 그릴 시간을 준다(스크린샷용). 판정은 iframe의 존재와 위반 수로 한다.
-    await page.waitForTimeout(4_000);
+    await widgetFrame().waitForLoadState('load', { timeout: 20_000 });
     const violations = await page.evaluate(() => window.__cspViolations);
     h.evidence.saveJson('csp-violations.json', violations);
     h.evidence.saveJson('toss-requests.json', tossRequests);
