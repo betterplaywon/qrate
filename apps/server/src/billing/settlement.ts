@@ -21,21 +21,34 @@ export type IgnoreReason = 'unknown_order' | 'provider_mismatch' | 'amount_misma
 
 export type Decision = { kind: 'ignore'; reason: IgnoreReason } | { kind: 'settle'; settlement: Settlement };
 
+export type OrderMatch = { ok: true; order: TopUp } | { ok: false; reason: 'unknown_order' | 'provider_mismatch' };
+
+/**
+ * 이 제공자의 소식을 받을 주문인가 — 있고, 그 제공자로 만든 주문이어야 한다.
+ * 웹훅은 이것이 통과해야 제공자에게 결과를 묻는다(billing/service.ts). decideSettlement도 먼저 이것을 본다.
+ */
+export function matchOrder(order: TopUp | null, provider: PaymentProviderName): OrderMatch {
+  if (!order) return { ok: false, reason: 'unknown_order' };
+  if (order.provider !== provider) return { ok: false, reason: 'provider_mismatch' };
+  return { ok: true, order };
+}
+
 export function decideSettlement(order: TopUp | null, event: SettlementEvent): Decision {
-  if (!order) return { kind: 'ignore', reason: 'unknown_order' };
-  if (order.provider !== event.provider) return { kind: 'ignore', reason: 'provider_mismatch' };
-  if (order.amount !== event.amount) return { kind: 'ignore', reason: 'amount_mismatch' };
+  const matched = matchOrder(order, event.provider);
+  if (!matched.ok) return { kind: 'ignore', reason: matched.reason };
+  const target = matched.order;
+  if (target.amount !== event.amount) return { kind: 'ignore', reason: 'amount_mismatch' };
   const to = event.result;
   return {
     kind: 'settle',
     settlement: {
-      topUpId: order.id,
-      tenantId: order.tenantId,
+      topUpId: target.id,
+      tenantId: target.tenantId,
       event: { provider: event.provider, eventId: event.eventId, result: event.result },
       to,
       from: ALLOWED_FROM[to],
       // 키가 이벤트 id가 아니라 주문 id다 — 다른 이벤트 id로 온 같은 결과가 두 줄이 되지 않게.
-      credit: to === 'paid' ? { delta: order.credits, reason: 'topup', idempotencyKey: `topup:${order.id}` } : null,
+      credit: to === 'paid' ? { delta: target.credits, reason: 'topup', idempotencyKey: `topup:${target.id}` } : null,
     },
   };
 }

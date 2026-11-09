@@ -12,6 +12,12 @@ export type EngineKind = 'auto' | 'mock' | 'claude';
 export type RepoKind = 'auto' | 'memory' | 'postgres';
 export type PaymentProviderSetting = 'auto' | 'mock' | 'none';
 
+/** 켜진 결제 제공자와 그 제공자에만 있는 설정. 제공자마다 필요한 값이 달라 합집합이다. */
+export type PaymentConfig =
+  | { provider: 'none' }
+  /** webhookSecret이 없으면 index.ts가 프로세스마다 무작위로 만든다. */
+  | { provider: 'mock'; webhookSecret: string | undefined };
+
 export interface AppConfig {
   port: number;
   /**
@@ -39,8 +45,8 @@ export interface AppConfig {
   demoConsoleKey: string | undefined;
   /** 콘솔 세션 토큰의 서명 비밀(16자 이상). 없으면 index.ts가 프로세스마다 무작위로 만든다 — 재시작하면 세션이 끊긴다. */
   consoleSecret: string | undefined;
-  paymentProvider: 'mock' | 'none';
-  mockPaymentSecret: string | undefined;
+  /** 비밀값은 어디에도 로그로 남기지 않는다. 시작 로그는 출처('env'·'random')만. */
+  payments: PaymentConfig;
 }
 
 const THINKING_SETTINGS = ['off', 'low', 'medium', 'high'] as const satisfies readonly ThinkingSetting[];
@@ -75,12 +81,19 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
+function parsePayments(env: NodeJS.ProcessEnv): PaymentConfig {
+  const setting = parseEnum(env.QRATE_PAYMENT_PROVIDER, PAYMENT_PROVIDER_SETTINGS, 'auto');
+  const provider = setting === 'auto' ? (isDevelopmentEnv(env.NODE_ENV) ? 'mock' : 'none') : setting;
+  // 모의 제공자가 꺼져 있어도 비밀은 검사한다 — 오타를 그 제공자를 켜는 날이 아니라 지금 알린다.
+  const webhookSecret = parseSecret('QRATE_MOCK_PAYMENT_SECRET', env.QRATE_MOCK_PAYMENT_SECRET);
+  return provider === 'mock' ? { provider, webhookSecret } : { provider };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = parsePositiveInt(env.PORT, 8787);
   const thinking = parseEnum(env.QRATE_THINKING, THINKING_SETTINGS, 'off');
   // 사고를 켜면 사고 토큰도 max_tokens 안에서 소비되므로 여유를 더 둔다.
   const defaultMaxTokens = thinking === 'off' ? 1024 : 4096;
-  const paymentSetting = parseEnum(env.QRATE_PAYMENT_PROVIDER, PAYMENT_PROVIDER_SETTINGS, 'auto');
   return {
     port,
     host: env.QRATE_HOST ? env.QRATE_HOST : env.NODE_ENV === 'development' ? '127.0.0.1' : undefined,
@@ -96,7 +109,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: env.DATABASE_URL ? env.DATABASE_URL : undefined,
     demoConsoleKey: env.QRATE_DEMO_CONSOLE_KEY ? env.QRATE_DEMO_CONSOLE_KEY : undefined,
     consoleSecret: parseSecret('QRATE_CONSOLE_SECRET', env.QRATE_CONSOLE_SECRET),
-    paymentProvider: paymentSetting === 'auto' ? (isDevelopmentEnv(env.NODE_ENV) ? 'mock' : 'none') : paymentSetting,
-    mockPaymentSecret: parseSecret('QRATE_MOCK_PAYMENT_SECRET', env.QRATE_MOCK_PAYMENT_SECRET),
+    payments: parsePayments(env),
   };
 }

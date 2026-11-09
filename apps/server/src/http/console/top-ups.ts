@@ -7,7 +7,7 @@ import {
 } from '@qrate/contracts';
 import { createTopUpSchema, idempotencyKeySchema, simulatePaymentSchema } from '@qrate/contracts/schemas';
 import { Router, type RequestHandler } from 'express';
-import type { PaymentProviders } from '../../billing/provider.js';
+import type { PaymentProvider } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
 import type { Repositories } from '../../repo/types.js';
 import { toTopUpDto } from './dto.js';
@@ -17,13 +17,14 @@ import { tenantIdOf } from './session.js';
 export interface TopUpRoutesOptions {
   repos: Repositories;
   billing: BillingService;
-  providers: PaymentProviders;
+  /** 켜진 제공자. mock이면 /:id/simulate가 생긴다. */
+  payments: PaymentProvider | null;
   session: RequestHandler;
   ownOrigin: RequestHandler;
   json: RequestHandler;
 }
 
-export function createTopUpRoutes({ repos, billing, providers, session, ownOrigin, json }: TopUpRoutesOptions): Router {
+export function createTopUpRoutes({ repos, billing, payments, session, ownOrigin, json }: TopUpRoutesOptions): Router {
   const router = Router();
 
   router.get('/', session, async (req, res) => {
@@ -32,7 +33,7 @@ export function createTopUpRoutes({ repos, billing, providers, session, ownOrigi
     const page = await withCursorErrors(res, () => repos.topUps.list(tenantIdOf(res), { limit: query.limit, cursor: query.cursor }));
     if (!page) return;
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ provider: billing.provider, items: page.items.map(toTopUpDto), nextCursor: page.nextCursor } satisfies TopUpListResponse);
+    res.json({ provider: payments?.name ?? null, items: page.items.map(toTopUpDto), nextCursor: page.nextCursor } satisfies TopUpListResponse);
   });
 
   router.post('/', session, ownOrigin, json, async (req, res) => {
@@ -67,8 +68,8 @@ export function createTopUpRoutes({ repos, billing, providers, session, ownOrigi
     }
   });
 
-  const { mock } = providers;
-  if (mock) {
+  if (payments?.name === 'mock') {
+    const mock = payments;
     router.post('/:id/simulate', session, ownOrigin, json, async (req, res) => {
       const body = simulatePaymentSchema.safeParse(req.body);
       if (!body.success) {

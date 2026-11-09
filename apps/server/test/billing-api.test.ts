@@ -17,7 +17,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { createMockProvider, signMockPayload } from '../src/billing/mock.js';
-import type { PaymentProviders } from '../src/billing/provider.js';
+import type { PaymentProvider } from '../src/billing/provider.js';
 import { hashConsoleKey } from '../src/console/key.js';
 import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
@@ -40,7 +40,7 @@ interface Running {
   close: () => Promise<void>;
 }
 
-async function start(payments: PaymentProviders): Promise<Running> {
+async function start(payments: PaymentProvider | null): Promise<Running> {
   const repos = createRepositoriesFromSeed(seed, { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) });
   const reports: Running['reports'] = [];
   const app = createApp({
@@ -69,7 +69,7 @@ let withMock: Running;
 let withoutPayments: Running;
 
 beforeAll(async () => {
-  [withMock, withoutPayments] = await Promise.all([start({ mock }), start({})]);
+  [withMock, withoutPayments] = await Promise.all([start(mock), start(null)]);
 });
 
 afterAll(async () => {

@@ -9,7 +9,7 @@ import {
   PAYMENT_WEBHOOK_ROUTE,
 } from '@qrate/contracts';
 import express from 'express';
-import type { PaymentProviders } from './billing/provider.js';
+import type { PaymentProvider } from './billing/provider.js';
 import { createBillingService } from './billing/service.js';
 import { createChatService } from './chat/service.js';
 import { createSessionCodec } from './console/session.js';
@@ -72,7 +72,7 @@ export interface AppOptions {
   eventRequests?: { max: number; windowMs: number };
   /** 대화 요청(POST /api/chat)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
   chatRequests?: { max: number; windowMs: number };
-  payments?: PaymentProviders;
+  payments?: PaymentProvider | null;
   /** 인사말 실험. 없으면 GREETING_EXPERIMENT, null이면 실험 없음. 테스트는 가중치 0인 변형을 넣어 새 배정을 고정한다. */
   greeting?: GreetingExperiment | null;
 }
@@ -90,7 +90,7 @@ export function createApp({
   handoffRequests,
   eventRequests,
   chatRequests = { max: 20, windowMs: 60_000 },
-  payments = {},
+  payments = null,
   greeting: greetingOption,
 }: AppOptions): express.Express {
   const app = express();
@@ -105,7 +105,7 @@ export function createApp({
     next();
   });
   const chat = createChatService({ engine, repos, reportError });
-  const billing = createBillingService({ repos, providers: payments, reportError });
+  const billing = createBillingService({ repos, payments, reportError });
   const recordEvent = recordEventOption ?? createEventSink({ repo: repos.events, reportError });
   // 실험의 주인은 이 앱 하나다. 배정(GET /api/greeting)·사건 검증·콘솔 지표가 모두 이 값을 본다.
   const greeting = greetingOption === undefined ? GREETING_EXPERIMENT : greetingOption;
@@ -159,7 +159,7 @@ export function createApp({
   if (consoleOptions) {
     const sessions = createSessionCodec(consoleOptions.secret);
     const loginAttempts = consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {};
-    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, ...loginAttempts, billing, providers: payments, greeting }));
+    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, ...loginAttempts, billing, payments, greeting }));
   }
 
   // 계약 밖의 실패도 계약의 오류 본문(JSON)으로 답한다(http/errors.ts). 라우터들 뒤에 있어야 한다.

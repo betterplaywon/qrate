@@ -1,7 +1,7 @@
 import { MOCK_SIGNATURE_HEADER } from '@qrate/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockProvider } from '../src/billing/mock.js';
-import type { PaymentProviders } from '../src/billing/provider.js';
+import type { PaymentProvider } from '../src/billing/provider.js';
 import { createBillingService } from '../src/billing/service.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 
@@ -10,13 +10,13 @@ const TENANT = seed.tenant.id;
 const NOW = new Date('2026-11-05T03:00:00Z');
 const mock = createMockProvider('mock-secret-0123456789abcdef');
 
-function setup(providers: PaymentProviders = { mock }) {
+function setup(payments: PaymentProvider | null = mock) {
   const repos = createRepositoriesFromSeed(seed);
   const reports: { err: unknown; context?: Record<string, unknown> }[] = [];
   const lookups = vi.spyOn(repos.topUps, 'findById');
   const billing = createBillingService({
     repos,
-    providers,
+    payments,
     reportError: (err, context) => void reports.push({ err, context }),
     now: () => NOW,
   });
@@ -43,9 +43,8 @@ describe('충전 요청', () => {
     expect((await repos.topUps.list(TENANT, { limit: 10 })).items).toHaveLength(1);
   });
 
-  it('결제 제공자가 없으면 provider는 null이고 충전 요청은 unavailable', async () => {
-    const { billing, repos } = setup({});
-    expect(billing.provider).toBeNull();
+  it('결제 제공자가 없으면 충전 요청은 unavailable이고 주문을 만들지 않는다', async () => {
+    const { billing, repos } = setup(null);
     expect(await billing.requestTopUp(TENANT, { requestKey: 'key-0001', packageId: 'credits_100' })).toEqual({ status: 'unavailable' });
     expect((await repos.topUps.list(TENANT, { limit: 10 })).items).toEqual([]);
   });
@@ -73,7 +72,7 @@ describe('웹훅 수신', () => {
     for (const name of ['toss', '__proto__', 'constructor', 'toString', 'MOCK']) {
       expect(await billing.receiveWebhook(name, webhook), name).toEqual({ status: 'unknown_provider' });
     }
-    expect(await setup({}).billing.receiveWebhook('mock', webhook)).toEqual({ status: 'unknown_provider' });
+    expect(await setup(null).billing.receiveWebhook('mock', webhook)).toEqual({ status: 'unknown_provider' });
   });
 
   it('서명이 틀리면 rejected이고 주문을 읽지도 않는다', async () => {
@@ -97,8 +96,9 @@ describe('웹훅 수신', () => {
     const short = mock.signEvent({ orderId: created.topUp.id, amount: 1, result: 'paid' }, NOW);
     expect(await billing.receiveWebhook('mock', short)).toEqual({ status: 'ignored', reason: 'amount_mismatch' });
 
+    // 모르는 주문은 결과를 읽기 전에 거른다 — 사건이 아직 없어 보고에 eventId가 없다.
     expect(reports.map((r) => r.context)).toEqual([
-      { where: 'billing.webhook', provider: 'mock', eventId: 'evt_no-such-order_paid', orderId: 'no-such-order' },
+      { where: 'billing.webhook', provider: 'mock', orderId: 'no-such-order' },
       { where: 'billing.webhook', provider: 'mock', eventId: `evt_${created.topUp.id}_paid`, orderId: created.topUp.id },
     ]);
     expect((await repos.topUps.findById(created.topUp.id))?.status).toBe('pending');
