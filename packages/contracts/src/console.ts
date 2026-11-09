@@ -178,8 +178,14 @@ export interface CreateTopUpBody {
 /** 콘솔이 충전 주문을 결제하는 방법. mock = 결제 결과 흉내 버튼, toss = 토스 결제창(clientKey는 SDK를 여는 브라우저용 공개 값). */
 export type TopUpCheckout = { provider: 'mock' } | { provider: 'toss'; clientKey: string };
 
+/** 버전 없는 주소라 SRI를 걸 수 없다. */
+export const TOSS_SDK_URL = 'https://js.tosspayments.com/v2/standard';
+
 /** provider가 null이면 이 서버에서는 충전할 수 없다(운영 기본). */
 export type TopUpListResponse = (TopUpCheckout | { provider: null }) & { items: TopUpDto[]; nextCursor: string | null };
+
+/** POST /api/console/top-ups/:id/confirm의 클라이언트 시간 제한(ms). 서버는 토스 승인·조회를 이 안에 끝내고 답한다. */
+export const CONFIRM_TOP_UP_TIMEOUT_MS = 30_000;
 
 export interface ConfirmTopUpBody {
   /** 결제창 성공 주소 쿼리의 paymentKey. */

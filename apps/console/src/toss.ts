@@ -1,11 +1,9 @@
-import { CONSOLE_PATH, type TopUpDto } from '@qrate/contracts';
+import { CONSOLE_PATH, TOSS_SDK_URL, type TopUpDto } from '@qrate/contracts';
 import { confirmTopUpSchema } from '@qrate/contracts/schemas';
 import { createContext, useContext } from 'react';
 import { z } from 'zod';
 import { href } from './route';
 
-/** 결제창형 SDK v2. 버전 없는 주소라 SRI를 걸 수 없다. 콘솔 CSP의 script-src가 이 호스트를 연다(서버 http/console/static.ts). */
-const SDK_URL = 'https://js.tosspayments.com/v2/standard';
 /** 성공·실패 주소에 해시를 넣지 않는다 — 토스가 쿼리를 붙이는 자리를 v2 문서가 정하지 않아서(v1 위젯 문서는 해시 라우팅이면 리다이렉트를 처리할 수 없다고 적는다). */
 const RETURN_PARAM = 'toss';
 
@@ -83,7 +81,7 @@ let loading: Promise<TossPaymentsGlobal> | null = null;
 function loadSdk(): Promise<TossPaymentsGlobal> {
   loading ??= new Promise<TossPaymentsGlobal>((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = SDK_URL;
+    script.src = TOSS_SDK_URL;
     script.onload = () => {
       const sdk = (window as Window & { TossPayments?: TossPaymentsGlobal }).TossPayments;
       if (sdk) resolve(sdk);

@@ -1,4 +1,4 @@
-import type { PaymentProviderName } from '@qrate/contracts';
+import { TOSS_SDK_URL, type PaymentProviderName } from '@qrate/contracts';
 import express, { type RequestHandler } from 'express';
 
 // 콘솔 앱(React 빌드 산출물 index.html·assets/)의 정적 서빙. 서버가 같은 오리진의 /console/ 아래에서 내려준다(콘솔 결정 2026-11-04).
@@ -15,9 +15,7 @@ const CHECKOUT_DIRECTIVES: readonly CheckoutDirective[] = ['script-src', 'connec
 const CHECKOUT_SOURCES = {
   mock: {},
   toss: {
-    'script-src': [
-      'https://js.tosspayments.com', // SDK. 결제하기를 누를 때 콘솔이 넣는다
-    ],
+    'script-src': [new URL(TOSS_SDK_URL).origin],
     'connect-src': [
       'https://api.tosspayments.com', // SDK가 결제창을 그릴 때 부른다(xhr GET)
       'https://apigw-sandbox.tosspayments.com', // 결제하기 뒤의 결제 요청(xhr POST, 테스트 모드 호스트)

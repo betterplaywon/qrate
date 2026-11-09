@@ -9,9 +9,9 @@ const TOSS_API_ORIGIN = 'https://api.tosspayments.com';
 
 /**
  * 웹훅: 토스는 10초 안에 200을 기다린다. 조회를 8초에서 끊고 503으로 답해 토스가 다시 보내게 한다.
- * 승인: 카드사 처리를 기다려 조금 더 준다(추정값, 실측 뒤 조정). 승인 10초 + 조회 8초가 콘솔의 확정 요청 제한(30초) 안이다.
+ * 승인 10초는 토스 문서에 권고가 없어 고른 값이다.
  */
-const DEFAULT_TIMEOUTS = { confirmMs: 10_000, lookupMs: 8_000 } as const;
+export const DEFAULT_TIMEOUTS = { confirmMs: 10_000, lookupMs: 8_000 } as const;
 
 declare const tossKeyKind: unique symbol;
 export type TossClientKey = string & { readonly [tossKeyKind]: 'client' };

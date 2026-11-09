@@ -1,9 +1,10 @@
+import { CONFIRM_TOP_UP_TIMEOUT_MS } from '@qrate/contracts';
 import { randomUUID } from 'node:crypto';
 import { inspect } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import type { PaymentReading } from '../src/billing/provider.js';
 import { createBillingService } from '../src/billing/service.js';
-import { createTossProvider, parseTossKeys, type TossPaymentProvider } from '../src/billing/toss.js';
+import { DEFAULT_TIMEOUTS, createTossProvider, parseTossKeys, type TossPaymentProvider } from '../src/billing/toss.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import { createFakeToss, type FakeConfirmAnswer, type FakeLookupAnswer, type FakeTossStatus } from './helpers/fake-toss.js';
 
@@ -210,6 +211,12 @@ describe('승인 — 답이 결제 객체가 아니면 이유를 가리지 않�
     expect(keys).toHaveLength(5);
     expect(keys[1]).toBe(keys[0]);
     expect(new Set(keys).size).toBe(4);
+  });
+});
+
+describe('확정 시간 예산', () => {
+  it('확정 경로의 최악(승인 시간 초과 뒤 조회 시간 초과)이 콘솔의 확정 요청 제한 안이다', () => {
+    expect(DEFAULT_TIMEOUTS.confirmMs + DEFAULT_TIMEOUTS.lookupMs).toBeLessThan(CONFIRM_TOP_UP_TIMEOUT_MS);
   });
 });
 
