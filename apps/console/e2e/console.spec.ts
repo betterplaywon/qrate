@@ -242,6 +242,31 @@ test('확정 요청이 끊기면 주소의 쿼리를 남겨 두고, 다시 확�
   expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET|status of 404/.test(e))).toEqual([]);
 });
 
+test('확정을 기다리는 사이 다른 화면으로 옮기면, 결과가 정해진 뒤 쿼리만 지우고 해시와 화면은 그대로다', async ({ page, consoleErrors }) => {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/console/top-ups/*/confirm', async (route) => {
+    await held;
+    await route.continue();
+  });
+
+  await page.goto('/console/?toss=success&paymentType=NORMAL&amount=10000&orderId=order-e2e-0004&paymentKey=tgen_e2e_0003');
+  await login(page, CONSOLE_KEY);
+  await expect(page.getByText('결제를 확인하는 중…')).toBeVisible();
+  await page.getByRole('link', { name: '대화 로그' }).click();
+  await expect(page).toHaveURL(/#\/conversations$/);
+
+  release();
+  await expect.poll(() => new URL(page.url()).search).toBe('');
+  expect(new URL(page.url()).hash).toBe('#/conversations');
+  await expect(page.getByTestId('conversations-empty').or(page.getByTestId('conversation-item').first())).toBeVisible();
+  await page.getByTestId('nav-billing').click();
+  await expect(page.getByTestId('credit-balance')).toHaveText(/^\d+$/);
+  expect(consoleErrors.filter((e) => !/status of 404/.test(e))).toEqual([]);
+});
+
 test('지표: 답한 질문·위젯 열림·질문 없는 연결 요청이 하나씩 생기면 각 수가 하나씩 는다 — 연결만 요청한 대화는 해결률 분모가 아니라 따로 센다', async ({
   page,
   request,

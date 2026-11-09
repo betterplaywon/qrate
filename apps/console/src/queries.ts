@@ -140,12 +140,12 @@ export function useConfirmTopUp(ret: TossSuccess) {
       try {
         const result = await api.confirmTopUp(ret.orderId, { paymentKey: ret.paymentKey, amount: ret.amount });
         if (result.outcome !== 'unconfirmed') {
-          clearTossReturn(window.history);
+          clearTossReturn(window.location, window.history);
           await Promise.all([client.invalidateQueries({ queryKey: keys.topUps }), client.invalidateQueries({ queryKey: keys.credits })]);
         }
         return result;
       } catch (err) {
-        if (err instanceof ApiError && SETTLED_CONFIRM_FAILURES.has(err.status)) clearTossReturn(window.history);
+        if (err instanceof ApiError && SETTLED_CONFIRM_FAILURES.has(err.status)) clearTossReturn(window.location, window.history);
         throw err;
       }
     },

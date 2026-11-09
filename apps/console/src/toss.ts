@@ -10,7 +10,6 @@ import { href } from './route';
 const SDK_URL = 'https://js.tosspayments.com/v2/standard';
 /** 성공·실패 주소의 표지. 해시 라우팅은 리다이렉트를 받을 수 없어서(토스 문서) # 없는 /console/?toss=… 로 돌아온다. */
 const RETURN_PARAM = 'toss';
-const BILLING_URL = `${CONSOLE_PATH}/${href.billing()}`;
 
 /** 우리가 부르는 SDK 표면만 적은 타입. npm 패키지는 같은 CDN 스크립트를 넣는 로더라 들이지 않는다. */
 interface TossPaymentsGlobal {
@@ -49,9 +48,12 @@ const successQuerySchema = z.object({
 });
 const FAIL_CODE = /^[A-Z0-9_]{1,64}$/;
 
-/** 확정 결과가 정해지면 돌아온 주소의 쿼리를 지운다. 그 뒤의 새로고침은 같은 결제를 다시 묻지 않는다. */
-export function clearTossReturn(history: Pick<History, 'replaceState'>): void {
-  history.replaceState(null, '', BILLING_URL);
+/**
+ * 확정 결과가 정해지면 돌아온 주소의 쿼리만 지운다. 그 뒤의 새로고침은 같은 결제를 다시 묻지 않는다.
+ * 해시는 그대로 둔다 — 그사이 운영자가 다른 화면으로 옮겼을 수 있고, replaceState는 hashchange를 일으키지 않아 해시를 바꾸면 주소와 화면이 어긋난다.
+ */
+export function clearTossReturn(location: Pick<Location, 'pathname' | 'hash'>, history: Pick<History, 'replaceState'>): void {
+  history.replaceState(null, '', `${location.pathname}${location.hash}`);
 }
 
 /**
@@ -70,7 +72,7 @@ export function takeTossReturn(location: Pick<Location, 'pathname' | 'search'>, 
       return { kind: 'success', ...parsed.data };
     }
   }
-  clearTossReturn(history);
+  history.replaceState(null, '', `${location.pathname}${href.billing()}`);
   const code = marker === 'fail' ? query.get('code') : null;
   return { kind: 'fail', code: code && FAIL_CODE.test(code) ? code : null };
 }
