@@ -9,6 +9,15 @@
 //
 // 모의 제공자(mock)의 서명: 헤더 Qrate-Mock-Signature: t=<unix초>,v1=<hex>, 값은 HMAC-SHA256(비밀, "<t>." + 원문 바이트).
 // 본문: {"id":"evt_…","type":"payment.paid"|"payment.failed","created":<unix초>,"data":{"orderId":"<주문 id>","amount":<원>}}
+//
+// 토스(toss): 결제창형 상점에는 웹훅 서명을 검증할 보안 키가 없어 본문을 믿지 않는다. PAYMENT_STATUS_CHANGED 본문의 data.orderId가
+// 우리 장부의 토스 주문일 때만 data.paymentKey로 결제 조회 API를 불러, 그 답(주문 번호·금액·상태)으로만 판정한다.
+//     200 unknown_order·provider_mismatch   우리 토스 주문이 아니다. 토스를 부르지 않는다
+//     200 unverified                       조회가 그런 결제는 없다고 답했다(위조로 본다). 사건을 기록하지 않는다
+//     200 unsettled                        조회한 결제가 아직 끝나지 않았거나 범위 밖이다(취소, 기록만)
+//     200 order_mismatch·amount_mismatch   조회한 결제가 본문이 말한 주문·금액이 아니다
+//     503 provider_unavailable             조회가 8초 안에 답하지 않았거나 실패했다. 토스가 다시 보낸다(최대 7회)
+//     400 invalid_webhook                  JSON이 아니거나 PAYMENT_STATUS_CHANGED 모양이 아니다
 
 import type { SettleOutcome } from './console.js';
 

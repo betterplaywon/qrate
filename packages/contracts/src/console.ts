@@ -12,12 +12,16 @@
 //   PATCH /api/console/handoffs/:id     UpdateHandoffBody → HandoffQueueItemDto. 다른 테넌트의 것은 404
 //   GET   /api/console/credits          ?limit=&cursor= → CreditsResponse (잔액 + 원장 최근순)
 //   GET   /api/console/metrics          → ConsoleMetricsResponse (최근 METRICS_WINDOW_DAYS일, 쿼리 없음)
-//   GET   /api/console/top-ups          ?limit=&cursor= → TopUpListResponse (충전 주문 최근순 + 충전을 받는 제공자)
+//   GET   /api/console/top-ups          ?limit=&cursor= → TopUpListResponse (충전 주문 최근순 + 콘솔이 결제하는 방법: provider, 토스면 clientKey)
 //   POST  /api/console/top-ups          헤더 Idempotency-Key(8~128자 [A-Za-z0-9_-]) + CreateTopUpBody → 201 TopUpDto.
 //                                       같은 키 재요청도 201 + 같은 본문 + Idempotent-Replayed: true. 같은 키·다른 상품 422 idempotency_key_reused,
 //                                       키 없음·형식 400 invalid_idempotency_key, 모르는 상품 400 invalid_package, 제공자 없음 503 payments_unavailable
 //   POST  /api/console/top-ups/:id/simulate  SimulatePaymentBody → SimulatePaymentResponse. 모의 제공자일 때만 있다(아니면 404).
 //                                       모의 제공자가 서명한 웹훅을 웹훅 경로와 같은 처리에 넣는다. 이벤트 id가 주문·결과로 정해져 같은 버튼은 곧 재배달
+//   POST  /api/console/top-ups/:id/confirm   ConfirmTopUpBody → ConfirmTopUpResponse. 토스 제공자일 때만 있다(아니면 404).
+//                                       결제창 성공 주소로 돌아온 결제를 서버가 토스 승인 API로 확정한다. 같은 결제는 몇 번 보내도 원장 한 줄.
+//                                       본문 모양 400 invalid_payment, 주문 없음·다른 테넌트·토스 주문 아님 404 not_found,
+//                                       돌아온 금액 ≠ 주문 금액(토스를 부르지 않는다)·토스가 알려 준 결제가 이 주문·금액이 아님 422 payment_mismatch
 // 상태를 바꾸는 요청(login·logout·PATCH·POST)은 대화 API와 같은 Origin 검사를 받는다. 날짜는 ISO 8601 문자열이다.
 
 import type { HandoffReason } from './chat.js';
