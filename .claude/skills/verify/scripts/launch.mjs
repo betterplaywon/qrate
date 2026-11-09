@@ -11,7 +11,6 @@ import {
   BUILD_OUTPUTS,
   DEMO_ORIGIN,
   NOT_ALLOWED_DEMO_ORIGIN,
-  PROCESSES,
   REPO_ROOT,
   SERVER_ORIGIN,
   WATCHED_PORTS,
@@ -21,6 +20,7 @@ import {
   http,
   listFeatures,
   lsofText,
+  processesFor,
   relative,
   serverLogFacts,
   stopProcess,
@@ -102,6 +102,13 @@ async function main() {
     process.exit(2);
   }
 
+  let processes;
+  try {
+    processes = processesFor(feature);
+  } catch (err) {
+    fail(err.message);
+  }
+
   const missing = buildOutputs().filter((b) => !b.exists);
   if (missing.length > 0) fail(`빌드 산출물이 없다: ${missing.map((b) => b.file).join(', ')} — 루트에서 \`pnpm build\` 먼저`);
 
@@ -126,7 +133,7 @@ async function main() {
   writeRun(runDir, run);
 
   console.log(`run: ${relative(runDir)}`);
-  for (const proc of PROCESSES) {
+  for (const proc of processes) {
     const started = start(proc, runDir);
     run.processes.push(started);
     writeRun(runDir, run);
