@@ -105,13 +105,15 @@ function describeAnswer(answer: TossAnswer): string {
   }
 }
 
+type ConfirmBody = { paymentKey: string; orderId: string; amount: number };
+
 /**
- * 승인 Idempotency-Key. 토스는 키·API 키·URL·메서드가 같은지만 보고 본문은 보지 않으므로, 키가 본문 전체의 함수여야 한다.
- * 본문은 (결제 키, 주문 id, 금액)이고 금액은 주문 id가 정한다. 결제 키만 쓰면, 다른 주문 id로 잘못 보낸 요청의 오류가
- * 같은 키로 재생되어(실측) 그 결제의 올바른 승인을 막는다. 해시라서 300자 상한과 헤더 문자 제약을 늘 만족한다.
+ * 토스는 키·API 키·URL·메서드가 같은지만 보고 본문은 보지 않으므로, 키가 본문 전체의 함수여야 한다.
+ * 결제 키만 쓰면, 다른 주문 id로 잘못 보낸 요청의 오류가 같은 키로 재생되어(실측) 그 결제의 올바른 승인을 막는다.
+ * 해시라서 300자 상한과 헤더 문자 제약을 늘 만족한다.
  */
-function confirmIdempotencyKey(orderId: string, paymentKey: string): string {
-  return createHash('sha256').update(`qrate-confirm\n${orderId}\n${paymentKey}`).digest('hex');
+function confirmIdempotencyKey(body: ConfirmBody): string {
+  return createHash('sha256').update('qrate-confirm\n').update(JSON.stringify(body)).digest('hex');
 }
 
 function judgePayment(payment: TossPayment): PaymentReading {
@@ -200,9 +202,10 @@ export function createTossProvider(options: TossProviderOptions): TossPaymentPro
     },
 
     async confirm(order, paymentKey) {
+      const body: ConfirmBody = { paymentKey, orderId: order.id, amount: order.amount };
       const answer = await call('POST', '/v1/payments/confirm', {
-        body: { paymentKey, orderId: order.id, amount: order.amount },
-        idempotencyKey: confirmIdempotencyKey(order.id, paymentKey),
+        body,
+        idempotencyKey: confirmIdempotencyKey(body),
         timeoutMs: timeouts.confirmMs,
       });
       if (answer.kind === 'payment') {

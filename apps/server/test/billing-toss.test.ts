@@ -187,6 +187,21 @@ describe('승인 — 답이 결제 객체가 아니면 이유를 가리지 않�
     expect(new Set(keys).size).toBe(1);
     expect(keys[0]).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it('멱등 키는 보내는 승인 본문 전체의 함수다 — 결제 키·주문 id·금액 중 하나만 달라도 키가 다르고, 같은 본문은 같은 키다', async () => {
+    const toss = createFakeToss();
+    const payments = createTossProvider({ ...KEYS, fetch: toss.fetch, timeouts: { confirmMs: 200, lookupMs: 100 } });
+    const order = { id: 'order-key-0001', amount: 10_000 };
+    await payments.confirm(order, 'tgen_key_0001');
+    await payments.confirm(order, 'tgen_key_0001');
+    await payments.confirm({ ...order, amount: 20_000 }, 'tgen_key_0001');
+    await payments.confirm({ ...order, id: 'order-key-0002' }, 'tgen_key_0001');
+    await payments.confirm(order, 'tgen_key_0002');
+    const keys = toss.calls.filter((c) => c.api === 'confirm').map((c) => c.idempotencyKey);
+    expect(keys).toHaveLength(5);
+    expect(keys[1]).toBe(keys[0]);
+    expect(new Set(keys).size).toBe(4);
+  });
 });
 
 describe('웹훅 — 본문을 믿지 않고 조회한 결제로만 판정한다', () => {
