@@ -14,7 +14,7 @@ import { ApiError } from '../api';
 import { LoadMore } from '../components/LoadMore';
 import { QueryBoundary } from '../components/QueryBoundary';
 import { TOP_UP_STATUS_LABEL, formatTime, formatWon } from '../labels';
-import { useConfirmTopUp, useCreateTopUp, useSimulatePayment, useTopUps, useTossPaymentWindow } from '../queries';
+import { settledConfirmError, useConfirmTopUp, useCreateTopUp, useSimulatePayment, useTopUps, useTossPaymentWindow } from '../queries';
 import { useTossReturn, type TossReturn, type TossSuccess, type TossWindowOutcome } from '../toss';
 
 function requestErrorMessage(error: unknown): string | null {
@@ -37,10 +37,10 @@ function windowMessage(outcome: TossWindowOutcome | undefined, failed: boolean):
   return null;
 }
 
-function failMessage(code: string | null): string {
-  if (code === null) return '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.';
-  if (code === 'PAY_PROCESS_CANCELED' || code === 'USER_CANCEL') return '결제를 취소했어요. 주문은 결제 대기로 남아요.';
-  return `결제 인증에 실패했어요(${code}). 주문은 결제 대기로 남아요.`;
+function failMessage(ret: Exclude<TossReturn, TossSuccess>): string {
+  if (ret.kind === 'unreadable') return '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.';
+  if (ret.code === 'PAY_PROCESS_CANCELED' || ret.code === 'USER_CANCEL') return '결제를 취소했어요. 주문은 결제 대기로 남아요.';
+  return `결제 인증에 실패했어요(${ret.code}). 주문은 결제 대기로 남아요.`;
 }
 
 function confirmMessage(r: Exclude<ConfirmTopUpResponse, { outcome: 'unconfirmed' }>): string {
@@ -49,15 +49,6 @@ function confirmMessage(r: Exclude<ConfirmTopUpResponse, { outcome: 'unconfirmed
   }
   if (r.topUp.status === 'failed') return '결제가 승인되지 않았어요. 잔액은 그대로예요. 다시 충전하면 새 주문으로 결제해요.';
   return '이미 처리된 결제예요. 잔액은 그대로예요.';
-}
-
-/** 다시 물어도 답이 같은 확정 실패. 그 밖(네트워크·서버 오류)은 다시 확인할 수 있다. */
-function settledConfirmError(error: unknown): string | null {
-  if (!(error instanceof ApiError)) return null;
-  if (error.status === 404) return '이 결제는 이 서버에서 확인할 수 없어요. 다른 테넌트로 로그인했거나 결제 방법이 바뀌었어요.';
-  if (error.status === 422) return '결제 정보가 주문과 맞지 않아 승인하지 않았어요. 잔액은 그대로예요.';
-  if (error.status === 400) return '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.';
-  return null;
 }
 
 function TossConfirm({ ret }: { ret: TossSuccess }) {
@@ -93,7 +84,7 @@ function TossReturnNotice({ ret }: { ret: TossReturn }) {
   if (ret.kind === 'success') return <TossConfirm ret={ret} />;
   return (
     <p className="notice" role="status" data-testid="toss-return">
-      {failMessage(ret.code)}
+      {failMessage(ret)}
     </p>
   );
 }
@@ -118,11 +109,8 @@ function TopUpForm({ checkout }: { checkout: TopUpCheckout }) {
       attempt.current = null;
       return;
     }
-    // 결제창이 뜬 뒤에만 키를 버린다. SDK를 못 불러온 주문은 토스가 본 적이 없어서, 다시 누르면 같은 주문으로 다시 연다.
-    const onShown = () => {
-      attempt.current = null;
-    };
-    await payWindow.mutateAsync({ clientKey: checkout.clientKey, topUp, onShown }).catch(() => undefined);
+    const outcome = await payWindow.mutateAsync({ clientKey: checkout.clientKey, topUp }).catch(() => null);
+    if (outcome) attempt.current = null;
   });
 
   return (

@@ -122,8 +122,16 @@ export function useSimulatePayment() {
   });
 }
 
-/** 확정 결과가 정해진 실패(본문 형식·없는 주문·주문과 다른 결제). 그 밖(네트워크·5xx·401)은 같은 결제로 다시 물을 수 있게 주소를 남긴다. */
-const SETTLED_CONFIRM_FAILURES: ReadonlySet<number> = new Set([400, 404, 422]);
+const SETTLED_CONFIRM_FAILURES: Readonly<Record<number, string>> = {
+  400: '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.',
+  404: '이 결제는 이 서버에서 확인할 수 없어요. 다른 테넌트로 로그인했거나 결제 방법이 바뀌었어요.',
+  422: '결제 정보가 주문과 맞지 않아 승인하지 않았어요. 잔액은 그대로예요.',
+};
+
+export function settledConfirmError(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  return SETTLED_CONFIRM_FAILURES[error.status] ?? null;
+}
 
 /**
  * 화면이 뜨자마자 한 번 보내는 일을 데이터용 useEffect 없이 하는 방법이 쿼리다(같은 키라 두 번 마운트돼도 요청은 하나).
@@ -143,7 +151,7 @@ export function useConfirmTopUp(ret: TossSuccess) {
         }
         return result;
       } catch (err) {
-        if (err instanceof ApiError && SETTLED_CONFIRM_FAILURES.has(err.status)) clearTossReturn(window.location, window.history);
+        if (settledConfirmError(err) !== null) clearTossReturn(window.location, window.history);
         throw err;
       }
     },

@@ -26,13 +26,7 @@ interface TossPaymentWindow {
 }
 
 export type TossSuccess = { kind: 'success'; orderId: string; paymentKey: string; amount: number };
-export type TossReturn =
-  | TossSuccess
-  /**
-   * code는 토스 오류 코드 모양만 받는다(null = 주소를 읽지 못함). 주소의 message는 받지 않는다 —
-   * 누구나 이 주소를 만들어 운영자에게 보낼 수 있어, 화면에 쓰면 콘솔에 남의 문장이 뜬다.
-   */
-  | { kind: 'fail'; code: string | null };
+export type TossReturn = TossSuccess | { kind: 'fail'; code: string } | { kind: 'unreadable' };
 
 const successQuerySchema = z.object({
   orderId: z.string().min(1).max(64),
@@ -49,11 +43,13 @@ export function clearTossReturn(location: Pick<Location, 'pathname' | 'hash'>, h
   history.replaceState(null, '', `${location.pathname}${location.hash}`);
 }
 
-/**
- * 부팅 때 한 번(main.tsx, 첫 렌더 전): 결제창에서 돌아온 주소면 읽고 해시를 #/billing으로 바꾼다. 첫 렌더 전이어야 해시 라우팅이 충전 화면을 고른다.
- * 성공 주소의 쿼리는 확정 결과가 정해질 때까지 남긴다 — 응답을 잃은 확정을 새로고침으로 같은 결제에 다시 묻는 길이다(웹훅 없는 개발 환경).
- * 실패 주소는 바로 지운다. 돌아온 주소가 아니면 null이고 주소를 건드리지 않는다.
- */
+/** replaceState는 hashchange를 일으키지 않아, 해시를 구독한 라우터가 따라오게 직접 알린다. */
+function showBilling(history: Pick<History, 'replaceState'>, url: string): void {
+  const oldURL = window.location.href;
+  history.replaceState(null, '', url);
+  window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL: window.location.href }));
+}
+
 export function takeTossReturn(location: Pick<Location, 'pathname' | 'search'>, history: Pick<History, 'replaceState'>): TossReturn | null {
   const query = new URLSearchParams(location.search);
   const marker = query.get(RETURN_PARAM);
@@ -61,13 +57,13 @@ export function takeTossReturn(location: Pick<Location, 'pathname' | 'search'>, 
   if (marker === 'success') {
     const parsed = successQuerySchema.safeParse({ orderId: query.get('orderId'), paymentKey: query.get('paymentKey'), amount: query.get('amount') });
     if (parsed.success) {
-      history.replaceState(null, '', `${location.pathname}${location.search}${href.billing()}`);
+      showBilling(history, `${location.pathname}${location.search}${href.billing()}`);
       return { kind: 'success', ...parsed.data };
     }
   }
-  history.replaceState(null, '', `${location.pathname}${href.billing()}`);
+  showBilling(history, `${location.pathname}${href.billing()}`);
   const code = marker === 'fail' ? query.get('code') : null;
-  return { kind: 'fail', code: code && FAIL_CODE.test(code) ? code : null };
+  return code && FAIL_CODE.test(code) ? { kind: 'fail', code } : { kind: 'unreadable' };
 }
 
 export const TossReturnContext = createContext<TossReturn | null>(null);
@@ -101,27 +97,13 @@ function loadSdk(): Promise<TossPaymentsGlobal> {
 
 export type TossWindowOutcome = 'requested' | 'canceled' | 'request_failed';
 
-/**
- * 결제창을 띄운다. 결제하기를 누를 때만 SDK를 불러온다. 창이 뜨면 onShown을 부른다 — 그 뒤로 이 주문은 토스에 넘어갈 수 있어,
- * 폼은 그때 충전 요청의 멱등 키를 버린다(다음 클릭은 새 주문). SDK를 못 불러오거나 창을 못 그리면 onShown 없이 거부한다.
- * 결제창은 한 번에 하나만 그릴 수 있어서, 닫히거나 요청이 실패하면 창을 치운다.
- */
-export async function openTossPaymentWindow({
-  clientKey,
-  topUp,
-  onShown,
-}: {
-  clientKey: string;
-  topUp: TopUpDto;
-  onShown: () => void;
-}): Promise<TossWindowOutcome> {
+export async function openTossPaymentWindow({ clientKey, topUp }: { clientKey: string; topUp: TopUpDto }): Promise<TossWindowOutcome> {
   const TossPayments = await loadSdk();
   const widgets = TossPayments(clientKey).widgets({ customerKey: TossPayments.ANONYMOUS });
   await widgets.setAmount({ currency: 'KRW', value: topUp.amount });
   // renderPaymentWindow와 requestPayment의 orderName이 다르면 SDK가 요청을 거부한다.
   const orderName = `Qrate 크레딧 ${topUp.credits}`;
   const paymentWindow = await widgets.renderPaymentWindow({ orderName, variantKey: { paymentMethod: 'DEFAULT', agreement: 'AGREEMENT' } });
-  onShown();
   const origin = window.location.origin;
   return new Promise<TossWindowOutcome>((resolve) => {
     const close = (outcome: TossWindowOutcome) => {

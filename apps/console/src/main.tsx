@@ -8,7 +8,6 @@ import { queryClient } from './queryClient';
 import { TossReturnContext, takeTossReturn } from './toss';
 import './styles.css';
 
-// 결제창에서 돌아온 주소는 그리기 전에 읽는다 — 해시 라우팅이 첫 렌더에서 #/billing을 골라야 한다.
 const tossReturn = takeTossReturn(window.location, window.history);
 
 const el = document.getElementById('root');

@@ -5,7 +5,14 @@
 // 단위 테스트가 못 보는 것만 본다: 브라우저가 HttpOnly 쿠키를 실어 주는지, CSP 아래에서 번들이 도는지, 화면 흐름.
 
 import { expect, test as base, type Page } from '@playwright/test';
-import { MOCK_SIGNATURE_HEADER, paymentWebhookPath, type ConsoleMetricsResponse, type TopUpListResponse } from '@qrate/contracts';
+import {
+  MOCK_SIGNATURE_HEADER,
+  TOSS_SDK_URL,
+  paymentWebhookPath,
+  type ConsoleMetricsResponse,
+  type TopUpDto,
+  type TopUpListResponse,
+} from '@qrate/contracts';
 import { createHmac } from 'node:crypto';
 import { CONSOLE_KEY, MOCK_PAYMENT_SECRET, SERVER_ORIGIN } from './servers';
 
@@ -185,11 +192,10 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET/.test(e))).toEqual([]);
 });
 
-// 결제창에서 돌아온 주소(토스 결제창이 붙이는 쿼리)를 모의 제공자 서버에서 연다. 이 서버에는 확정 경로가 없어 확정은 404다.
 const CONFIRM_PATH = /^\/api\/console\/top-ups\/[^/]+\/confirm$/;
 const isConfirm = (url: string, method: string) => method === 'POST' && CONFIRM_PATH.test(new URL(url).pathname);
 
-test('결제창에서 돌아온 주소: 실패는 코드별 우리 문구만(주소의 message는 화면에 없음), 성공은 확정 요청 정확히 하나 → 결과가 정해지면 주소를 지운다', async ({
+test('결제창에서 돌아온 주소, 모의 제공자 서버(확정 404): #/billing으로 옮기며 hashchange를 알리고, 실패는 코드별 우리 문구만(주소의 message는 화면에 없음), 읽지 못한 주소는 확정 없이 "읽지 못함", 성공은 확정 요청 정확히 하나 → 결과가 정해지면 주소를 지운다', async ({
   page,
   consoleErrors,
 }) => {
@@ -197,14 +203,27 @@ test('결제창에서 돌아온 주소: 실패는 코드별 우리 문구만(주
   page.on('request', (r) => {
     if (isConfirm(r.url(), r.method())) confirms.push(r.postData());
   });
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    Object.assign(window, { hashchanges: seen });
+    window.addEventListener('hashchange', () => seen.push(window.location.hash));
+  });
 
   const forged = '보안 점검 중입니다. 010-0000-0000으로 연락하세요';
   await page.goto(`/console/?toss=fail&code=PAY_PROCESS_CANCELED&message=${encodeURIComponent(forged)}&orderId=order-e2e-0001`);
   expect(new URL(page.url()).search).toBe('');
   expect(new URL(page.url()).hash).toBe('#/billing');
+  expect(await page.evaluate(() => (window as Window & { hashchanges?: string[] }).hashchanges)).toEqual(['#/billing']);
   await login(page, CONSOLE_KEY);
   await expect(page.getByTestId('toss-return')).toHaveText('결제를 취소했어요. 주문은 결제 대기로 남아요.');
   await expect(page.getByText(forged)).toHaveCount(0);
+
+  for (const search of ['?toss=success&orderId=order-e2e-0005&amount=10000', `?toss=fail&code=${encodeURIComponent('not a code')}`]) {
+    await page.goto(`/console/${search}`);
+    await expect(page.getByTestId('toss-return'), search).toHaveText('결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.');
+    expect(new URL(page.url()).search, search).toBe('');
+  }
+  expect(confirms).toEqual([]);
 
   await page.goto('/console/?toss=success&paymentType=NORMAL&amount=10000&orderId=order-e2e-0002&paymentKey=tgen_e2e_0001');
   await expect(page.getByTestId('toss-return')).toHaveText('이 결제는 이 서버에서 확인할 수 없어요. 다른 테넌트로 로그인했거나 결제 방법이 바뀌었어요.');
@@ -265,6 +284,75 @@ test('확정을 기다리는 사이 다른 화면으로 옮기면, 결과가 정
   await page.getByTestId('nav-billing').click();
   await expect(page.getByTestId('credit-balance')).toHaveText(/^\d+$/);
   expect(consoleErrors.filter((e) => !/status of 404/.test(e))).toEqual([]);
+});
+
+const FAKE_TOSS_SDK = `window.TossPayments = Object.assign(() => ({
+  widgets: () => ({
+    setAmount: async () => {},
+    renderPaymentWindow: async () => ({ on: (event, handler) => { if (event === 'cancel') setTimeout(handler, 0); }, destroy: async () => {} }),
+    requestPayment: async () => {},
+  }),
+}), { ANONYMOUS: 'ANONYMOUS' });`;
+
+test.describe('토스 충전 화면(가짜 SDK, 토스로 나가는 요청은 끊는다)', () => {
+  test.use({ bypassCSP: true });
+
+  // 콘솔 로그인은 IP당 분당 10회라(http/console/router.ts) 로그인 한 번으로 결제창과 확정 실패를 함께 본다.
+  test('결제창이 뜨기 전에 실패하면 다시 눌러도 같은 주문, 뜬 뒤 닫으면 다음은 새 주문. 확정이 400·422면 문구와 함께 주소를 지우고 500이면 다시 확인을 남긴다', async ({
+    page,
+    consoleErrors,
+  }) => {
+    await page.route('**/api/console/top-ups', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      const list = (await (await route.fetch()).json()) as TopUpListResponse;
+      return route.fulfill({ json: { ...list, provider: 'toss', clientKey: 'test_gck_e2e0001' } });
+    });
+    let sdk: 'unreachable' | 'closes' = 'unreachable';
+    await page.route(/^https:\/\/([a-z0-9-]+\.)*(tosspayments\.com|toss\.im)\//, (route) =>
+      route.request().url() === TOSS_SDK_URL && sdk === 'closes' ? route.fulfill({ contentType: 'text/javascript', body: FAKE_TOSS_SDK }) : route.abort(),
+    );
+    const created = async () => {
+      const res = await page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/console/top-ups');
+      return { key: res.request().headers()['idempotency-key'], id: ((await res.json()) as TopUpDto).id };
+    };
+    await page.goto('/console/#/billing');
+    await login(page, CONSOLE_KEY);
+    const pay = page.getByRole('button', { name: '결제하기' });
+    const notice = page.getByTestId('payment-window-notice');
+
+    const [first] = await Promise.all([created(), pay.click()]);
+    await expect(notice).toHaveText('결제창을 열지 못했어요. 다시 누르면 같은 주문으로 열어요.');
+    sdk = 'closes';
+    const [second] = await Promise.all([created(), pay.click()]);
+    await expect(notice).toHaveText('결제창을 닫았어요. 주문은 결제 대기로 남아요.');
+    const [third] = await Promise.all([created(), pay.click()]);
+    await expect(notice).toHaveText('결제창을 닫았어요. 주문은 결제 대기로 남아요.');
+
+    expect(second).toEqual(first);
+    expect(third.key).not.toBe(second.key);
+    expect(third.id).not.toBe(second.id);
+
+    let reply = { status: 400, error: 'invalid_payment' };
+    await page.route('**/api/console/top-ups/*/confirm', (route) => route.fulfill({ status: reply.status, json: { error: reply.error } }));
+    const returned = page.getByTestId('toss-return');
+    const returnUrl = (n: number) => `/console/?toss=success&paymentType=NORMAL&amount=10000&orderId=order-e2e-${n}&paymentKey=tgen_e2e_${n}`;
+    for (const [status, error, message] of [
+      [400, 'invalid_payment', '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.'],
+      [422, 'payment_mismatch', '결제 정보가 주문과 맞지 않아 승인하지 않았어요. 잔액은 그대로예요.'],
+    ] as const) {
+      reply = { status, error };
+      await page.goto(returnUrl(status));
+      await expect(returned).toHaveText(message);
+      await expect.poll(() => new URL(page.url()).search).toBe('');
+    }
+    reply = { status: 500, error: 'internal_error' };
+    await page.goto(returnUrl(500));
+    await expect(returned).toContainText('토스에서 결제 완료를 아직 확인하지 못했어요.');
+    await expect(returned.getByRole('button', { name: '다시 확인' })).toBeVisible();
+    expect(new URL(page.url()).search).toContain('paymentKey=tgen_e2e_500');
+
+    expect(consoleErrors.filter((e) => !/ERR_FAILED|status of (400|422|500)/.test(e))).toEqual([]);
+  });
 });
 
 test('지표: 답한 질문·위젯 열림·질문 없는 연결 요청이 하나씩 생기면 각 수가 하나씩 는다 — 연결만 요청한 대화는 해결률 분모가 아니라 따로 센다', async ({
