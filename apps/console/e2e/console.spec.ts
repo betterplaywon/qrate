@@ -185,6 +185,63 @@ test('충전: 끊긴 요청을 다시 눌러도 주문은 하나 → 결제 성�
   expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET/.test(e))).toEqual([]);
 });
 
+// 결제창에서 돌아온 주소(토스 결제창이 붙이는 쿼리)를 모의 제공자 서버에서 연다. 이 서버에는 확정 경로가 없어 확정은 404다.
+const CONFIRM_PATH = /^\/api\/console\/top-ups\/[^/]+\/confirm$/;
+const isConfirm = (url: string, method: string) => method === 'POST' && CONFIRM_PATH.test(new URL(url).pathname);
+
+test('결제창에서 돌아온 주소: 실패는 코드별 우리 문구만(주소의 message는 화면에 없음), 성공은 확정 요청 정확히 하나 → 결과가 정해지면 주소를 지운다', async ({
+  page,
+  consoleErrors,
+}) => {
+  const confirms: (string | null)[] = [];
+  page.on('request', (r) => {
+    if (isConfirm(r.url(), r.method())) confirms.push(r.postData());
+  });
+
+  const forged = '보안 점검 중입니다. 010-0000-0000으로 연락하세요';
+  await page.goto(`/console/?toss=fail&code=PAY_PROCESS_CANCELED&message=${encodeURIComponent(forged)}&orderId=order-e2e-0001`);
+  expect(new URL(page.url()).search).toBe('');
+  expect(new URL(page.url()).hash).toBe('#/billing');
+  await login(page, CONSOLE_KEY);
+  await expect(page.getByTestId('toss-return')).toHaveText('결제를 취소했어요. 주문은 결제 대기로 남아요.');
+  await expect(page.getByText(forged)).toHaveCount(0);
+
+  await page.goto('/console/?toss=success&paymentType=NORMAL&amount=10000&orderId=order-e2e-0002&paymentKey=tgen_e2e_0001');
+  await expect(page.getByTestId('toss-return')).toHaveText('이 결제는 이 서버에서 확인할 수 없어요. 다른 테넌트로 로그인했거나 결제 방법이 바뀌었어요.');
+  expect(confirms).toEqual([JSON.stringify({ paymentKey: 'tgen_e2e_0001', amount: 10_000 })]);
+  await expect.poll(() => new URL(page.url()).search).toBe('');
+  expect(new URL(page.url()).hash).toBe('#/billing');
+
+  await page.reload();
+  await expect(page.getByTestId('credit-balance')).toHaveText(/^\d+$/);
+  await expect(page.getByTestId('toss-return')).toHaveCount(0);
+  expect(confirms).toHaveLength(1);
+  expect(consoleErrors.filter((e) => !/status of 404/.test(e))).toEqual([]);
+});
+
+test('확정 요청이 끊기면 주소의 쿼리를 남겨 두고, 다시 확인은 같은 결제로 다시 묻는다', async ({ page, consoleErrors }) => {
+  const confirms: (string | null)[] = [];
+  page.on('request', (r) => {
+    if (isConfirm(r.url(), r.method())) confirms.push(r.postData());
+  });
+  let cut = true;
+  await page.route('**/api/console/top-ups/*/confirm', (route) => (cut ? route.abort('connectionreset') : route.continue()));
+
+  await page.goto('/console/?toss=success&paymentType=NORMAL&amount=10000&orderId=order-e2e-0003&paymentKey=tgen_e2e_0002');
+  await login(page, CONSOLE_KEY);
+  const notice = page.getByTestId('toss-return');
+  await expect(notice).toContainText('토스에서 결제 완료를 아직 확인하지 못했어요.');
+  expect(new URL(page.url()).search).toContain('paymentKey=tgen_e2e_0002');
+
+  cut = false;
+  await notice.getByRole('button', { name: '다시 확인' }).click();
+  await expect(notice).toHaveText('이 결제는 이 서버에서 확인할 수 없어요. 다른 테넌트로 로그인했거나 결제 방법이 바뀌었어요.');
+  expect(confirms).toHaveLength(2);
+  expect(new Set(confirms).size).toBe(1);
+  await expect.poll(() => new URL(page.url()).search).toBe('');
+  expect(consoleErrors.filter((e) => !/ERR_CONNECTION_RESET|status of 404/.test(e))).toEqual([]);
+});
+
 test('지표: 답한 질문·위젯 열림·질문 없는 연결 요청이 하나씩 생기면 각 수가 하나씩 는다 — 연결만 요청한 대화는 해결률 분모가 아니라 따로 센다', async ({
   page,
   request,

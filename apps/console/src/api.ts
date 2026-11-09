@@ -2,6 +2,8 @@ import {
   CONSOLE_API_PATH,
   IDEMPOTENCY_KEY_HEADER,
   parseApiErrorBody,
+  type ConfirmTopUpBody,
+  type ConfirmTopUpResponse,
   type ConsoleLoginBody,
   type ConsoleMetricsResponse,
   type ConsoleSessionResponse,
@@ -35,6 +37,9 @@ export class ApiError extends Error {
 }
 
 const client = ky.create({ prefix: CONSOLE_API_PATH, retry: 0, headers: { accept: 'application/json' } });
+
+/** 서버의 최악은 토스 승인 10초 + 조회 8초다. ky 기본 10초로는 서버가 판정하기 전에 끊겨 "확인하지 못함"이 된다. */
+const CONFIRM_TIMEOUT_MS = 30_000;
 
 /** ky가 미리 읽어 둔 오류 본문(error.data)에서 계약의 오류 코드를. 계약 모양이 아니면(프록시 오류 페이지 등) unknown_error. */
 function toApiError(err: HTTPError): ApiError {
@@ -77,4 +82,6 @@ export const api = {
     run(client.post('top-ups', { json: body, headers: { [IDEMPOTENCY_KEY_HEADER]: key } }).json<TopUpDto>()),
   simulatePayment: (id: string, body: SimulatePaymentBody) =>
     run(client.post(`top-ups/${encodeURIComponent(id)}/simulate`, { json: body }).json<SimulatePaymentResponse>()),
+  confirmTopUp: (id: string, body: ConfirmTopUpBody) =>
+    run(client.post(`top-ups/${encodeURIComponent(id)}/confirm`, { json: body, timeout: CONFIRM_TIMEOUT_MS }).json<ConfirmTopUpResponse>()),
 };

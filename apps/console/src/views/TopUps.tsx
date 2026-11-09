@@ -1,5 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { TOP_UP_PACKAGES, type PaymentResult, type SimulatePaymentResponse, type TopUpDto } from '@qrate/contracts';
+import {
+  TOP_UP_PACKAGES,
+  type ConfirmTopUpResponse,
+  type PaymentResult,
+  type SimulatePaymentResponse,
+  type TopUpCheckout,
+  type TopUpDto,
+} from '@qrate/contracts';
 import { createTopUpSchema, type CreateTopUpInput } from '@qrate/contracts/schemas';
 import { useRef } from 'react';
 import { useForm } from 'react-hook-form';
@@ -7,7 +14,8 @@ import { ApiError } from '../api';
 import { LoadMore } from '../components/LoadMore';
 import { QueryBoundary } from '../components/QueryBoundary';
 import { TOP_UP_STATUS_LABEL, formatTime, formatWon } from '../labels';
-import { useCreateTopUp, useSimulatePayment, useTopUps } from '../queries';
+import { useConfirmTopUp, useCreateTopUp, useSimulatePayment, useTopUps, useTossPaymentWindow } from '../queries';
+import { useTossReturn, type TossReturn, type TossSuccess, type TossWindowOutcome } from '../toss';
 
 function requestErrorMessage(error: unknown): string | null {
   if (!error) return null;
@@ -22,23 +30,101 @@ function simulateMessage(r: SimulatePaymentResponse, sent: PaymentResult): strin
   return '주문과 맞지 않는 이벤트라 무시했어요.';
 }
 
-function TopUpForm() {
+function windowMessage(outcome: TossWindowOutcome | undefined, failed: boolean): string | null {
+  if (failed) return '결제창을 열지 못했어요. 다시 누르면 같은 주문으로 열어요.';
+  if (outcome === 'canceled') return '결제창을 닫았어요. 주문은 결제 대기로 남아요.';
+  if (outcome === 'request_failed') return '결제를 요청하지 못했어요. 주문은 결제 대기로 남아요. 다시 누르면 새 주문으로 결제해요.';
+  return null;
+}
+
+/** 결제창 실패 주소의 코드 → 우리 문구. 주소의 message는 쓰지 않는다(toss.ts). */
+function failMessage(code: string | null): string {
+  if (code === null) return '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.';
+  if (code === 'PAY_PROCESS_CANCELED' || code === 'USER_CANCEL') return '결제를 취소했어요. 주문은 결제 대기로 남아요.';
+  return `결제 인증에 실패했어요(${code}). 주문은 결제 대기로 남아요.`;
+}
+
+function confirmMessage(r: Exclude<ConfirmTopUpResponse, { outcome: 'unconfirmed' }>): string {
+  if (r.topUp.status === 'paid') {
+    return r.outcome === 'applied' && !r.replayed ? `${r.topUp.credits}크레딧을 충전했어요.` : '이미 충전된 결제예요. 크레딧은 한 번만 들어가요.';
+  }
+  if (r.topUp.status === 'failed') return '결제가 승인되지 않았어요. 잔액은 그대로예요. 다시 충전하면 새 주문으로 결제해요.';
+  return '이미 처리된 결제예요. 잔액은 그대로예요.';
+}
+
+/** 다시 물어도 답이 같은 확정 실패. 그 밖(네트워크·서버 오류)은 다시 확인할 수 있다. */
+function settledConfirmError(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  if (error.status === 404) return '이 결제는 이 서버에서 확인할 수 없어요. 다른 테넌트로 로그인했거나 결제 방법이 바뀌었어요.';
+  if (error.status === 422) return '결제 정보가 주문과 맞지 않아 승인하지 않았어요. 잔액은 그대로예요.';
+  if (error.status === 400) return '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.';
+  return null;
+}
+
+function TossConfirm({ ret }: { ret: TossSuccess }) {
+  const confirm = useConfirmTopUp(ret);
+  if (confirm.isPending) return <p className="status">결제를 확인하는 중…</p>;
+  const settled = confirm.isError ? settledConfirmError(confirm.error) : null;
+  if (settled) {
+    return (
+      <p className="notice" role="status" data-testid="toss-return">
+        {settled}
+      </p>
+    );
+  }
+  if (confirm.isError || confirm.data.outcome === 'unconfirmed') {
+    return (
+      <div className="notice" role="status" data-testid="toss-return">
+        <p>토스에서 결제 완료를 아직 확인하지 못했어요.</p>
+        <button type="button" className="small" disabled={confirm.isFetching} onClick={() => void confirm.refetch()}>
+          다시 확인
+        </button>
+        <span className="muted"> 같은 결제로 다시 물어봐요. 두 번 결제되지 않아요.</span>
+      </div>
+    );
+  }
+  return (
+    <p className="notice" role="status" data-testid="toss-return">
+      {confirmMessage(confirm.data)}
+    </p>
+  );
+}
+
+function TossReturnNotice({ ret }: { ret: TossReturn }) {
+  if (ret.kind === 'success') return <TossConfirm ret={ret} />;
+  return (
+    <p className="notice" role="status" data-testid="toss-return">
+      {failMessage(ret.code)}
+    </p>
+  );
+}
+
+function TopUpForm({ checkout }: { checkout: TopUpCheckout }) {
   const create = useCreateTopUp();
-  // 성공할 때까지 같은 상품의 재제출은 같은 멱등 키로 보낸다 — 응답만 끊긴 요청을 다시 보내도 주문은 하나다.
+  const payWindow = useTossPaymentWindow();
+  // 같은 상품의 재제출은 같은 멱등 키로 보낸다 — 응답만 끊긴 요청을 다시 보내도 주문은 하나다.
   const attempt = useRef<{ packageId: string; key: string } | null>(null);
   const form = useForm<CreateTopUpInput>({ resolver: zodResolver(createTopUpSchema), defaultValues: { packageId: 'credits_100' } });
-  const busy = form.formState.isSubmitting || create.isPending;
+  const busy = form.formState.isSubmitting || create.isPending || payWindow.isPending;
   const error = requestErrorMessage(create.error);
+  const notice = windowMessage(payWindow.data, payWindow.isError);
+  const idleLabel = checkout.provider === 'toss' ? '결제하기' : '충전 요청';
 
-  const submit = form.handleSubmit(({ packageId }) => {
+  const submit = form.handleSubmit(async ({ packageId }) => {
     const current = attempt.current?.packageId === packageId ? attempt.current : { packageId, key: crypto.randomUUID() };
     attempt.current = current;
-    return create.mutateAsync({ body: { packageId }, key: current.key }).then(
-      () => {
-        attempt.current = null;
-      },
-      () => undefined,
-    );
+    payWindow.reset();
+    const topUp: TopUpDto | null = await create.mutateAsync({ body: { packageId }, key: current.key }).catch(() => null);
+    if (!topUp) return;
+    if (checkout.provider === 'mock') {
+      attempt.current = null;
+      return;
+    }
+    // 결제창이 뜬 뒤에만 키를 버린다. SDK를 못 불러온 주문은 토스가 본 적이 없어서, 다시 누르면 같은 주문으로 다시 연다.
+    const onShown = () => {
+      attempt.current = null;
+    };
+    await payWindow.mutateAsync({ clientKey: checkout.clientKey, topUp, onShown }).catch(() => undefined);
   });
 
   return (
@@ -57,8 +143,13 @@ function TopUpForm() {
           {error}
         </p>
       )}
+      {notice && (
+        <p className="notice" role="status" data-testid="payment-window-notice">
+          {notice}
+        </p>
+      )}
       <button type="submit" disabled={busy}>
-        {busy ? '요청하는 중…' : '충전 요청'}
+        {busy ? '요청하는 중…' : idleLabel}
       </button>
     </form>
   );
@@ -97,8 +188,10 @@ function TopUpRow({ topUp, onSimulate, busy }: { topUp: TopUpDto; onSimulate: ((
 export function TopUps() {
   const topUps = useTopUps();
   const simulate = useSimulatePayment();
+  const tossReturn = useTossReturn();
   const items = topUps.data?.pages.flatMap((p) => p.items) ?? [];
-  const provider = topUps.data?.pages[0]?.provider ?? null;
+  const page = topUps.data?.pages[0];
+  const checkout: TopUpCheckout | null = page && page.provider !== null ? page : null;
   const sent = simulate.variables?.result;
 
   return (
@@ -106,9 +199,10 @@ export function TopUps() {
       <h3 id="top-ups-title" className="subhead">
         충전
       </h3>
+      {tossReturn && <TossReturnNotice ret={tossReturn} />}
       <QueryBoundary pending={topUps.isPending} error={topUps.isError && '충전 내역을 불러오지 못했어요.'}>
-        {provider ? (
-          <TopUpForm />
+        {checkout ? (
+          <TopUpForm checkout={checkout} />
         ) : (
           <p className="status" data-testid="payments-unavailable">
             이 서버에는 결제 제공자가 설정되지 않아 충전할 수 없어요.
@@ -127,7 +221,7 @@ export function TopUps() {
                 key={t.id}
                 topUp={t}
                 busy={simulate.isPending}
-                onSimulate={provider === 'mock' ? (result) => simulate.mutate({ id: t.id, result }) : null}
+                onSimulate={checkout?.provider === 'mock' ? (result) => simulate.mutate({ id: t.id, result }) : null}
               />
             ))}
           </ul>
