@@ -19,7 +19,7 @@ import { hashConsoleKey } from '../src/console/key.js';
 import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
-import { createFakeToss, type FakeAnswer } from './helpers/fake-toss.js';
+import { createFakeToss, type FakeConfirmAnswer, type FakeLookupAnswer } from './helpers/fake-toss.js';
 
 const OWN_ORIGIN = 'http://console.test';
 const CONSOLE_KEY = 'demo-console-key';
@@ -155,7 +155,7 @@ describe('충전 확정 — 결제창에서 돌아온 결제를 서버가 토스
     expect(keyOf(victim.id)).not.toBe(keyOf(paid.id));
   });
 
-  const outages: [string, FakeAnswer, FakeAnswer][] = [
+  const outages: [string, FakeConfirmAnswer, FakeLookupAnswer][] = [
     ['승인 응답을 잃고(처리됨) 조회도 시간 초과', { committed: 'hang' }, 'hang'],
     ['승인이 닿지 않고 조회도 500', 'hang', { httpStatus: 500, code: 'FAILED_INTERNAL_SYSTEM_PROCESSING' }],
   ];

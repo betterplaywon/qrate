@@ -5,7 +5,7 @@ import type { PaymentReading } from '../src/billing/provider.js';
 import { createBillingService } from '../src/billing/service.js';
 import { createTossProvider, parseTossKeys, type TossPaymentProvider } from '../src/billing/toss.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
-import { createFakeToss, type FakeAnswer, type FakeTossStatus } from './helpers/fake-toss.js';
+import { createFakeToss, type FakeConfirmAnswer, type FakeLookupAnswer, type FakeTossStatus } from './helpers/fake-toss.js';
 
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const TENANT = seed.tenant.id;
@@ -86,6 +86,15 @@ describe('가짜 토스 — 실측한 토스처럼 답한다', () => {
     expect(confirm.status).toBe(404);
     expect(await confirm.json()).toMatchObject({ code: 'NOT_FOUND_PAYMENT_SESSION' });
   });
+
+  it('조회 답에는 승인 전용 답(committed·processedAs)을 걸 수 없다 — 타입이 막는다', () => {
+    const toss = createFakeToss();
+    toss.script('confirm', { committed: 'hang' }, { processedAs: 'WAITING_FOR_DEPOSIT' });
+    // @ts-expect-error 조회는 승인을 처리하지 않는다
+    toss.script('lookup', { committed: 'hang' });
+    // @ts-expect-error 조회는 승인을 처리하지 않는다
+    toss.script('lookup', { processedAs: 'DONE' });
+  });
 });
 
 describe('토스 상태 표 — 판정은 조회한 상태로 한다(웹훅 본문은 DONE이라고 해도)', () => {
@@ -117,7 +126,7 @@ describe('토스 상태 표 — 판정은 조회한 상태로 한다(웹훅 본�
 });
 
 describe('조회 실패의 분류 — 404 NOT_FOUND_PAYMENT·NOT_FOUND만 "없음"이고 나머지는 "묻지 못함"', () => {
-  const cases: [string, FakeAnswer, PaymentReading['kind']][] = [
+  const cases: [string, FakeLookupAnswer, PaymentReading['kind']][] = [
     ['404 NOT_FOUND_PAYMENT → 없음', { httpStatus: 404, code: 'NOT_FOUND_PAYMENT' }, 'not_found'],
     ['404 NOT_FOUND → 없음', { httpStatus: 404, code: 'NOT_FOUND' }, 'not_found'],
     ['404 NOT_FOUND_MERCHANT(키·상점 문제) → 묻지 못함', { httpStatus: 404, code: 'NOT_FOUND_MERCHANT' }, 'unavailable'],
@@ -140,7 +149,7 @@ describe('조회 실패의 분류 — 404 NOT_FOUND_PAYMENT·NOT_FOUND만 "없�
 });
 
 describe('승인 — 답이 결제 객체가 아니면 이유를 가리지 않고 같은 결제를 조회해 판정한다', () => {
-  const committed: [string, FakeAnswer][] = [
+  const committed: [string, FakeConfirmAnswer][] = [
     ['400 PROVIDER_ERROR', { committed: { httpStatus: 400, code: 'PROVIDER_ERROR' } }],
     ['409 IDEMPOTENT_REQUEST_PROCESSING', { committed: { httpStatus: 409, code: 'IDEMPOTENT_REQUEST_PROCESSING' } }],
     ['500 FAILED_INTERNAL_SYSTEM_PROCESSING', { committed: { httpStatus: 500, code: 'FAILED_INTERNAL_SYSTEM_PROCESSING' } }],

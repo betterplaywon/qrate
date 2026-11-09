@@ -19,14 +19,14 @@ export type FakeTossStatus =
   | 'ABORTED'
   | 'EXPIRED';
 
-export type FakeAnswer =
-  | 'pass'
-  | 'hang'
-  | 'reset'
-  | { httpStatus: number; code: string }
-  | { httpStatus: number; raw: string }
+export type FakeLookupAnswer = 'pass' | 'hang' | 'reset' | { httpStatus: number; code: string } | { httpStatus: number; raw: string };
+
+export type FakeConfirmAnswer =
+  | FakeLookupAnswer
   | { committed: 'hang' | { httpStatus: number; code: string } }
   | { processedAs: FakeTossStatus };
+
+type FakeAnswers = { confirm: FakeConfirmAnswer; lookup: FakeLookupAnswer };
 
 export interface FakeTossCall {
   api: 'confirm' | 'lookup' | 'other';
@@ -39,8 +39,8 @@ export interface FakeTossCall {
 export interface FakeToss {
   readonly fetch: typeof globalThis.fetch;
   authenticate(order: { id: string; amount: number }): string;
-  /** 다음 호출들의 답을 차례로 정한다(다 쓰면 'pass'). committed는 승인에만 뜻이 있다. */
-  script(api: 'confirm' | 'lookup', ...answers: FakeAnswer[]): void;
+  script(api: 'confirm', ...answers: FakeConfirmAnswer[]): void;
+  script(api: 'lookup', ...answers: FakeLookupAnswer[]): void;
   setStatus(paymentKey: string, status: FakeTossStatus): void;
   readonly calls: readonly FakeTossCall[];
   webhookBody(p: { paymentKey: string; orderId: string; status: string }): Buffer;
@@ -75,6 +75,10 @@ function waitForAbort(signal: AbortSignal | null | undefined): Promise<never> {
   });
 }
 
+function yieldWhileInFlight(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function paymentObject(p: FakePayment): unknown {
   return {
     mId: 'tfakemerchant',
@@ -94,7 +98,7 @@ export function createFakeToss(): FakeToss {
   const payments = new Map<string, FakePayment>();
   const replies = new Map<string, Reply>();
   const inFlight = new Set<string>();
-  const scripts: Record<'confirm' | 'lookup', FakeAnswer[]> = { confirm: [], lookup: [] };
+  const scripts: { [A in keyof FakeAnswers]: FakeAnswers[A][] } = { confirm: [], lookup: [] };
   const calls: FakeTossCall[] = [];
 
   function processConfirm(body: { paymentKey?: unknown; orderId?: unknown; amount?: unknown }): Reply {
@@ -118,8 +122,7 @@ export function createFakeToss(): FakeToss {
       return reply;
     };
     try {
-      // 처리 중인 순간을 둔다 — 같은 키의 동시 요청이 409를 보는 자리다.
-      await new Promise((resolve) => setImmediate(resolve));
+      await yieldWhileInFlight();
       const answer = scripts.confirm.shift() ?? 'pass';
       if (answer === 'pass') return toResponse(remember(processConfirm(body)));
       if (answer === 'hang') return await waitForAbort(signal);
@@ -150,7 +153,6 @@ export function createFakeToss(): FakeToss {
     const answer = scripts.lookup.shift() ?? 'pass';
     if (answer === 'hang') return waitForAbort(signal);
     if (answer === 'reset') throw new TypeError('fetch failed');
-    if (typeof answer === 'object' && ('committed' in answer || 'processedAs' in answer)) throw new Error('fake toss: committed·processedAs는 승인에만 쓴다');
     if (typeof answer === 'object' && 'raw' in answer) return toResponse({ httpStatus: answer.httpStatus, text: answer.raw, contentType: 'text/html' });
     if (typeof answer === 'object') return toResponse(errorReply(answer.httpStatus, answer.code));
     const payment = payments.get(paymentKey);
@@ -184,7 +186,7 @@ export function createFakeToss(): FakeToss {
       payments.set(paymentKey, { paymentKey, orderId: order.id, totalAmount: order.amount, status: 'IN_PROGRESS' });
       return paymentKey;
     },
-    script(api, ...answers) {
+    script<A extends keyof FakeAnswers>(api: A, ...answers: FakeAnswers[A][]) {
       scripts[api].push(...answers);
     },
     setStatus(paymentKey, status) {
