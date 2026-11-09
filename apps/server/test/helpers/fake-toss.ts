@@ -32,7 +32,9 @@ export type FakeAnswer =
   /** 토스 앞단이 JSON이 아닌 본문으로 답한다(프록시의 오류 페이지). 토스에 닿지 않았으니 저장하지 않는다. */
   | { httpStatus: number; raw: string }
   /** 승인은 처리했는데(DONE) 응답이 끊기거나 오류로 온다. 같은 키로 다시 보내면 그 응답이 재생된다. */
-  | { committed: 'hang' | { httpStatus: number; code: string } };
+  | { committed: 'hang' | { httpStatus: number; code: string } }
+  /** 승인을 받고 결제를 그 상태에 둔 채 결제 객체로 답한다(가상계좌의 입금 대기처럼 아직 끝나지 않은 결제). 같은 키로 다시 보내면 이 답이 재생된다. */
+  | { processedAs: FakeTossStatus };
 
 export interface FakeTossCall {
   api: 'confirm' | 'lookup' | 'other';
@@ -143,6 +145,13 @@ export function createFakeToss(): FakeToss {
         // 같은 키로 다시 물어도 이 오류가 재생되는 더 나쁜 쪽을 둔다 — 그러면 조회만 진실을 안다.
         return toResponse(remember(errorReply(answer.committed.httpStatus, answer.committed.code)));
       }
+      if ('processedAs' in answer) {
+        const processed = processConfirm(body);
+        const payment = typeof body.paymentKey === 'string' ? payments.get(body.paymentKey) : undefined;
+        if (processed.httpStatus !== 200 || !payment) return toResponse(remember(processed));
+        payment.status = answer.processedAs;
+        return toResponse(remember(jsonReply(200, paymentObject(payment))));
+      }
       if ('raw' in answer) return toResponse({ httpStatus: answer.httpStatus, text: answer.raw, contentType: 'text/html' });
       return toResponse(remember(errorReply(answer.httpStatus, answer.code)));
     } finally {
@@ -154,7 +163,7 @@ export function createFakeToss(): FakeToss {
     const answer = scripts.lookup.shift() ?? 'pass';
     if (answer === 'hang') return waitForAbort(signal);
     if (answer === 'reset') throw new TypeError('fetch failed');
-    if (typeof answer === 'object' && 'committed' in answer) throw new Error('fake toss: committed는 승인에만 쓴다');
+    if (typeof answer === 'object' && ('committed' in answer || 'processedAs' in answer)) throw new Error('fake toss: committed·processedAs는 승인에만 쓴다');
     if (typeof answer === 'object' && 'raw' in answer) return toResponse({ httpStatus: answer.httpStatus, text: answer.raw, contentType: 'text/html' });
     if (typeof answer === 'object') return toResponse(errorReply(answer.httpStatus, answer.code));
     const payment = payments.get(paymentKey);

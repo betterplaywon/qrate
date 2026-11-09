@@ -178,6 +178,35 @@ describe('충전 확정 — 결제창에서 돌아온 결제를 서버가 토스
     expect(await ledgerLines(topUp.id)).toBe(1);
   });
 
+  it('승인이 끝나지 않은 결제(입금 대기)로 답하면 대기이고, 토스가 끝낸 뒤의 재확정은 조회로 충전한다', async () => {
+    const topUp = await newTopUp();
+    const paymentKey = toss.authenticate(topUp);
+    const body = { paymentKey, amount: topUp.amount };
+    toss.script('confirm', { processedAs: 'WAITING_FOR_DEPOSIT' });
+    const before = await balance();
+
+    expect(await (await confirm(topUp.id, body)).json()).toEqual({ outcome: 'unconfirmed' });
+    expect(await statusOf(topUp.id)).toBe('pending');
+    // 같은 멱등 키라 토스는 입금 대기 답을 계속 재생한다 — 지금 상태는 조회만 안다.
+    toss.setStatus(paymentKey, 'DONE');
+    expect(await (await confirm(topUp.id, body)).json()).toMatchObject({ outcome: 'applied', replayed: false, topUp: { status: 'paid' } });
+    expect(await balance()).toBe(before + 100);
+    expect(await ledgerLines(topUp.id)).toBe(1);
+  });
+
+  it('웹훅이 먼저 충전한 결제를 입금 대기 답이 재생되는 확정으로 다시 물어도 replayed — 원장 한 줄', async () => {
+    const topUp = await newTopUp();
+    const paymentKey = toss.authenticate(topUp);
+    const body = { paymentKey, amount: topUp.amount };
+    toss.script('confirm', { processedAs: 'WAITING_FOR_DEPOSIT' });
+    expect(await (await confirm(topUp.id, body)).json()).toEqual({ outcome: 'unconfirmed' });
+
+    toss.setStatus(paymentKey, 'DONE');
+    expect(await (await postWebhook(toss.webhookBody({ paymentKey, orderId: topUp.id, status: 'DONE' }))).json()).toEqual({ outcome: 'applied' });
+    expect(await (await confirm(topUp.id, body)).json()).toMatchObject({ outcome: 'applied', replayed: true, topUp: { status: 'paid' } });
+    expect(await ledgerLines(topUp.id)).toBe(1);
+  });
+
   it('틀린 본문은 400 invalid_payment, 없는·남의 주문은 404, 다른 오리진은 403, 결제 시뮬레이션 경로는 없다', async () => {
     const topUp = await newTopUp();
     const callsBefore = toss.calls.length;
@@ -305,8 +334,8 @@ describe('토스 웹훅 — 본문을 믿지 않고 조회로 판정한다', () 
   it('PAYMENT_STATUS_CHANGED 모양이 아니면 400 invalid_webhook이고 토스를 부르지 않는다', async () => {
     const topUp = await newTopUp();
     const callsBefore = toss.calls.length;
-    // 우리 토스 주문을 가리켜도 결제 키가 "."·".."면 조회 경로가 접히므로 결제 키로 받지 않는다.
-    const dotKeys = ['..', '.'].map((paymentKey) => JSON.stringify({ eventType: 'PAYMENT_STATUS_CHANGED', data: { paymentKey, orderId: topUp.id } }));
+    // 우리 토스 주문을 가리켜도 결제 키가 "."·".."면 조회 경로가 접히고, 짝 없는 서로게이트는 URL 인코딩이 던진다 — 결제 키로 받지 않는다.
+    const dotKeys = ['..', '.', '\ud800'].map((paymentKey) => JSON.stringify({ eventType: 'PAYMENT_STATUS_CHANGED', data: { paymentKey, orderId: topUp.id } }));
     for (const body of ['not json', JSON.stringify({ eventType: 'DEPOSIT_CALLBACK', data: {} }), JSON.stringify({ eventType: 'PAYMENT_STATUS_CHANGED' }), ...dotKeys]) {
       const res = await postWebhook(body);
       expect(res.status, body).toBe(400);

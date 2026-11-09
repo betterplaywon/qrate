@@ -174,8 +174,8 @@ export interface TossPaymentProvider {
   /** PAYMENT_STATUS_CHANGED 원문 → 소식. 서명은 보지 않는다(결제창형 상점에는 검증할 보안 키가 없다). read()가 조회 API를 한 번 부른다. */
   readWebhook(req: WebhookRequest, now: Date): WebhookNotice;
   /**
-   * 결제 승인. 답이 결제 객체면 그것으로 판정하고, 아니면 이유를 가리지 않고(오류·409 처리 중·시간 초과·끊김) 같은 결제를 조회한다.
-   * 오류 코드로 토스 쪽 상태를 추측하지 않는다 — 같은 멱등 키는 오류도 재생해서(실측) 오류가 "처리 안 됨"을 뜻하지 않는다.
+   * 결제 승인. 답이 결과가 정해진 결제 객체(완료·실패)면 그것으로 판정하고, 아니면 이유를 가리지 않고(아직 끝나지 않은 결제·오류·409 처리 중·
+   * 시간 초과·끊김) 같은 결제를 조회한다. 같은 멱등 키는 첫 답을 계속 재생해서(실측) 첫 답이 오류나 입금 대기였으면 지금 상태는 조회만 안다.
    */
   confirm(order: Pick<TopUp, 'id' | 'amount'>, paymentKey: string): Promise<PaymentReading>;
 }
@@ -229,7 +229,10 @@ export function createTossProvider(options: TossProviderOptions): TossPaymentPro
         idempotencyKey: confirmIdempotencyKey(order.id, paymentKey),
         timeoutMs: timeouts.confirmMs,
       });
-      if (answer.kind === 'payment') return judgePayment(answer.payment);
+      if (answer.kind === 'payment') {
+        const judged = judgePayment(answer.payment);
+        if (judged.kind === 'event') return judged;
+      }
       const reading = await lookup(paymentKey);
       if (reading.kind === 'event') return reading;
       const confirmDetail = `confirm ${describeAnswer(answer)}`;
