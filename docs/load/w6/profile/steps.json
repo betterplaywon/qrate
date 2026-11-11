@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "date": "2026-11-11T13:17:55.437Z",
+    "machine": "Apple M1 8코어, 메모리 16GB, Darwin 25.6.0",
+    "node": "v24.22.1",
+    "k6": "k6 v2.3.0 (commit/devel, go1.27.1, darwin/arm64)",
+    "postgres": "PostgreSQL 16.15",
+    "fileLimit": "1048576",
+    "settings": {
+      "vus": [
+        1200
+      ],
+      "rampS": 15,
+      "holdS": 60,
+      "thinkS": 3,
+      "mockDelayMs": 20,
+      "pool": "default",
+      "ledgerRows": 0,
+      "profile": true
+    }
+  },
+  "steps": [
+    {
+      "label": "1200",
+      "vus": 1200,
+      "from": "2026-11-11T13:18:52.079Z",
+      "to": "2026-11-11T13:19:52.079Z",
+      "holdS": 60,
+      "turnsPerS": 182.3,
+      "k6": {
+        "turns": 10938,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 13.6,
+          "p95": 143.6,
+          "p99": 261.9,
+          "max": 480.2,
+          "count": 10938
+        },
+        "stream": {
+          "p50": 2316.5,
+          "p95": 2432.8,
+          "p99": 2534,
+          "max": 2797.4,
+          "count": 10938
+        },
+        "frame": {
+          "p50": 4.9,
+          "p95": 48.3,
+          "p99": 87.3,
+          "max": 124.9,
+          "count": 5406
+        },
+        "assets": {
+          "p50": 5.4,
+          "p95": 16.3,
+          "p99": 25.8,
+          "max": 111.5,
+          "count": 10812
+        },
+        "greeting": {
+          "p50": 3.1,
+          "p95": 43.7,
+          "p99": 81.9,
+          "max": 125.7,
+          "count": 5406
+        },
+        "event": {
+          "p50": 3.6,
+          "p95": 43.1,
+          "p99": 81.3,
+          "max": 131,
+          "count": 10898
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 97.8,
+        "cpuMax": 113,
+        "eluAvg": 0.918,
+        "eluMax": 1,
+        "rssMaxMb": 440.5,
+        "lagP99MaxMs": 10.19,
+        "gcMsPerSAvg": 16.7,
+        "gcMaxMs": 9.3,
+        "inFlightMax": 471
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          60.6,
+          80.2
+        ],
+        "server": [
+          97.9,
+          112.8
+        ],
+        "k6": [
+          46.6,
+          78.9
+        ],
+        "dbVm": [
+          229.9,
+          323.2
+        ],
+        "docker": [
+          40.4,
+          46.9
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 10945,
+          "p50Ms": 12,
+          "p95Ms": 140
+        },
+        "ledgerRowsBefore": 1
+      }
+    }
+  ]
+}

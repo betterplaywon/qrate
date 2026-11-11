@@ -10,6 +10,7 @@
     "test": "vitest run",
     "eval": "tsx --conditions=source eval/run.ts",
     "eval:paid": "tsx --conditions=source --env-file=.env eval/run.ts",
+    "load": "tsx --conditions=source load/ladder.ts",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

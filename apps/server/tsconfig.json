@@ -18,6 +18,7 @@
     "src",
     "test",
     "eval",
+    "load",
     "prisma",
     "prisma.config.ts"
   ]
