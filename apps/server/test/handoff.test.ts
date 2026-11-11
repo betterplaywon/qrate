@@ -39,7 +39,7 @@ describe('readHandoff — 응답 블록에서 신호 읽기', () => {
     });
   });
 
-  it('요약은 200자에서 자른다 — 큐·로그에 들어가는 값', () => {
+  it('요약은 200자에서 자른다 — 큐·로그에 들어가는 값. 모델에게 주지 않는 계약 사유(out_of_scope)도 그대로 옮긴다', () => {
     const out = readHandoff([handoffBlock({ reason: 'out_of_scope', summary: '가'.repeat(300) })]);
     expect(out?.reason).toBe('out_of_scope');
     expect(out?.summary).toHaveLength(200);
@@ -47,7 +47,7 @@ describe('readHandoff — 응답 블록에서 신호 읽기', () => {
 });
 
 describe('HANDOFF_TOOL — 도구 정의', () => {
-  it('이름은 request_handoff, reason은 필수이고 enum은 계약의 HandoffReason에서 other를 뺀 것', () => {
+  it('이름은 request_handoff, reason은 필수이고 enum은 자료 밖·사람 처리 둘(무관한 질문은 넘기지 않는다)', () => {
     expect(HANDOFF_TOOL.name).toBe('request_handoff');
     const schema = HANDOFF_TOOL.input_schema as {
       type: string;
@@ -56,7 +56,7 @@ describe('HANDOFF_TOOL — 도구 정의', () => {
     };
     expect(schema.type).toBe('object');
     expect(schema.required).toEqual(['reason']);
-    expect(schema.properties?.reason?.enum).toEqual(['not_in_knowledge', 'needs_human', 'out_of_scope']);
+    expect(schema.properties?.reason?.enum).toEqual(['not_in_knowledge', 'needs_human']);
     expect(schema.properties?.summary?.type).toBe('string');
     // 설명은 "문장을 먼저 쓴다"를 모델에게 요구한다 — 도구만 부르고 안내 문장을 비우는 것을 막는 첫 번째 장치
     expect(HANDOFF_TOOL.description).toContain('문장을 쓴 뒤');
