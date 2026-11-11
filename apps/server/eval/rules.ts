@@ -14,7 +14,17 @@ export interface GradableAnswer {
   citations: readonly { sourceId: string }[];
 }
 
-export const RULE_NAMES = ['completed', 'handoff', 'guidance', 'cites', 'mustInclude', 'language'] as const;
+export const RULE_NAMES = [
+  'completed',
+  'handoff',
+  'guidance',
+  'cites',
+  'mustInclude',
+  'language',
+  'plainWords',
+  'toolMarkup',
+  'repetition',
+] as const;
 export type RuleName = (typeof RULE_NAMES)[number];
 export type RuleOutcome = { verdict: 'pass' } | { verdict: 'na' } | { verdict: 'fail'; detail: string };
 export type RuleResult = Record<RuleName, RuleOutcome>;
@@ -47,6 +57,33 @@ export function isMostlyEnglish(text: string): boolean {
   return latin > 0 && hangul * 5 <= latin + hangul;
 }
 
+/**
+ * 방문자에게 쓰면 안 되는 내부 표현(답 기준 2026-11-11). 방문자는 "안내 자료"가 무엇인지 모르고, 이 말이 붙은 답은 답을 피하는 것으로 읽힌다.
+ * W5 v1에서 Sonnet 답 60개 중 33개에 들어 있었다.
+ */
+export const INTERNAL_TERMS = ['안내 자료', '자료에 없', '자료에 나와 있지 않', '자료에서 확인'] as const;
+
+/** 모델이 도구 호출을 본문 글자로 쓴 흔적. 엔진이 걸러 내므로(engine/tool-markup.ts) 저장된 답에 남아 있으면 그 장치가 샌 것이다. */
+const TOOL_MARKUP = ['<function_calls', '<invoke', '<parameter'] as const;
+
+/** 이보다 짧은 문장은 반복으로 보지 않는다 — "네." 같은 짧은 말은 되풀이돼도 결함이 아니다. */
+const REPEAT_MIN_LENGTH = 15;
+
+/**
+ * 같은 문장이 답에 두 번 이상 나오면 그 문장. 문장을 마침표 기준으로 나눈 뒤 각 문장이 전체 글에 몇 번 나오는지 센다 —
+ * "아니요, X. X."처럼 앞에 말이 붙은 문장 안에 같은 문장이 들어 있어도 잡힌다(W5 v1 k05).
+ */
+export function repeatedSentence(text: string): string | null {
+  const flat = text.replace(/\s+/g, ' ');
+  for (const piece of flat.split(/(?<=[.!?])\s/)) {
+    const sentence = piece.trim();
+    if (sentence.length < REPEAT_MIN_LENGTH) continue;
+    const first = flat.indexOf(sentence);
+    if (flat.indexOf(sentence, first + sentence.length) !== -1) return sentence;
+  }
+  return null;
+}
+
 export function gradeRules(c: Case, answer: GradableAnswer): RuleResult {
   const { expect } = c;
   const text = answer.text.trim();
@@ -54,6 +91,8 @@ export function gradeRules(c: Case, answer: GradableAnswer): RuleResult {
   const cited = new Set(answer.citations.map((x) => x.sourceId));
   const missingCites = expect.cites.filter((id) => !cited.has(id));
   const missingGroups = expect.mustInclude.filter((group) => !group.some((needle) => includesNeedle(text, needle)));
+  const internalTerms = INTERNAL_TERMS.filter((term) => includesNeedle(text, term));
+  const repeated = repeatedSentence(text);
 
   return {
     completed: answer.status === 'ok' ? PASS : fail(`종료 상태 ${answer.status}`),
@@ -73,6 +112,10 @@ export function gradeRules(c: Case, answer: GradableAnswer): RuleResult {
           ? PASS
           : fail(`없음: ${missingGroups.map((group) => group.join(' | ')).join(' / ')}`),
     language: expect.language === 'en' ? (isMostlyEnglish(text) ? PASS : fail('영어 답이 아님')) : NA,
+    // 빈 답은 guidance·심판이 맡는다. 아래 셋은 글이 있을 때만 본다.
+    plainWords: text === '' ? NA : internalTerms.length === 0 ? PASS : fail(`내부 표현: ${internalTerms.join(', ')}`),
+    toolMarkup: text === '' ? NA : TOOL_MARKUP.some((marker) => text.includes(marker)) ? fail('본문에 도구 호출 태그') : PASS,
+    repetition: text === '' ? NA : repeated === null ? PASS : fail(`같은 문장 반복: ${repeated.slice(0, 40)}`),
   };
 }
 

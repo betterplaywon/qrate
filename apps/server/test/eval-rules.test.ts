@@ -92,4 +92,29 @@ describe('규칙 채점 — gradeRules', () => {
     }
     expect(rulesPass(gradeRules(c, answer()))).toBe(true);
   });
+
+  it('방문자에게 내부 표현("안내 자료" 등)을 쓰면 실패한다 — 띄어쓰기가 달라도', () => {
+    const c = makeCase('x');
+    // W5 v1 Sonnet 답에서 실제로 나온 문장들
+    for (const text of ['원천징수 3.3% 자동 계산 여부는 안내 자료에 없는 내용입니다.', 'API나 웹훅 제공 여부는 안내자료에서 확인되지 않습니다.', '그 내용은 자료에 없습니다.']) {
+      expect(gradeRules(c, answer({ text })).plainWords.verdict).toBe('fail');
+    }
+    expect(gradeRules(c, answer({ text: '그 부분은 상담원이 이어서 안내해 드릴게요.' })).plainWords.verdict).toBe('pass');
+    expect(gradeRules(c, answer({ text: '' })).plainWords.verdict).toBe('na');
+  });
+
+  it('본문에 도구 호출 태그가 남아 있으면 실패한다', () => {
+    const leaked = '정확한 가능 여부는 상담원이 확인해 드립니다.\n\n<invoke name="request_handoff">\n<parameter name="reason">needs_human</parameter>';
+    expect(gradeRules(makeCase('x'), answer({ text: leaked })).toolMarkup.verdict).toBe('fail');
+    expect(gradeRules(makeCase('x'), answer({ text: '금액이 < 10만 원이면 됩니다.' })).toolMarkup.verdict).toBe('pass');
+  });
+
+  it('같은 문장이 두 번 나오면 실패한다 — 앞에 말이 붙은 문장 안에 들어 있어도', () => {
+    // W5 v1 k05 1회차
+    const repeated =
+      '아니요, 은행 계좌와 자동으로 연동해 입금을 확인하는 기능은 제공하지 않습니다. 은행 계좌와 자동으로 연동해 입금을 확인하는 기능은 제공하지 않습니다.\n\n대신 직접 표시하는 방식으로 관리할 수 있습니다.';
+    const result = gradeRules(makeCase('x'), answer({ text: repeated }));
+    expect(result.repetition).toEqual({ verdict: 'fail', detail: expect.stringContaining('같은 문장 반복') });
+    expect(gradeRules(makeCase('x'), answer({ text: '네. 네. 월 9,900원입니다.' })).repetition.verdict).toBe('pass');
+  });
 });

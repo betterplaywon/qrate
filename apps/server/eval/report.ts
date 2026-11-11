@@ -108,6 +108,9 @@ const RULE_LABELS: Readonly<Record<RuleName, string>> = {
   cites: '인용',
   mustInclude: '필수 표현',
   language: '영어 답',
+  plainWords: '내부 표현 없음',
+  toolMarkup: '본문 도구 태그 없음',
+  repetition: '문장 반복 없음',
 };
 
 function spread(values: readonly number[]): Spread {

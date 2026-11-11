@@ -22,13 +22,13 @@ const cases = [
 ];
 
 const answers: AnswerRecord[] = [
-  makeAnswer('sonnet', 'a', 1, { handoff: HANDOFF, text: '자료에 없어요. 상담원에게 문의해 주세요.', ttftMs: 100 }),
+  makeAnswer('sonnet', 'a', 1, { handoff: HANDOFF, text: '그 부분은 상담원이 이어서 안내해 드릴게요.', ttftMs: 100 }),
   makeAnswer('sonnet', 'a', 2, { text: '아마 될 거예요.', ttftMs: 200 }),
   makeAnswer('sonnet', 'b', 1, { text: '월 9,900원입니다.', citations: [{ sourceId: 'faq:x', citedText: '…' }], ttftMs: 300 }),
   makeAnswer('sonnet', 'c', 1, { ttftMs: 400 }),
   makeAnswer('sonnet', 'c', 2, { ttftMs: 500 }),
-  makeAnswer('sonnet', 'd', 1, { handoff: HANDOFF, text: '자료에 없습니다. 상담원에게 연결할게요.', ttftMs: 600 }),
-  makeAnswer('sonnet', 'd', 2, { handoff: HANDOFF, text: '자료에 없습니다.', ttftMs: 700 }),
+  makeAnswer('sonnet', 'd', 1, { handoff: HANDOFF, text: '그 부분은 상담원에게 연결해 드릴게요.', ttftMs: 600 }),
+  makeAnswer('sonnet', 'd', 2, { handoff: HANDOFF, text: '상담원이 이어서 안내해 드릴게요.', ttftMs: 700 }),
 ];
 
 function verdict(key: AnswerKey, over: Partial<JudgeVerdict> = {}): JudgeVerdict {
@@ -134,6 +134,9 @@ describe('보고서 — buildSummary', () => {
       cites: { count: 0, n: 1 },
       mustInclude: { count: 0, n: 1 },
       language: { count: 0, n: 0 },
+      plainWords: { count: 0, n: 7 },
+      toolMarkup: { count: 0, n: 7 },
+      repetition: { count: 0, n: 7 },
     });
   });
 
