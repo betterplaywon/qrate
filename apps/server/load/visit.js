@@ -1,8 +1,5 @@
 /* global __ENV */
-// k6 시나리오(W6 부하 측정): 반복 한 번이 대화창을 연 방문자 한 명이다. 실행과 집계는 ladder.ts가 맡는다(load/README.md).
-//   대화창 문서 → 인사말 → 위젯 열림 사건 → 생각 → 질문 1 + 첫 질문 사건 → 읽고 생각 → 질문 2(같은 대화) → 생각 → 떠남
-// 위젯이 실제로 보내는 요청과 헤더를 따른다. 같은 오리진 POST에만 Origin이 붙고, GET(대화창 문서·인사말)에는 붙지 않는다.
-// 대화창 정적 파일(app.js·app.css)은 브라우저 캐시가 받으므로 넣지 않았다.
+// 위젯이 실제로 보내는 요청과 헤더를 따른다. 같은 오리진 POST에만 Origin이 붙고, GET(대화창 문서·정적 파일·인사말)에는 붙지 않는다.
 import { sleep } from 'k6';
 import exec from 'k6/execution';
 import http from 'k6/http';
@@ -11,14 +8,10 @@ import { Counter, Rate, Trend } from 'k6/metrics';
 const BASE = __ENV.BASE_URL || 'http://127.0.0.1:8789';
 const TENANT = __ENV.TENANT || 'demo';
 const SITE = __ENV.SITE_ORIGIN || 'http://localhost:5173';
-/** 질문 사이 생각 시간의 평균(초). 실제로는 0.5배~1.5배에서 고르게 뽑는다. 사람보다 짧게 잡아 방문자 한 명이 내는 부하를 키웠다. */
 const THINK_S = Number(__ENV.THINK_S || 3);
-/** 질문 몇 개마다 하나를 넘김 턴(목업 훅 [[handoff]])으로 보낼지. 넘김 턴은 상담원 연결 행을 하나 더 쓴다. */
 const HANDOFF_EVERY = Number(__ENV.HANDOFF_EVERY || 5);
 const VUS = Number(__ENV.VUS || 10);
-/** 방문자를 0명에서 VUS명까지 늘리는 시간(초). 모두 한꺼번에 들어오면 첫 몇 초가 실제와 다른 몰림이 된다. */
 const RAMP_S = Number(__ENV.RAMP_S || 15);
-/** VUS명을 유지하는 시간(초). 지표는 이 구간에 시작한 요청만 담는다. */
 const HOLD_S = Number(__ENV.HOLD_S || 60);
 
 const QUESTIONS = [
@@ -48,21 +41,18 @@ export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(95)', 'p(99)', 'max', 'count'],
 };
 
-// 대화: 응답 첫 바이트(SSE 헤더가 나가는 순간 = 첫 조각을 받은 순간)와 스트림 끝까지.
 const chatTtfb = new Trend('chat_ttfb', true);
 const chatDuration = new Trend('chat_duration', true);
-// 200이고 종료 센티널까지 왔으며 event: error가 없으면 성공.
 const chatOk = new Rate('chat_ok');
 const turns = new Counter('chat_turns');
-// 대화 밖의 요청(대화창 문서·인사말·위젯 사건).
 const frameDuration = new Trend('step_frame', true);
+const assetDuration = new Trend('step_assets', true);
 const greetingDuration = new Trend('step_greeting', true);
 const eventDuration = new Trend('step_event', true);
 const stepOk = new Rate('step_ok');
 
 let asked = 0;
 
-/** 유지 구간에 시작한 요청인가. 램프와 끝난 뒤 마무리(gracefulStop) 동안의 요청은 지표에 넣지 않는다. */
 function inHold() {
   const elapsedS = exec.instance.currentTestRunDuration / 1000;
   return elapsedS >= RAMP_S && elapsedS < RAMP_S + HOLD_S;
@@ -78,11 +68,14 @@ function nextQuestion() {
   return asked % HANDOFF_EVERY === 0 ? `${q} [[handoff]]` : q;
 }
 
+const JSON_HEADERS = { 'Content-Type': 'application/json', Origin: BASE };
+
 function postJson(path, body, tags) {
-  return http.post(`${BASE}${path}`, JSON.stringify(body), {
-    headers: { 'Content-Type': 'application/json', Origin: BASE },
-    tags,
-  });
+  return http.post(`${BASE}${path}`, JSON.stringify(body), { headers: JSON_HEADERS, tags });
+}
+
+function eventBody(type, variant) {
+  return variant ? { tenant: TENANT, type, variant } : { tenant: TENANT, type };
 }
 
 function step(trend, res, expectedStatus, measured) {
@@ -93,8 +86,16 @@ function step(trend, res, expectedStatus, measured) {
 
 function sendEvent(type, variant) {
   const measured = inHold();
-  const res = postJson('/api/events', variant ? { tenant: TENANT, type, variant } : { tenant: TENANT, type }, { step: 'event' });
+  const res = postJson('/api/events', eventBody(type, variant), { step: 'event' });
   step(eventDuration, res, 202, measured);
+}
+
+// 위젯은 첫 질문 사건을 기다리지 않고 보내고 곧바로 질문을 보낸다. 두 요청이 겹쳐 서버에 닿는다.
+function sendEventWithoutWaiting(type, variant) {
+  const measured = inHold();
+  http
+    .asyncRequest('POST', `${BASE}/api/events`, JSON.stringify(eventBody(type, variant)), { headers: JSON_HEADERS, tags: { step: 'event' } })
+    .then((res) => step(eventDuration, res, 202, measured));
 }
 
 function ask(message, conversationId) {
@@ -119,6 +120,13 @@ export default function visit() {
   const frame = http.get(`${BASE}/frame?t=${TENANT}&o=${encodeURIComponent(SITE)}`, { tags: { step: 'frame' } });
   step(frameDuration, frame, 200, measured);
 
+  // 방문자마다 캐시가 빈 브라우저다. 문서를 읽은 브라우저처럼 두 파일을 함께 받는다.
+  measured = inHold();
+  const assets = http.batch(
+    ['app.js', 'app.css'].map((file) => ['GET', `${BASE}/frame/${file}`, null, { tags: { step: 'assets' } }]),
+  );
+  for (const res of assets) step(assetDuration, res, 200, measured);
+
   measured = inHold();
   const greeting = http.get(`${BASE}/api/greeting?tenant=${TENANT}`, { tags: { step: 'greeting' } });
   step(greetingDuration, greeting, 200, measured);
@@ -126,8 +134,7 @@ export default function visit() {
   sendEvent('widget_open', variant);
 
   think();
-  // 위젯은 첫 질문을 보내는 순간 사건도 보낸다(서버 결과와 무관). k6 요청은 차례로 가므로 질문 바로 앞에 둔다.
-  sendEvent('first_question', variant);
+  sendEventWithoutWaiting('first_question', variant);
   const conversationId = ask(nextQuestion(), null);
 
   think();
