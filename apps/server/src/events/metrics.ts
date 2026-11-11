@@ -38,7 +38,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * p가 정수라 p·n도 정수 — 나눗셈 올림에 부동소수 오차가 없다. Postgres percentile_disc(p/100)과 같은 값이고,
  * 보간하지 않으므로 값은 언제나 실제 한 행의 ttftMs다(README 수치를 행까지 따라갈 수 있다).
  */
-function nearestRank(sortedAsc: readonly number[], percent: 50 | 95): number | null {
+export function nearestRank(sortedAsc: readonly number[], percent: 50 | 95): number | null {
   if (sortedAsc.length === 0) return null;
   return sortedAsc[Math.ceil((percent * sortedAsc.length) / 100) - 1] ?? null;
 }
