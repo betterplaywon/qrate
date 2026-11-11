@@ -33,11 +33,11 @@ function validFile(): Record<string, unknown> & { cases: Record<string, unknown>
 }
 
 describe('시험지 — parseCaseFile', () => {
-  it('실제 시험지가 읽히고 수가 맞다(30개: 넘김 15·안 넘김 12·채점 안 함 3)', () => {
+  it('실제 시험지가 읽히고 수가 맞다(30개: 넘김 9·안 넘김 18·채점 안 함 3)', () => {
     const file = parseCaseFile(realFile, knowledgeIds);
     expect(file.cases).toHaveLength(30);
     const count = (h: boolean | null) => file.cases.filter((c) => c.expect.handoff === h).length;
-    expect([count(true), count(false), count(null)]).toEqual([15, 12, 3]);
+    expect([count(true), count(false), count(null)]).toEqual([9, 18, 3]);
   });
 
   it('맞는 모양은 기본값을 채워 읽는다', () => {
