@@ -53,7 +53,7 @@ docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
 - [x] W1 기반: 모노레포(pnpm workspace) · CI 게이트(GitHub Actions) · Sentry · Docker · SSE 목업 스트리밍 · 입력 모더레이션(3단계) + 테스트
 - [x] W2 답변 엔진(Claude 스트리밍 · 서버 측 폴백 · 목업 교체) · 지식(FAQ) 전량 주입 + 인용 · 핸드오프 신호(도구 호출) · 테넌트 검증(Origin 검사 · frame-ancestors) · 위젯 iframe 분리(postMessage · 출처 UI) · 브라우저 E2E · Docker 이미지 정리
 - [x] W3 저장소(PostgreSQL · Prisma 마이그레이션 · 메모리·DB 공통 계약 테스트) · 운영 콘솔(테넌트 키 로그인 · 대화 로그 · 미응답 큐) · 상담원 연결 접수(위젯 → 큐)
-- [x] W4 크레딧 원장(턴당 1 차감 · 0이면 402 · 테넌트 범위 멱등 키) · 모의 결제 제공자(서명 웹훅 · 재배달·순서 뒤바뀜·위조·충전 재시도 재현 테스트) · 콘솔 크레딧·충전 · 이벤트 로그(대화 요청·위젯 열림 사건을 DB에 기록) · 콘솔 지표(최근 7일 TTFT p50·p95 · 자동 해결률 · 위젯 열림 수) · 대화 API 요율 제한 · 인사말 A/B(서버 배정 · 방문자 브라우저에 보존 · 변형별 노출 → 첫 질문 · 콘솔 표). 토스페이먼츠 테스트 어댑터는 테스트 키 발급 뒤 따로
+- [x] W4 크레딧 원장(턴당 1 차감 · 0이면 402 · 테넌트 범위 멱등 키) · 모의 결제 제공자(서명 웹훅 · 재배달·순서 뒤바뀜·위조·충전 재시도 재현 테스트) · 콘솔 크레딧·충전 · 이벤트 로그(대화 요청·위젯 열림 사건을 DB에 기록) · 콘솔 지표(최근 7일 TTFT p50·p95 · 자동 해결률 · 위젯 열림 수) · 대화 API 요율 제한 · 인사말 A/B(서버 배정 · 방문자 브라우저에 보존 · 변형별 노출 → 첫 질문 · 콘솔 표) · 토스페이먼츠 테스트 결제(결제창형 · 서버 승인 확정 · 웹훅은 결제 조회로 판정)
 - [ ] W5 응답 품질 평가셋(30케이스) · 실패 사례 기록
 - [ ] W6 k6 부하 테스트(시뮬레이션 기준 명시) · 문서화
 
@@ -74,10 +74,25 @@ pnpm --filter @qrate/console dev      # 운영 콘솔 개발 서버 http://local
 
 pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일 (아래 e2e까지). 저장소 계약 테스트는 메모리 구현에 돌고,
                                       # .env에 QRATE_TEST_DATABASE_URL(전용 DB qrate_test, 마이그레이션 적용 후)을 두면 Postgres 구현에도 돈다
-pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 산출물로 목업 서버·데모를 띄워 런처·대화창·postMessage·CSP, 콘솔 로그인·큐·충전 확인
+pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 산출물로 목업 서버·데모를 띄워 런처·대화창·postMessage·CSP, 콘솔 로그인·큐·충전·결제창 귀환 주소 확인
                                       # 처음 한 번: pnpm --filter @qrate/widget exec playwright install chromium. 8787·5173이 비어 있어야 한다
 docker compose up --build             # Postgres → 마이그레이션·시드(migrate) → 서버 (Docker)
 ```
+
+### 토스페이먼츠 테스트 결제
+
+기본 충전은 모의 결제다(`QRATE_PAYMENT_PROVIDER=auto`면 개발에서 mock). 토스 테스트 환경에서 충전을 끝까지 돌리려면 개발자센터의 **결제창형** 테스트 키 두 개를 `apps/server/.env`에 넣는다.
+
+```bash
+QRATE_PAYMENT_PROVIDER=toss
+QRATE_TOSS_CLIENT_KEY=test_gck_…      # 브라우저용 공개 키. 충전 목록 응답으로 콘솔에 간다
+QRATE_TOSS_SECRET_KEY=test_gsk_…      # 서버만 쓴다. 로그·오류·응답에 남지 않는다
+```
+
+- 두 키가 모두 있고 둘 다 결제창형 테스트 키(`test_gck_`·`test_gsk_`)여야 서버가 뜬다. 라이브 키와 API 개별 연동 키(`test_ck_`·`test_sk_`)는 받지 않는다.
+- 콘솔 충전 화면의 **결제하기**가 주문을 만들고 토스 결제창을 연다. 결제를 마치면 `/console/?toss=success…`로 돌아오고, 서버가 토스 승인 API로 확정한다. 같은 결제는 몇 번 확정해도 원장은 한 줄이다.
+- 웹훅(`POST /api/payments/toss/webhook`)은 본문을 믿지 않고 결제 조회 API로 다시 확인한다. 공개 URL이 있어야 해서 배포 때 개발자센터에 등록한다. 그 전에는 확정 요청이 유일한 길이라, 확정 응답을 받지 못했으면 돌아온 주소를 새로고침하거나 **다시 확인**을 누른다.
+- 테스트 모드라 출금은 없다. 콘솔 CSP는 토스일 때만 측정한 토스 호스트를 연다(`apps/server/src/http/console/static.ts`). 결제수단 설정이 다른 상점이면 호스트가 더 필요할 수 있고, 그때는 브라우저 콘솔에 CSP 위반이 뜬다.
 
 ### 배포 전 할 일
 
@@ -85,7 +100,7 @@ docker compose up --build             # Postgres → 마이그레이션·시드(
 - **비밀값 고정.** `QRATE_CONSOLE_SECRET`·`QRATE_MOCK_PAYMENT_SECRET`이 없으면 프로세스마다 무작위로 만들어, 재시작하거나 인스턴스가 둘 이상이면 콘솔 세션과 웹훅 서명이 깨진다.
 - **DB.** compose의 `qrate`/`qrate`는 로컬 전용이다. 운영 DB는 강한 비밀번호와 비공개 네트워크를 쓰고, 관리형 Postgres면 `DATABASE_URL`에 `sslmode=verify-full`을 붙인다.
 - **시드.** `db:seed`는 공개 데모 테넌트(키 `demo`, 100크레딧)를 넣는다. 운영 DB에 돌리지 않는다. compose의 migrate 서비스도 시드를 돌리므로 compose를 그대로 운영에 쓰지 않는다.
-- **결제.** `QRATE_PAYMENT_PROVIDER=mock`은 결제 없이 크레딧을 채우는 버튼을 연다. 운영에서 켜면 시작 로그에 경고만 남는다.
+- **결제.** `QRATE_PAYMENT_PROVIDER=mock`은 결제 없이 크레딧을 채우는 버튼을 연다. 운영에서 켜면 시작 로그에 경고만 남는다. `toss`는 테스트 키만 받는다. 확정·토스 웹훅 경로에는 아직 요율 제한이 없고, 결제창형 상점에는 웹훅 서명을 검증할 보안 키가 없어 서명 대신 결제 조회로 확인한다.
 - **Sentry.** `SENTRY_DSN`을 켜도 요청 본문·쿠키·요청 헤더·IP는 보내지 않는다(`apps/server/src/sentry.ts`). 경로와 쿼리 문자열은 보낸다(`token` 같은 이름은 SDK가 거른다). SDK를 올리면 `test/sentry-privacy.test.ts`가 방문자 메시지·콘솔 로그인 키·세션 쿠키가 실리지 않는지 다시 확인한다.
 - **trust proxy.** 리버스 프록시 뒤에 두면 Express `trust proxy`를 프록시 홉 수로 설정해야 IP당 요율 제한(대화 API 분당 20회 · 상담원 연결 20회 · 위젯 사건 30회 · 콘솔 로그인 10회)이 방문자별로 센다. 지금은 설정하지 않아서 프록시 뒤에서는 모든 요청이 프록시 IP 하나로 세지고, `X-Forwarded-For`가 처음 올 때 제한마다 express-rate-limit 경고(`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`)가 로그에 한 번 남는다. IPv6는 주소 하나가 아니라 /56 대역 하나로 센다(express-rate-limit 기본값, 주소를 바꿔 가며 우회하는 것을 막는다).
 

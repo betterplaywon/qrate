@@ -9,6 +9,7 @@ import type {
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from './api';
 import { ME_KEY } from './queryClient';
+import { clearTossReturn, openTossPaymentWindow, type TossSuccess } from './toss';
 
 // 서버 상태는 전부 react-query가 든다 — 화면 컴포넌트에는 useEffect로 데이터를 끌어오는 코드가 없다.
 // 세션(me)도 하나의 쿼리다: 값이 null이면 로그인 화면. 401 처리는 queryClient.ts.
@@ -20,6 +21,7 @@ export const keys = {
   handoffs: (status: HandoffStatus) => ['handoffs', status] as const,
   credits: ['credits'] as const,
   topUps: ['topUps'] as const,
+  topUpConfirm: (paymentKey: string) => ['topUpConfirm', paymentKey] as const,
   metrics: ['metrics'] as const,
 };
 
@@ -118,6 +120,48 @@ export function useSimulatePayment() {
     onSuccess: () =>
       Promise.all([client.invalidateQueries({ queryKey: keys.topUps }), client.invalidateQueries({ queryKey: keys.credits })]),
   });
+}
+
+const SETTLED_CONFIRM_FAILURES: Readonly<Record<number, string>> = {
+  400: '결제창에서 돌아온 주소를 읽지 못했어요. 충전 내역에서 상태를 확인해 주세요.',
+  404: '이 결제는 이 서버에서 확인할 수 없어요. 다른 테넌트로 로그인했거나 결제 방법이 바뀌었어요.',
+  422: '결제 정보가 주문과 맞지 않아 승인하지 않았어요. 잔액은 그대로예요.',
+};
+
+export function settledConfirmError(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  return SETTLED_CONFIRM_FAILURES[error.status] ?? null;
+}
+
+/**
+ * 화면이 뜨자마자 한 번 보내는 일을 데이터용 useEffect 없이 하는 방법이 쿼리다(같은 키라 두 번 마운트돼도 요청은 하나).
+ * 실패한 확정은 다시 마운트될 때(세션이 끊겨 다시 로그인한 뒤 등) 한 번 더 묻는다.
+ * v5 useQuery에는 onSuccess가 없어 뒤처리를 queryFn 안에서 한다.
+ */
+export function useConfirmTopUp(ret: TossSuccess) {
+  const client = useQueryClient();
+  return useQuery({
+    queryKey: keys.topUpConfirm(ret.paymentKey),
+    queryFn: async () => {
+      try {
+        const result = await api.confirmTopUp(ret.orderId, { paymentKey: ret.paymentKey, amount: ret.amount });
+        if (result.outcome !== 'unconfirmed') {
+          clearTossReturn(window.location, window.history);
+          await Promise.all([client.invalidateQueries({ queryKey: keys.topUps }), client.invalidateQueries({ queryKey: keys.credits })]);
+        }
+        return result;
+      } catch (err) {
+        if (settledConfirmError(err) !== null) clearTossReturn(window.location, window.history);
+        throw err;
+      }
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
+export function useTossPaymentWindow() {
+  return useMutation({ mutationFn: openTossPaymentWindow });
 }
 
 /** 상태 전이. 끝나면 큐(모든 탭)와 그 대화의 상세를 다시 읽는다 — 옮긴 줄이 탭에서 빠지고 상세의 상태가 바뀐다. */

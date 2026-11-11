@@ -73,3 +73,18 @@ export type CreateTopUpInput = z.infer<typeof createTopUpSchema>;
 
 /** POST /api/console/top-ups/:id/simulate 본문. */
 export const simulatePaymentSchema = z.object({ result: z.enum(PAYMENT_RESULTS) });
+
+/**
+ * 토스 안내대로 형식(접두사·길이·문자 구성)은 보지 않고 공백·제어 문자 없는 ASCII와 상한 200자만 본다.
+ * 서버가 이 값을 조회 경로 /v1/payments/<결제 키>에 넣는데, "."·".."는 URL이 점 경로로 접어 시크릿 키 요청이 다른 경로로 가서 받지 않는다.
+ */
+export const paymentKeySchema = z
+  .string()
+  .regex(/^[\x21-\x7e]{1,200}$/)
+  .refine((key) => key !== '.' && key !== '..');
+
+/** POST /api/console/top-ups/:id/confirm 본문. */
+export const confirmTopUpSchema = z.object({
+  paymentKey: paymentKeySchema,
+  amount: z.number().int().nonnegative(),
+});

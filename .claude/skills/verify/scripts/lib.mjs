@@ -50,6 +50,22 @@ export const PROCESSES = [
   { name: 'demo', port: 5173, script: 'packages/widget/demo.mjs', log: 'demo-5173.log', env: { PORT: '5173' } },
   { name: 'demo-not-allowed', port: 5174, script: 'packages/widget/demo.mjs', log: 'demo-5174.log', env: { PORT: '5174' } },
 ];
+export const TOSS_FEATURE = 'top-up-toss';
+/** 서버가 실행 환경에서 물려받는 것은 PATH·HOME(launch.mjs)과 이 두 키뿐이다. */
+const TOSS_KEY_ENV = { QRATE_TOSS_CLIENT_KEY: 'QRATE_VERIFY_TOSS_CLIENT_KEY', QRATE_TOSS_SECRET_KEY: 'QRATE_VERIFY_TOSS_SECRET_KEY' };
+
+export function processesFor(feature, env = process.env) {
+  if (feature !== TOSS_FEATURE) return PROCESSES;
+  const missing = Object.values(TOSS_KEY_ENV).filter((name) => !env[name]);
+  if (missing.length > 0) {
+    throw new Error(
+      `${feature}는 결제창형 테스트 키가 필요하다(없음: ${missing.join('·')}). 토스 공식 샘플의 공개 키나 본인 test_gck_·test_gsk_ 키를 실행 환경으로 넘긴다`,
+    );
+  }
+  const keys = Object.fromEntries(Object.entries(TOSS_KEY_ENV).map(([to, from]) => [to, env[from]]));
+  return PROCESSES.map((p) => (p.name === 'server' ? { ...p, env: { ...p.env, QRATE_PAYMENT_PROVIDER: 'toss', ...keys } } : p));
+}
+
 /** 8788은 이 스킬이 쓰지 않지만 `pnpm e2e`(콘솔 E2E)가 쓰므로 비어 있는지 함께 본다. */
 export const WATCHED_PORTS = [8787, 5173, 5174, 8788];
 

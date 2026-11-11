@@ -17,13 +17,23 @@ export interface SettlementEvent {
   amount: number;
 }
 
-export type IgnoreReason = 'unknown_order' | 'provider_mismatch' | 'amount_mismatch';
+export type OrderMatchFailure = 'unknown_order' | 'provider_mismatch';
+export type EventMismatch = 'order_mismatch' | 'amount_mismatch';
 
-export type Decision = { kind: 'ignore'; reason: IgnoreReason } | { kind: 'settle'; settlement: Settlement };
+export type OrderMatch = { ok: true; order: TopUp } | { ok: false; reason: OrderMatchFailure };
 
-export function decideSettlement(order: TopUp | null, event: SettlementEvent): Decision {
-  if (!order) return { kind: 'ignore', reason: 'unknown_order' };
-  if (order.provider !== event.provider) return { kind: 'ignore', reason: 'provider_mismatch' };
+export type Decision = { kind: 'ignore'; reason: EventMismatch } | { kind: 'settle'; settlement: Settlement };
+
+export function matchOrder(order: TopUp | null, provider: PaymentProviderName): OrderMatch {
+  if (!order) return { ok: false, reason: 'unknown_order' };
+  if (order.provider !== provider) return { ok: false, reason: 'provider_mismatch' };
+  return { ok: true, order };
+}
+
+export function decideSettlement(order: TopUp, event: SettlementEvent): Decision {
+  // 주문은 요청이 말한 id(확정의 경로, 본문을 믿지 못하는 웹훅의 본문)로 찾고 사건은 제공자의 답에서 만든다. 같은 금액의
+  // 다른 주문 결제가 오면, 이 검사가 없을 때 한 결제로 두 주문이 충전된다(이 주문 한 번, 그 결제의 주문 한 번).
+  if (event.orderId !== order.id) return { kind: 'ignore', reason: 'order_mismatch' };
   if (order.amount !== event.amount) return { kind: 'ignore', reason: 'amount_mismatch' };
   const to = event.result;
   return {

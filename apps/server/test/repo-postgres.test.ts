@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createBillingService } from '../src/billing/service.js';
+import { createTossProvider, parseTossKeys } from '../src/billing/toss.js';
 import type { PrismaClient } from '../src/generated/prisma/client.js';
 import type { HandoffReason } from '../src/engine/types.js';
 import { computeMetrics } from '../src/events/metrics.js';
 import type { PaymentResult } from '../src/repo/types.js';
 import { applySeed, createPrismaClient, createPrismaRepositories } from '../src/repo/prisma.js';
 import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
+import { createFakeToss } from './helpers/fake-toss.js';
 import { deliver, describeRepositoryContract, order, turn } from './repo-contract.js';
 
 // Postgres(Prisma) 저장소 — 메모리와 같은 계약 테스트 + DB에서만 뜻이 있는 케이스.
@@ -190,6 +193,32 @@ describe.skipIf(!url)('Postgres 저장소', () => {
         await Promise.all(results.map((r) => deliver(repos, topUp.id, `evt-${randomUUID()}`, r)));
         expect((await repos.topUps.findById(topUp.id))?.status).toBe('paid');
         expect(await prisma.paymentEvent.count({ where: { topUpId: topUp.id, result: 'paid', outcome: 'applied' } })).toBe(1);
+        expect(await ledgerLines(topUp.id)).toBe(1);
+        expect(await repos.credits.balance(t)).toBe(before + 100);
+      });
+
+      it('토스가 승인한 결제에 확정 다섯·웹훅 다섯이 동시에: 사건 기록 한 줄·원장 한 줄, 새로 반영한 응답은 하나', async () => {
+        const repos = createPrismaRepositories(prisma);
+        const toss = createFakeToss();
+        const keys = parseTossKeys({ clientKey: 'test_gck_fake0001', secretKey: 'test_gsk_fake0001' });
+        const billing = createBillingService({ repos, payments: createTossProvider({ ...keys, fetch: toss.fetch }), reportError: () => undefined });
+        const created = await billing.requestTopUp(t, { requestKey: `req-${randomUUID()}`, packageId: 'credits_100' });
+        if (created.status !== 'created') throw new Error(created.status);
+        const { topUp } = created;
+        const paymentKey = toss.authenticate(topUp);
+        toss.setStatus(paymentKey, 'DONE');
+        const before = await repos.credits.balance(t);
+        const rawBody = toss.webhookBody({ paymentKey, orderId: topUp.id, status: 'DONE' });
+
+        const results = await Promise.all([
+          ...Array.from({ length: 5 }, () => billing.confirmTopUp(t, { orderId: topUp.id, paymentKey, amount: topUp.amount })),
+          ...Array.from({ length: 5 }, () => billing.receiveWebhook('toss', { rawBody, headers: {} })),
+        ]);
+        const settled = results.flatMap((r) => (r.status === 'settled' ? [r.result] : []));
+        expect(settled).toHaveLength(10);
+        expect(settled.filter((r) => !r.replayed)).toHaveLength(1);
+        expect(settled.every((r) => r.outcome === 'applied' && r.topUp.status === 'paid')).toBe(true);
+        expect(await prisma.paymentEvent.count({ where: { topUpId: topUp.id } })).toBe(1);
         expect(await ledgerLines(topUp.id)).toBe(1);
         expect(await repos.credits.balance(t)).toBe(before + 100);
       });

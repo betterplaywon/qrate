@@ -12,12 +12,16 @@
 //   PATCH /api/console/handoffs/:id     UpdateHandoffBody → HandoffQueueItemDto. 다른 테넌트의 것은 404
 //   GET   /api/console/credits          ?limit=&cursor= → CreditsResponse (잔액 + 원장 최근순)
 //   GET   /api/console/metrics          → ConsoleMetricsResponse (최근 METRICS_WINDOW_DAYS일, 쿼리 없음)
-//   GET   /api/console/top-ups          ?limit=&cursor= → TopUpListResponse (충전 주문 최근순 + 충전을 받는 제공자)
+//   GET   /api/console/top-ups          ?limit=&cursor= → TopUpListResponse (충전 주문 최근순 + 콘솔이 결제하는 방법: provider, 토스면 clientKey)
 //   POST  /api/console/top-ups          헤더 Idempotency-Key(8~128자 [A-Za-z0-9_-]) + CreateTopUpBody → 201 TopUpDto.
 //                                       같은 키 재요청도 201 + 같은 본문 + Idempotent-Replayed: true. 같은 키·다른 상품 422 idempotency_key_reused,
 //                                       키 없음·형식 400 invalid_idempotency_key, 모르는 상품 400 invalid_package, 제공자 없음 503 payments_unavailable
 //   POST  /api/console/top-ups/:id/simulate  SimulatePaymentBody → SimulatePaymentResponse. 모의 제공자일 때만 있다(아니면 404).
 //                                       모의 제공자가 서명한 웹훅을 웹훅 경로와 같은 처리에 넣는다. 이벤트 id가 주문·결과로 정해져 같은 버튼은 곧 재배달
+//   POST  /api/console/top-ups/:id/confirm   ConfirmTopUpBody → ConfirmTopUpResponse. 토스 제공자일 때만 있다(아니면 404).
+//                                       결제창 성공 주소로 돌아온 결제를 서버가 토스 승인 API로 확정한다. 같은 결제는 몇 번 보내도 원장 한 줄.
+//                                       본문 모양 400 invalid_payment, 주문 없음·다른 테넌트·토스 주문 아님 404 not_found,
+//                                       돌아온 금액 ≠ 주문 금액(토스를 부르지 않는다)·토스가 알려 준 결제가 이 주문·금액이 아님 422 payment_mismatch
 // 상태를 바꾸는 요청(login·logout·PATCH·POST)은 대화 API와 같은 Origin 검사를 받는다. 날짜는 ISO 8601 문자열이다.
 
 import type { HandoffReason } from './chat.js';
@@ -131,7 +135,7 @@ export interface CreditsResponse {
 
 /** 충전 주문의 상태. 앞으로만 간다(pending → failed → paid). 실패 뒤에 결제 완료가 오면 paid로 옮겨 충전한다. */
 export type TopUpStatus = 'pending' | 'failed' | 'paid';
-export type PaymentProviderName = 'mock';
+export type PaymentProviderName = 'mock' | 'toss';
 /** 결제 제공자 이벤트가 알리는 결과. 곧 주문의 목표 상태다. */
 export type PaymentResult = 'paid' | 'failed';
 export const PAYMENT_RESULTS: readonly PaymentResult[] = ['paid', 'failed'];
@@ -171,12 +175,33 @@ export interface CreateTopUpBody {
   packageId: TopUpPackageId;
 }
 
-export interface TopUpListResponse {
-  /** 충전을 받는 제공자. null이면 충전할 수 없다(운영 기본). mock이면 콘솔이 결제 시뮬레이션 버튼을 보인다. */
-  provider: PaymentProviderName | null;
-  items: TopUpDto[];
-  nextCursor: string | null;
+/** 콘솔이 충전 주문을 결제하는 방법. mock = 결제 결과 흉내 버튼, toss = 토스 결제창(clientKey는 SDK를 여는 브라우저용 공개 값). */
+export type TopUpCheckout = { provider: 'mock' } | { provider: 'toss'; clientKey: string };
+
+/** 버전 없는 주소라 SRI를 걸 수 없다. */
+export const TOSS_SDK_URL = 'https://js.tosspayments.com/v2/standard';
+
+/** provider가 null이면 이 서버에서는 충전할 수 없다(운영 기본). */
+export type TopUpListResponse = (TopUpCheckout | { provider: null }) & { items: TopUpDto[]; nextCursor: string | null };
+
+/** POST /api/console/top-ups/:id/confirm의 클라이언트 시간 제한(ms). 서버는 토스 승인·조회를 이 안에 끝내고 답한다. */
+export const CONFIRM_TOP_UP_TIMEOUT_MS = 30_000;
+
+export interface ConfirmTopUpBody {
+  /** 결제창 성공 주소 쿼리의 paymentKey. */
+  paymentKey: string;
+  /** 결제창 성공 주소 쿼리의 amount(원). 서버는 주문 금액과 대조만 하고, 승인에는 언제나 주문 금액을 쓴다. */
+  amount: number;
 }
+
+export type ConfirmTopUpResponse =
+  /**
+   * 토스가 결과(완료·실패·만료)를 확인해 줬고 판정을 거쳤다. topUp.status가 지금 상태다.
+   * replayed = 같은 결과를 이미 반영했었다(재확정·웹훅과 겹침). outcome은 처음 판정이고, 이 요청으로 잔액은 움직이지 않았다.
+   */
+  | { outcome: SettleOutcome; replayed: boolean; topUp: TopUpDto }
+  /** 토스가 아직 결제를 끝내지 않았거나, 그런 결제를 찾지 못했거나, 답을 받지 못했다. 주문은 그대로이고, 같은 본문을 다시 보내도 두 번 결제되지 않는다. */
+  | { outcome: 'unconfirmed' };
 
 export interface SimulatePaymentBody {
   result: PaymentResult;

@@ -81,6 +81,13 @@ export type ApiErrorCode =
   | 'invalid_result'
   | 'invalid_signature'
   | 'invalid_webhook'
+  /**
+   * 충전 확정(console.ts의 confirm). 본문 모양(400), 돌아온 금액이나 토스가 알려 준 결제가 주문과 다름(422).
+   * 웹훅(payments.ts): 제공자 조회가 시간 초과·실패했거나 결제가 아직 끝나지 않음(503) — 제공자가 다시 보낸다.
+   */
+  | 'invalid_payment'
+  | 'payment_mismatch'
+  | 'provider_unavailable'
   | StreamErrorCode;
 
 export interface ApiErrorBody {

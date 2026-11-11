@@ -5,14 +5,19 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { queryClient } from './queryClient';
+import { TossReturnContext, takeTossReturn } from './toss';
 import './styles.css';
+
+const tossReturn = takeTossReturn(window.location, window.history);
 
 const el = document.getElementById('root');
 if (el) {
   createRoot(el).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <TossReturnContext.Provider value={tossReturn}>
+          <App />
+        </TossReturnContext.Provider>
       </QueryClientProvider>
     </StrictMode>,
   );

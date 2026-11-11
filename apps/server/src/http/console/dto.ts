@@ -6,8 +6,10 @@ import type {
   HandoffDto,
   HandoffQueueItemDto,
   MessageDto,
+  TopUpCheckout,
   TopUpDto,
 } from '@qrate/contracts';
+import type { PaymentProvider } from '../../billing/provider.js';
 import type { ConsoleMetrics } from '../../events/metrics.js';
 import type { Conversation, ConversationSummary, CreditEntry, HandoffQueueItem, HandoffRecord, TopUp } from '../../repo/types.js';
 
@@ -64,6 +66,16 @@ export function toTopUpDto(t: TopUp): TopUpDto {
     createdAt: t.createdAt.toISOString(),
     settledAt: t.settledAt ? t.settledAt.toISOString() : null,
   };
+}
+
+export function toCheckoutDto(payments: PaymentProvider | null): TopUpCheckout | { provider: null } {
+  if (!payments) return { provider: null };
+  switch (payments.name) {
+    case 'mock':
+      return { provider: 'mock' };
+    case 'toss':
+      return { provider: 'toss', clientKey: payments.clientKey };
+  }
 }
 
 export function toMetricsDto(m: ConsoleMetrics): ConsoleMetricsResponse {

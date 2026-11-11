@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { decideSettlement, type SettlementEvent } from '../src/billing/settlement.js';
+import { decideSettlement, matchOrder, type SettlementEvent } from '../src/billing/settlement.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
-import type { PaymentProviderName, PaymentResult, Repositories, TopUp, TopUpStatus } from '../src/repo/types.js';
+import type { PaymentResult, Repositories, TopUp, TopUpStatus } from '../src/repo/types.js';
 import { deliver, order } from './repo-contract.js';
 
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
@@ -67,19 +67,25 @@ describe('배달 순서와 무관하게 같은 끝 상태로 수렴한다', () =
 });
 
 describe('판정이 무시하는 이벤트', () => {
-  it('모르는 주문 · 다른 제공자의 주문 · 금액 불일치는 이유와 함께 무시, 맞는 이벤트만 적용 대상', () => {
-    const pending: TopUp = {
-      id: 'order-1',
-      tenantId: TENANT,
-      ...order('k'),
-      status: 'pending',
-      settledAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    const event: SettlementEvent = { provider: 'mock', eventId: 'evt-1', orderId: 'order-1', result: 'paid', amount: 10_000 };
-    expect(decideSettlement(null, event)).toEqual({ kind: 'ignore', reason: 'unknown_order' });
-    expect(decideSettlement(pending, { ...event, provider: 'toss' as PaymentProviderName })).toEqual({ kind: 'ignore', reason: 'provider_mismatch' });
+  const pending: TopUp = {
+    id: 'order-1',
+    tenantId: TENANT,
+    ...order('k'),
+    status: 'pending',
+    settledAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const event: SettlementEvent = { provider: 'mock', eventId: 'evt-1', orderId: 'order-1', result: 'paid', amount: 10_000 };
+
+  it('matchOrder: 모르는 주문 · 다른 제공자의 주문은 이유와 함께 거르고, 그 제공자의 주문만 통과한다', () => {
+    expect(matchOrder(null, 'mock')).toEqual({ ok: false, reason: 'unknown_order' });
+    expect(matchOrder(pending, 'toss')).toEqual({ ok: false, reason: 'provider_mismatch' });
+    expect(matchOrder(pending, 'mock')).toEqual({ ok: true, order: pending });
+  });
+
+  it('decideSettlement: 다른 주문의 결제 · 금액 불일치는 이유와 함께 무시, 맞는 이벤트만 적용 대상', () => {
+    expect(decideSettlement(pending, { ...event, orderId: 'order-2' })).toEqual({ kind: 'ignore', reason: 'order_mismatch' });
     expect(decideSettlement(pending, { ...event, amount: 9_999 })).toEqual({ kind: 'ignore', reason: 'amount_mismatch' });
     expect(decideSettlement(pending, event).kind).toBe('settle');
   });

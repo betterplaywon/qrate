@@ -1,7 +1,10 @@
 import {
+  CONFIRM_TOP_UP_TIMEOUT_MS,
   CONSOLE_API_PATH,
   IDEMPOTENCY_KEY_HEADER,
   parseApiErrorBody,
+  type ConfirmTopUpBody,
+  type ConfirmTopUpResponse,
   type ConsoleLoginBody,
   type ConsoleMetricsResponse,
   type ConsoleSessionResponse,
@@ -77,4 +80,11 @@ export const api = {
     run(client.post('top-ups', { json: body, headers: { [IDEMPOTENCY_KEY_HEADER]: key } }).json<TopUpDto>()),
   simulatePayment: (id: string, body: SimulatePaymentBody) =>
     run(client.post(`top-ups/${encodeURIComponent(id)}/simulate`, { json: body }).json<SimulatePaymentResponse>()),
+  // ky 기본 10초로는 서버가 판정하기 전에 끊겨 "확인하지 못함"이 된다.
+  confirmTopUp: (id: string, body: ConfirmTopUpBody) =>
+    run(
+      client
+        .post(`top-ups/${encodeURIComponent(id)}/confirm`, { json: body, timeout: CONFIRM_TOP_UP_TIMEOUT_MS })
+        .json<ConfirmTopUpResponse>(),
+    ),
 };

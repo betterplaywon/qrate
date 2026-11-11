@@ -2,7 +2,8 @@ import { MOCK_SIGNATURE_HEADER } from '@qrate/contracts';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { PaymentResult } from '../repo/types.js';
-import type { PaymentProvider, WebhookRequest, WebhookVerification } from './provider.js';
+import type { WebhookNotice, WebhookRequest } from './provider.js';
+import type { SettlementEvent } from './settlement.js';
 
 export const SIGNATURE_TOLERANCE_SEC = 300;
 
@@ -15,8 +16,10 @@ const mockWebhookEventSchema = z.object({
   data: z.object({ orderId: z.string().min(1).max(200), amount: z.number().int().nonnegative() }),
 });
 
-const SIGNATURE_REJECTED: WebhookVerification = { ok: false, reason: 'signature' };
-const MALFORMED: WebhookVerification = { ok: false, reason: 'malformed' };
+type Verification = { ok: true; event: SettlementEvent } | { ok: false; reason: 'signature' | 'malformed' };
+
+const SIGNATURE_REJECTED: Verification = { ok: false, reason: 'signature' };
+const MALFORMED: Verification = { ok: false, reason: 'malformed' };
 
 function hmac(secret: string, t: number, rawBody: Buffer): Buffer {
   return createHmac('sha256', secret).update(`${t}.`).update(rawBody).digest();
@@ -28,7 +31,7 @@ function parseSignature(header: string | string[] | undefined): { t: number; v1:
   return t && v1 ? { t: Number(t), v1: Buffer.from(v1, 'hex') } : null;
 }
 
-function verify(secret: string, req: WebhookRequest, now: Date): WebhookVerification {
+function verify(secret: string, req: WebhookRequest, now: Date): Verification {
   const signature = parseSignature(req.headers[MOCK_SIGNATURE_HEADER]);
   if (!signature) return SIGNATURE_REJECTED;
   if (Math.abs(Math.floor(now.getTime() / 1000) - signature.t) > SIGNATURE_TOLERANCE_SEC) return SIGNATURE_REJECTED;
@@ -49,16 +52,20 @@ export function signMockPayload(secret: string, rawBody: Buffer, t: number): str
   return `t=${t},v1=${hmac(secret, t, rawBody).toString('hex')}`;
 }
 
-export interface MockPaymentProvider extends PaymentProvider {
+export interface MockPaymentProvider {
   readonly name: 'mock';
+  readWebhook(req: WebhookRequest, now: Date): WebhookNotice;
   signEvent(e: { orderId: string; amount: number; result: PaymentResult; eventId?: string }, now: Date): WebhookRequest;
 }
 
 export function createMockProvider(secret: string): MockPaymentProvider {
   return {
     name: 'mock',
-    async verifyWebhook(req, now) {
-      return verify(secret, req, now);
+    readWebhook(req, now) {
+      const verified = verify(secret, req, now);
+      if (!verified.ok) return verified;
+      const { event } = verified;
+      return { ok: true, orderId: event.orderId, read: async () => ({ kind: 'event', event }) };
     },
     signEvent({ orderId, amount, result, eventId = `evt_${orderId}_${result}` }, now) {
       const t = Math.floor(now.getTime() / 1000);

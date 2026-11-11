@@ -8,7 +8,7 @@ import {
 } from '@qrate/contracts';
 import { updateHandoffSchema } from '@qrate/contracts/schemas';
 import express, { Router } from 'express';
-import type { PaymentProviders } from '../../billing/provider.js';
+import type { PaymentProvider } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
 import type { SessionCodec } from '../../console/session.js';
 import { computeMetrics } from '../../events/metrics.js';
@@ -47,7 +47,7 @@ export interface ConsoleRouterOptions {
   /** 로그인 시도 제한(IP당 고정 창). 기본 10회/분. 테스트가 줄여서 쓴다. */
   loginAttempts?: { max: number; windowMs: number };
   billing: BillingService;
-  providers: PaymentProviders;
+  payments: PaymentProvider | null;
   /** 지표의 인사말 A/B가 보는 실험. 배정·사건 검증과 같은 값을 app.ts가 넘긴다. */
   greeting: GreetingExperiment | null;
 }
@@ -58,7 +58,7 @@ export function createConsoleRouter({
   sessions,
   loginAttempts = DEFAULT_LOGIN_ATTEMPTS,
   billing,
-  providers,
+  payments,
   greeting,
 }: ConsoleRouterOptions): Router {
   const router = Router();
@@ -165,7 +165,7 @@ export function createConsoleRouter({
     res.json(toQueueDto(updated));
   });
 
-  router.use('/top-ups', createTopUpRoutes({ repos, billing, providers, session, ownOrigin, json }));
+  router.use('/top-ups', createTopUpRoutes({ repos, billing, payments, session, ownOrigin, json }));
 
   return router;
 }

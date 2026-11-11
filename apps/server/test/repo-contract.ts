@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { decideSettlement } from '../src/billing/settlement.js';
+import { decideSettlement, matchOrder } from '../src/billing/settlement.js';
 import type { GreetingVariantId } from '../src/greeting/experiment.js';
 import type {
   AppEvent,
@@ -39,7 +39,9 @@ export const order = (requestKey = `req-${randomUUID()}`): NewTopUp => ({
 });
 
 export async function deliver(repos: Repositories, orderId: string, eventId: string, result: PaymentResult): Promise<SettleResult> {
-  const decision = decideSettlement(await repos.topUps.findById(orderId), { provider: 'mock', eventId, orderId, result, amount: 10_000 });
+  const matched = matchOrder(await repos.topUps.findById(orderId), 'mock');
+  if (!matched.ok) throw new Error(`settlement ignored: ${matched.reason}`);
+  const decision = decideSettlement(matched.order, { provider: 'mock', eventId, orderId, result, amount: 10_000 });
   if (decision.kind !== 'settle') throw new Error(`settlement ignored: ${decision.reason}`);
   return repos.topUps.settle(decision.settlement);
 }
