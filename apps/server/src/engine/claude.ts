@@ -3,6 +3,7 @@ import type { AppConfig } from '../config.js';
 import { HANDOFF_TOOL, readHandoff } from './handoff.js';
 import { buildSystemPrompt } from './prompt.js';
 import { thinkingParamsFor } from './thinking.js';
+import { ToolMarkupFilter, handoffFromMarkup } from './tool-markup.js';
 import {
   EngineError,
   isAbortError,
@@ -161,20 +162,26 @@ export class ClaudeEngine implements AnswerEngine {
       { signal: req.signal },
     );
 
+    // 본문에 글자로 쓴 도구 호출은 방문자에게 보내지 않는다(engine/tool-markup.ts).
+    const markup = new ToolMarkupFilter();
     try {
       for await (const event of stream) {
         if (event.type !== 'content_block_delta') continue;
         if (event.delta.type === 'text_delta') {
-          yield { type: 'delta', text: event.delta.text };
+          const text = markup.push(event.delta.text);
+          if (text) yield { type: 'delta', text };
         } else if (event.delta.type === 'citations_delta') {
           // 인용은 텍스트 조각 사이에 끼어 온다. API가 원문에서 잘라 준 것이라 검증 없이 쓴다.
           const citation = toCitation(event.delta.citation);
           if (citation) yield { type: 'citation', citation };
         }
       }
+      const { rest, leaked } = markup.end();
+      if (rest) yield { type: 'delta', text: rest };
       const final = await stream.finalMessage();
       // 신호용 도구 호출은 응답 끝의 블록이라 finalMessage에서 읽는다. 텍스트 조각을 다 보낸 뒤, done 앞에 1회.
-      const handoff = readHandoff(final.content);
+      // 진짜 호출이 없고 글자로 쓴 호출만 있으면 거기서 신호를 살린다 — 모델은 넘기려 했고, 방문자에게는 넘긴다고 이미 말했다.
+      const handoff = readHandoff(final.content) ?? (leaked ? handoffFromMarkup(leaked) : null);
       if (handoff) yield handoff;
       yield summarize(final, this.config.model);
     } catch (err) {
