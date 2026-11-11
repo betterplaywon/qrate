@@ -17,6 +17,7 @@
   "include": [
     "src",
     "test",
+    "eval",
     "prisma",
     "prisma.config.ts"
   ]
