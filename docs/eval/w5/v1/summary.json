@@ -1,0 +1,346 @@
+{
+  "generatedAt": "2026-11-11T08:52:38.505Z",
+  "run": {
+    "createdAt": "2026-11-11T07:55:34.457Z",
+    "gitSha": "defff8d9d205f9ae662751810edeb4d76c2e53d4",
+    "cases": {
+      "sha256": "2d09d4f61086bf10a7a75687bdd366948af08fb13ed05fdbb212b0b8c7e4482e",
+      "version": 1,
+      "status": "approved",
+      "count": 30
+    }
+  },
+  "caseCount": 30,
+  "reps": 2,
+  "judge": {
+    "version": "7550cce72d19",
+    "model": "claude-opus-5-5",
+    "groups": 30,
+    "otherVersionRows": 0,
+    "usage": {
+      "calls": 32,
+      "measuredCalls": 32,
+      "unmeasuredCalls": 0,
+      "tokens": {
+        "inputTokens": 23498,
+        "cacheCreationInputTokens": 11760,
+        "cacheReadInputTokens": 176400,
+        "outputTokens": 10950
+      },
+      "costUsd": 0.40707199999999993
+    },
+    "unresolvedErrors": 0
+  },
+  "models": [
+    {
+      "variant": "sonnet",
+      "model": "claude-sonnet-5-5",
+      "synthetic": false,
+      "cases": {
+        "total": 30,
+        "allRepsPass": 26,
+        "someRepFails": 4,
+        "incomplete": 0
+      },
+      "reps": {
+        "expected": 60,
+        "answered": 60,
+        "graded": 60,
+        "pass": 54,
+        "byRep": [
+          {
+            "rep": 1,
+            "graded": 30,
+            "pass": 27
+          },
+          {
+            "rep": 2,
+            "graded": 30,
+            "pass": 27
+          }
+        ]
+      },
+      "missedHandoff": [
+        {
+          "group": "비워 둔 주제",
+          "cases": 9,
+          "answers": 18,
+          "missed": 0
+        },
+        {
+          "group": "사업 질문",
+          "cases": 3,
+          "answers": 6,
+          "missed": 0
+        },
+        {
+          "group": "사람 처리",
+          "cases": 2,
+          "answers": 4,
+          "missed": 1
+        },
+        {
+          "group": "무관한 질문",
+          "cases": 1,
+          "answers": 2,
+          "missed": 0
+        }
+      ],
+      "falseHandoff": {
+        "count": 2,
+        "n": 24
+      },
+      "fabricated": {
+        "count": 0,
+        "n": 60
+      },
+      "rules": {
+        "completed": {
+          "count": 0,
+          "n": 60
+        },
+        "handoff": {
+          "count": 3,
+          "n": 54
+        },
+        "guidance": {
+          "count": 0,
+          "n": 34
+        },
+        "cites": {
+          "count": 2,
+          "n": 26
+        },
+        "mustInclude": {
+          "count": 0,
+          "n": 18
+        },
+        "language": {
+          "count": 0,
+          "n": 2
+        }
+      },
+      "ttftMs": {
+        "n": 60,
+        "p50": 1177,
+        "p95": 1731
+      },
+      "durationMs": {
+        "n": 60,
+        "p50": 2654,
+        "p95": 3548
+      },
+      "usage": {
+        "calls": 60,
+        "measuredCalls": 60,
+        "unmeasuredCalls": 0,
+        "tokens": {
+          "inputTokens": 2756,
+          "cacheCreationInputTokens": 16292,
+          "cacheReadInputTokens": 472468,
+          "outputTokens": 15045
+        },
+        "costUsd": 0.2439388
+      },
+      "errors": {
+        "unresolved": [],
+        "resolvedKeys": 0
+      },
+      "failures": [
+        {
+          "caseId": "h01",
+          "group": "사람 처리",
+          "variant": "sonnet",
+          "rep": 1,
+          "checks": [
+            "넘김 기대: 넘기지 않음",
+            "심판: 알맞지 않음"
+          ],
+          "excerpt": "환불 처리는 제가 직접 해드릴 수 없어서 상담원에게 연결해 드리겠습니다. 참고로 환불 기준은 다음과 같습니다. - **월간 결제**: 결제 후 …",
+          "judgeReasons": [
+            "상담원에게 연결하겠다고 말했지만 도구 호출이 본문 텍스트에 들어갔을 뿐 실제 requestHandoff는 null입니다. 넘겨야 하는 사례에서 넘김이 일어나지 않았습니다."
+          ]
+        },
+        {
+          "caseId": "o01",
+          "group": "무관한 질문",
+          "variant": "sonnet",
+          "rep": 2,
+          "checks": [
+            "심판: 알맞지 않음"
+          ],
+          "excerpt": "오늘 서울 날씨는 마루인보이스 서비스와 관련 없는 내용이라 제가 안내해 드리기 어렵습니다. 날씨는 기상청이나 날씨 앱에서 확인해 주세요. 마루인…",
+          "judgeReasons": [
+            "request_handoff는 호출했지만, 본문에서 상담원에게 문의하라는 안내 없이 기상청·날씨 앱으로 보냈습니다. 사람(상담원)에게 안내해야 한다는 기준을 채우지 못했습니다."
+          ]
+        },
+        {
+          "caseId": "m01",
+          "group": "이어지는 대화",
+          "variant": "sonnet",
+          "rep": 1,
+          "checks": [
+            "인용: 인용 빠짐: faq:annual-billing"
+          ],
+          "excerpt": "팀 플랜을 연간으로 결제하면 연 290,000원입니다. 연간 결제는 12개월 요금에서 2개월분이 할인되어 10개월 요금만 냅니다. 월간과 연간 …",
+          "judgeReasons": []
+        },
+        {
+          "caseId": "m01",
+          "group": "이어지는 대화",
+          "variant": "sonnet",
+          "rep": 2,
+          "checks": [
+            "인용: 인용 빠짐: faq:annual-billing"
+          ],
+          "excerpt": "팀 플랜을 연간 결제하면 연 290,000원입니다. 연간 결제는 12개월 요금에서 2개월분이 할인되어 10개월 요금만 내는 방식입니다. 월간과 …",
+          "judgeReasons": []
+        },
+        {
+          "caseId": "m02",
+          "group": "이어지는 대화",
+          "variant": "sonnet",
+          "rep": 1,
+          "checks": [
+            "넘김 기대: 넘기면 안 되는데 넘김(not_in_knowledge)",
+            "심판: 알맞지 않음"
+          ],
+          "excerpt": "네, 가능합니다. 발행한 견적서는 '청구서로 전환' 버튼 한 번으로 청구서가 됩니다. 항목과 금액이 그대로 복사되고 청구서 번호는 자동으로 부여…",
+          "judgeReasons": [
+            "답은 자료대로 했지만 넘기면 안 되는 사례에서 request_handoff를 다시 호출했으므로 note 기준 실패입니다."
+          ]
+        },
+        {
+          "caseId": "m02",
+          "group": "이어지는 대화",
+          "variant": "sonnet",
+          "rep": 2,
+          "checks": [
+            "넘김 기대: 넘기면 안 되는데 넘김(not_in_knowledge)",
+            "심판: 알맞지 않음"
+          ],
+          "excerpt": "네, 가능합니다. 발행한 견적서는 '청구서로 전환' 버튼 한 번으로 청구서가 됩니다. 항목과 금액이 그대로 복사되고 청구서 번호는 자동으로 부여…",
+          "judgeReasons": [
+            "올바른 답을 했으나 requestHandoff를 호출해 다시 넘겼으므로 넘기면 안 되는 사례에서 알맞지 않습니다."
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "haiku",
+      "model": null,
+      "synthetic": false,
+      "cases": {
+        "total": 30,
+        "allRepsPass": 0,
+        "someRepFails": 0,
+        "incomplete": 30
+      },
+      "reps": {
+        "expected": 60,
+        "answered": 0,
+        "graded": 0,
+        "pass": 0,
+        "byRep": [
+          {
+            "rep": 1,
+            "graded": 0,
+            "pass": 0
+          },
+          {
+            "rep": 2,
+            "graded": 0,
+            "pass": 0
+          }
+        ]
+      },
+      "missedHandoff": [
+        {
+          "group": "비워 둔 주제",
+          "cases": 9,
+          "answers": 0,
+          "missed": 0
+        },
+        {
+          "group": "사업 질문",
+          "cases": 3,
+          "answers": 0,
+          "missed": 0
+        },
+        {
+          "group": "사람 처리",
+          "cases": 2,
+          "answers": 0,
+          "missed": 0
+        },
+        {
+          "group": "무관한 질문",
+          "cases": 1,
+          "answers": 0,
+          "missed": 0
+        }
+      ],
+      "falseHandoff": {
+        "count": 0,
+        "n": 0
+      },
+      "fabricated": {
+        "count": 0,
+        "n": 0
+      },
+      "rules": {
+        "completed": {
+          "count": 0,
+          "n": 0
+        },
+        "handoff": {
+          "count": 0,
+          "n": 0
+        },
+        "guidance": {
+          "count": 0,
+          "n": 0
+        },
+        "cites": {
+          "count": 0,
+          "n": 0
+        },
+        "mustInclude": {
+          "count": 0,
+          "n": 0
+        },
+        "language": {
+          "count": 0,
+          "n": 0
+        }
+      },
+      "ttftMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "durationMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "usage": {
+        "calls": 0,
+        "measuredCalls": 0,
+        "unmeasuredCalls": 0,
+        "tokens": {
+          "inputTokens": 0,
+          "cacheCreationInputTokens": 0,
+          "cacheReadInputTokens": 0,
+          "outputTokens": 0
+        },
+        "costUsd": null
+      },
+      "errors": {
+        "unresolved": [],
+        "resolvedKeys": 0
+      },
+      "failures": []
+    }
+  ]
+}
