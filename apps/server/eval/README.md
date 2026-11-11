@@ -24,22 +24,30 @@
 
 ## 실제 호출 (사용자가 직접 실행)
 
-레포 루트에서 순서대로 실행한다. `--run`은 `apps/server` 기준이다. 상한은 누계이고, 합계 230건·$4를 넘지 않게 잡았다.
+레포 루트에서 순서대로 실행한다. `--run`은 `apps/server` 기준이고, 상한은 그 폴더의 누계라 단계마다 앞 단계의 호출이 들어 있다. 합계는 230건·$4를 넘지 않는다.
 
-1. 시험 실행 답(Sonnet, 사례 5개 × 2회 = 10건):
-   `pnpm --filter @qrate/server eval:paid answers --run eval/runs/w5 --engine claude --variant sonnet --limit 5 --max-calls 15 --max-usd 0.5`
-2. 시험 실행 판정(5건). 끝나면 `report`로 캐시 읽기 토큰과 1건 비용을 확인한다:
-   `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --variant sonnet --limit 5 --max-calls 25 --max-usd 1.2`
-3. 심판 점검(2건). 실패하면 본 판정 전에 멈추고 심판 지시를 고친다:
-   `pnpm --filter @qrate/server eval:paid judge-check --run eval/runs/w5 --judge claude --max-calls 30 --max-usd 1.4`
-4. 본 실행 답(두 모델 × 30개 × 2회 중 남은 110건):
-   `pnpm --filter @qrate/server eval:paid answers --run eval/runs/w5 --engine claude --max-calls 145 --max-usd 2`
-5. 본 실행 판정(남은 55건):
-   `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --max-calls 205 --max-usd 3.5`
-6. 다시 채점(오류로 빠진 묶음만 다시 부른다):
-   `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --max-calls 230 --max-usd 4`
+사람 채점으로 심판을 검증한 뒤에 Haiku를 돌린다. 심판 지시를 고치면 심판 버전이 바뀌어 그 버전으로 판정을 다시 받아야 하는데, 검증을 먼저 하면 다시 채점할 묶음이 Sonnet 30개로 끝난다. Haiku까지 채점한 뒤에 고치면 60개를 다시 불러야 해서 이 상한에 들어가지 않는다.
 
-심판 지시·출력 스키마·설정을 고치면 심판 버전이 바뀌어 모든 묶음(60건)을 다시 부른다. 이 상한 안에 들어가지 않으므로 그때는 예산을 다시 정한다.
+1. 시험 실행 답(Sonnet, 사례 5개 × 2회 = 10건). 넘김·인용·이어지는 대화가 모두 들어가게 고른 사례다:
+   `pnpm --filter @qrate/server eval:paid answers --run eval/runs/w5 --engine claude --variant sonnet --cases k01,c01,n04,b02,m02 --max-calls 12 --max-usd 0.4`
+2. 시험 실행 판정(5건):
+   `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --variant sonnet --cases k01,c01,n04,b02,m02 --max-calls 20 --max-usd 1.2`
+3. 심판 점검(2건). 실패하면 본 판정 전에 멈추고 심판 지시를 고친다. 끝나면 `report`로 실측 비용을 보고 본 실행을 이어 갈지 정한다:
+   `pnpm --filter @qrate/server eval:paid judge-check --run eval/runs/w5 --judge claude --max-calls 25 --max-usd 1.4`
+4. Sonnet 나머지 답(25개 × 2회 = 50건):
+   `pnpm --filter @qrate/server eval:paid answers --run eval/runs/w5 --engine claude --variant sonnet --max-calls 80 --max-usd 1.6`
+5. Sonnet 나머지 판정(25건). 끝나면 `labels`로 Sonnet 1회차 답 30개를 내보내 사람이 채점하고, `agreement`로 심판과 맞춰 본다. 두 판정이 모두 90% 넘게 같아야 다음으로 간다:
+   `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --variant sonnet --max-calls 105 --max-usd 2.8`
+   - 일치율이 낮으면 심판 지시를 고친 뒤 Sonnet을 다시 채점한다(30건):
+     `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --variant sonnet --max-calls 135 --max-usd 3.6`
+6. Haiku 답(30개 × 2회 = 60건):
+   `pnpm --filter @qrate/server eval:paid answers --run eval/runs/w5 --engine claude --variant haiku --max-calls 195 --max-usd 3.7`
+7. Haiku 판정(30건). 예산 끝자락이라 동시 수를 1로 줄인다:
+   `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --variant haiku --concurrency 1 --max-calls 225 --max-usd 4`
+8. 오류로 빠진 키만 다시 부른다(답이면 `answers`, 판정이면 `judge`):
+   `pnpm --filter @qrate/server eval:paid judge --run eval/runs/w5 --judge claude --concurrency 1 --max-calls 230 --max-usd 4`
+
+관문은 진행 중인 호출마다 상한을 미리 잡아 두므로, 실제로 쓴 돈이 상한보다 한참 아래여도 끝자락에서 멈출 수 있다. 그때는 `--concurrency 1`로 줄이거나 실측 비용을 보고 상한을 다시 정한다. 위 상한은 시험 실행 전의 추정으로 잡았고, 시험 실행의 실측으로 다시 계산한다.
 
 ## 무료 명령
 
@@ -56,4 +64,4 @@
 - `pnpm --filter @qrate/server eval labels --run eval/runs/w5`
 - `pnpm --filter @qrate/server eval agreement --run eval/runs/w5`
 
-그 밖의 플래그: `--variant sonnet|haiku|all`(기본 all), `--reps <n>`(기본 2), `--cases <id,id>`, `--limit <n>`, `--labels <파일>`(agreement, 기본은 실행 폴더의 `labels.json`).
+그 밖의 플래그: `--variant sonnet|haiku|all`(기본 all), `--reps <n>`(기본 2), `--cases <id,id>`, `--limit <n>`, `--concurrency <1~3>`(기본 3), `--labels <파일>`(agreement, 기본은 실행 폴더의 `labels.json`).
