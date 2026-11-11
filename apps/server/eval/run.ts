@@ -55,6 +55,8 @@ const argsSchema = z.object({
   judge: z.enum(['fake', 'claude']).default('fake'),
   maxCalls: z.coerce.number().int().positive().optional(),
   maxUsd: z.coerce.number().positive().optional(),
+  // 관문은 진행 중인 호출마다 상한을 미리 잡아 두므로, 예산 끝자락에서는 동시 수를 줄여야 남은 돈을 끝까지 쓸 수 있다.
+  concurrency: z.coerce.number().int().min(1).max(CONCURRENCY).default(CONCURRENCY),
   labels: z.string().optional(),
 });
 type Args = z.infer<typeof argsSchema>;
@@ -80,6 +82,7 @@ function parseCli(argv: string[]): Args {
       judge: { type: 'string' },
       'max-calls': { type: 'string' },
       'max-usd': { type: 'string' },
+      concurrency: { type: 'string' },
       labels: { type: 'string' },
     },
   });
@@ -216,7 +219,7 @@ async function commandAnswers(ctx: Context): Promise<number> {
         engineFor: engineFactory(ctx.args.engine, apiKey),
         billable: ctx.args.engine === 'claude',
         maxTokens: answerConfig('sonnet', undefined).maxTokens,
-        concurrency: CONCURRENCY,
+        concurrency: ctx.args.concurrency,
         timeoutMs: ANSWER_TIMEOUT_MS,
       },
       targets,
@@ -228,7 +231,7 @@ async function commandAnswers(ctx: Context): Promise<number> {
 }
 
 function judgeDeps(ctx: Context, gate: CallGate, client: JudgeClient): JudgePhaseDeps {
-  return { ...retryDeps(), run: ctx.run, gate, client, seed: ctx.seed, concurrency: CONCURRENCY, timeoutMs: JUDGE_TIMEOUT_MS };
+  return { ...retryDeps(), run: ctx.run, gate, client, seed: ctx.seed, concurrency: ctx.args.concurrency, timeoutMs: JUDGE_TIMEOUT_MS };
 }
 
 async function commandJudge(ctx: Context): Promise<number> {
