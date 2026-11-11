@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import { planAnswerTargets, runAnswersPhase, type AnswerPhaseDeps } from '../eval/answers.js';
 import { CallGate, foldCalls, type Caps } from '../eval/budget.js';
@@ -221,8 +222,9 @@ describe('답 단계 — runAnswersPhase', () => {
     const stuck: AnswerEngine = {
       name: 'stuck',
       model: 'claude-haiku-5-5',
+      // 실제 엔진처럼 신호가 이미 끊겼으면 바로 거절한다 — abort 이벤트만 기다리면 부하로 시작이 늦을 때 영영 멈춘다.
       async *stream(req: EngineRequest): AsyncIterable<EngineEvent> {
-        await new Promise((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason)));
+        await sleep(60_000, undefined, { signal: req.signal });
         yield* [];
       },
     };
