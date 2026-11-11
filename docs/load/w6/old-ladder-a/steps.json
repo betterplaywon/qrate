@@ -1,0 +1,750 @@
+{
+  "meta": {
+    "date": "2026-11-11T12:08:48.696Z",
+    "machine": "Apple M1 8코어, 메모리 16GB, Darwin 25.6.0",
+    "node": "v24.22.1",
+    "k6": "k6 v2.3.0 (commit/devel, go1.27.1, darwin/arm64)",
+    "postgres": "PostgreSQL 16.15",
+    "fileLimit": "1048576",
+    "settings": {
+      "vus": [
+        10,
+        50,
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "rampS": 15,
+      "holdS": 60,
+      "thinkS": 3,
+      "mockDelayMs": 20,
+      "pool": "default(10)",
+      "ledgerRows": 0,
+      "profile": false
+    }
+  },
+  "steps": [
+    {
+      "label": "10",
+      "vus": 10,
+      "from": "2026-11-11T12:09:44.165Z",
+      "to": "2026-11-11T12:10:44.165Z",
+      "holdS": 60,
+      "turnsPerS": 1.55,
+      "k6": {
+        "turns": 93,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 7.2,
+          "p95": 14.3,
+          "p99": 20.9,
+          "max": 27.6,
+          "count": 93
+        },
+        "stream": {
+          "p50": 2363.7,
+          "p95": 2393.7,
+          "p99": 2401.1,
+          "max": 2418.2,
+          "count": 93
+        },
+        "frame": {
+          "p50": 3.5,
+          "p95": 6.1,
+          "p99": 7.7,
+          "max": 8.7,
+          "count": 47
+        },
+        "greeting": {
+          "p50": 2,
+          "p95": 3.1,
+          "p99": 3.7,
+          "max": 3.7,
+          "count": 47
+        },
+        "event": {
+          "p50": 2.7,
+          "p95": 5.4,
+          "p99": 5.9,
+          "max": 5.9,
+          "count": 93
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 4.4,
+        "cpuMax": 11.2,
+        "eluAvg": 0.038,
+        "eluMax": 0.068,
+        "rssMaxMb": 192,
+        "lagP99MaxMs": 7.33,
+        "gcMsPerSAvg": 0.3,
+        "gcMaxMs": 2.7,
+        "inFlightMax": 7
+      },
+      "machine": {
+        "samples": 60,
+        "machine": [
+          14.1,
+          31.5
+        ],
+        "server": [
+          4.3,
+          11
+        ],
+        "k6": [
+          1.4,
+          3
+        ],
+        "dbVm": [
+          11.2,
+          28
+        ],
+        "docker": [
+          1.5,
+          11.1
+        ]
+      },
+      "db": {
+        "ttftSamples": 93,
+        "ttftP50": 7,
+        "ttftP95": 13,
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "50",
+      "vus": 50,
+      "from": "2026-11-11T12:11:17.319Z",
+      "to": "2026-11-11T12:12:17.319Z",
+      "holdS": 60,
+      "turnsPerS": 7.68,
+      "k6": {
+        "turns": 461,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 6.5,
+          "p95": 11.9,
+          "p99": 15,
+          "max": 40.9,
+          "count": 461
+        },
+        "stream": {
+          "p50": 2344.4,
+          "p95": 2380,
+          "p99": 2394.6,
+          "max": 2415,
+          "count": 461
+        },
+        "frame": {
+          "p50": 2.8,
+          "p95": 5.2,
+          "p99": 7.6,
+          "max": 22.1,
+          "count": 227
+        },
+        "greeting": {
+          "p50": 1.7,
+          "p95": 2.9,
+          "p99": 3.4,
+          "max": 3.6,
+          "count": 227
+        },
+        "event": {
+          "p50": 2.2,
+          "p95": 4.4,
+          "p99": 5.1,
+          "max": 5.9,
+          "count": 458
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 11.5,
+        "cpuMax": 20.6,
+        "eluAvg": 0.111,
+        "eluMax": 0.168,
+        "rssMaxMb": 225.8,
+        "lagP99MaxMs": 10.38,
+        "gcMsPerSAvg": 1.1,
+        "gcMaxMs": 6.2,
+        "inFlightMax": 25
+      },
+      "machine": {
+        "samples": 60,
+        "machine": [
+          17.3,
+          32.6
+        ],
+        "server": [
+          11.5,
+          19
+        ],
+        "k6": [
+          4.2,
+          6
+        ],
+        "dbVm": [
+          28.3,
+          102.9
+        ],
+        "docker": [
+          4.5,
+          13
+        ]
+      },
+      "db": {
+        "ttftSamples": 460,
+        "ttftP50": 6,
+        "ttftP95": 11,
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "100",
+      "vus": 100,
+      "from": "2026-11-11T12:12:51.258Z",
+      "to": "2026-11-11T12:13:51.258Z",
+      "holdS": 60,
+      "turnsPerS": 15.52,
+      "k6": {
+        "turns": 931,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 6,
+          "p95": 11.7,
+          "p99": 15.4,
+          "max": 54,
+          "count": 931
+        },
+        "stream": {
+          "p50": 2313.1,
+          "p95": 2345.3,
+          "p99": 2358.5,
+          "max": 2397.3,
+          "count": 931
+        },
+        "frame": {
+          "p50": 2.4,
+          "p95": 4.9,
+          "p99": 6.4,
+          "max": 32.7,
+          "count": 461
+        },
+        "greeting": {
+          "p50": 1.5,
+          "p95": 2.7,
+          "p99": 3.5,
+          "max": 4.9,
+          "count": 461
+        },
+        "event": {
+          "p50": 1.8,
+          "p95": 3.5,
+          "p99": 5,
+          "max": 12.8,
+          "count": 931
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 18.4,
+        "cpuMax": 27.1,
+        "eluAvg": 0.181,
+        "eluMax": 0.22,
+        "rssMaxMb": 267.7,
+        "lagP99MaxMs": 9.38,
+        "gcMsPerSAvg": 1.7,
+        "gcMaxMs": 4.8,
+        "inFlightMax": 42
+      },
+      "machine": {
+        "samples": 59,
+        "machine": [
+          22.1,
+          41.1
+        ],
+        "server": [
+          18.4,
+          27.4
+        ],
+        "k6": [
+          7.3,
+          12
+        ],
+        "dbVm": [
+          43.8,
+          106
+        ],
+        "docker": [
+          7.3,
+          12
+        ]
+      },
+      "db": {
+        "ttftSamples": 931,
+        "ttftP50": 6,
+        "ttftP95": 11,
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "200",
+      "vus": 200,
+      "from": "2026-11-11T12:14:26.780Z",
+      "to": "2026-11-11T12:15:26.780Z",
+      "holdS": 60,
+      "turnsPerS": 30.73,
+      "k6": {
+        "turns": 1844,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 4.8,
+          "p95": 9.1,
+          "p99": 13.8,
+          "max": 52.9,
+          "count": 1844
+        },
+        "stream": {
+          "p50": 2282.6,
+          "p95": 2311.5,
+          "p99": 2323.1,
+          "max": 2339.5,
+          "count": 1844
+        },
+        "frame": {
+          "p50": 1.8,
+          "p95": 3.9,
+          "p99": 5.9,
+          "max": 29.2,
+          "count": 909
+        },
+        "greeting": {
+          "p50": 1.1,
+          "p95": 2.5,
+          "p99": 3.3,
+          "max": 15.2,
+          "count": 909
+        },
+        "event": {
+          "p50": 1.4,
+          "p95": 2.9,
+          "p99": 4.1,
+          "max": 36.4,
+          "count": 1831
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 28.2,
+        "cpuMax": 34.4,
+        "eluAvg": 0.278,
+        "eluMax": 0.335,
+        "rssMaxMb": 292.1,
+        "lagP99MaxMs": 12.33,
+        "gcMsPerSAvg": 3.2,
+        "gcMaxMs": 7.2,
+        "inFlightMax": 85
+      },
+      "machine": {
+        "samples": 60,
+        "machine": [
+          25.6,
+          59.7
+        ],
+        "server": [
+          28.2,
+          35.1
+        ],
+        "k6": [
+          12.2,
+          19
+        ],
+        "dbVm": [
+          56.9,
+          123.2
+        ],
+        "docker": [
+          10.3,
+          15.1
+        ]
+      },
+      "db": {
+        "ttftSamples": 1842,
+        "ttftP50": 4,
+        "ttftP95": 8,
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "400",
+      "vus": 400,
+      "from": "2026-11-11T12:16:02.079Z",
+      "to": "2026-11-11T12:17:02.079Z",
+      "holdS": 60,
+      "turnsPerS": 61.55,
+      "k6": {
+        "turns": 3693,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 3.5,
+          "p95": 6.8,
+          "p99": 11.7,
+          "max": 71.6,
+          "count": 3693
+        },
+        "stream": {
+          "p50": 2257.6,
+          "p95": 2301.3,
+          "p99": 2319.2,
+          "max": 2350.5,
+          "count": 3693
+        },
+        "frame": {
+          "p50": 1.2,
+          "p95": 3.2,
+          "p99": 5.6,
+          "max": 52.9,
+          "count": 1838
+        },
+        "greeting": {
+          "p50": 0.8,
+          "p95": 1.9,
+          "p99": 3.1,
+          "max": 28,
+          "count": 1838
+        },
+        "event": {
+          "p50": 0.9,
+          "p95": 2.3,
+          "p99": 3.7,
+          "max": 51.8,
+          "count": 3699
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 35.4,
+        "cpuMax": 40.7,
+        "eluAvg": 0.347,
+        "eluMax": 0.384,
+        "rssMaxMb": 318.9,
+        "lagP99MaxMs": 16.64,
+        "gcMsPerSAvg": 4.5,
+        "gcMaxMs": 3.9,
+        "inFlightMax": 152
+      },
+      "machine": {
+        "samples": 60,
+        "machine": [
+          24.7,
+          40.7
+        ],
+        "server": [
+          35.4,
+          39.8
+        ],
+        "k6": [
+          16.2,
+          25
+        ],
+        "dbVm": [
+          70.1,
+          122.7
+        ],
+        "docker": [
+          14.2,
+          19
+        ]
+      },
+      "db": {
+        "ttftSamples": 3701,
+        "ttftP50": 3,
+        "ttftP95": 6,
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "800",
+      "vus": 800,
+      "from": "2026-11-11T12:17:38.771Z",
+      "to": "2026-11-11T12:18:38.771Z",
+      "holdS": 60,
+      "turnsPerS": 123.42,
+      "k6": {
+        "turns": 7405,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 4.7,
+          "p95": 9.9,
+          "p99": 22.2,
+          "max": 88.3,
+          "count": 7405
+        },
+        "stream": {
+          "p50": 2238.1,
+          "p95": 2268.5,
+          "p99": 2280.2,
+          "max": 2327.2,
+          "count": 7405
+        },
+        "frame": {
+          "p50": 1.2,
+          "p95": 3.5,
+          "p99": 10.1,
+          "max": 46.3,
+          "count": 3670
+        },
+        "greeting": {
+          "p50": 0.8,
+          "p95": 2.6,
+          "p99": 6.6,
+          "max": 32.7,
+          "count": 3670
+        },
+        "event": {
+          "p50": 0.9,
+          "p95": 2.6,
+          "p99": 6,
+          "max": 36.4,
+          "count": 7408
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 53.4,
+        "cpuMax": 59.2,
+        "eluAvg": 0.516,
+        "eluMax": 0.575,
+        "rssMaxMb": 352.1,
+        "lagP99MaxMs": 13.48,
+        "gcMsPerSAvg": 8.4,
+        "gcMaxMs": 4.5,
+        "inFlightMax": 325
+      },
+      "machine": {
+        "samples": 60,
+        "machine": [
+          40,
+          52.3
+        ],
+        "server": [
+          53.4,
+          58.9
+        ],
+        "k6": [
+          27.1,
+          43.9
+        ],
+        "dbVm": [
+          135.8,
+          171.2
+        ],
+        "docker": [
+          27.2,
+          33.1
+        ]
+      },
+      "db": {
+        "ttftSamples": 7401,
+        "ttftP50": 4,
+        "ttftP95": 9,
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "1200",
+      "vus": 1200,
+      "from": "2026-11-11T12:19:16.337Z",
+      "to": "2026-11-11T12:20:16.337Z",
+      "holdS": 60,
+      "turnsPerS": 183.13,
+      "k6": {
+        "turns": 10988,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 10.2,
+          "p95": 151.5,
+          "p99": 402,
+          "max": 685.2,
+          "count": 10988
+        },
+        "stream": {
+          "p50": 2274.1,
+          "p95": 2445.6,
+          "p99": 2693.2,
+          "max": 3004.3,
+          "count": 10988
+        },
+        "frame": {
+          "p50": 3.2,
+          "p95": 43.3,
+          "p99": 106.8,
+          "max": 316.9,
+          "count": 5430
+        },
+        "greeting": {
+          "p50": 2.3,
+          "p95": 37.9,
+          "p99": 83.9,
+          "max": 216.2,
+          "count": 5431
+        },
+        "event": {
+          "p50": 2.4,
+          "p95": 37.6,
+          "p99": 92.2,
+          "max": 316.5,
+          "count": 10990
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 84.4,
+        "cpuMax": 95.8,
+        "eluAvg": 0.834,
+        "eluMax": 0.988,
+        "rssMaxMb": 378.5,
+        "lagP99MaxMs": 19.75,
+        "gcMsPerSAvg": 14.8,
+        "gcMaxMs": 5,
+        "inFlightMax": 478
+      },
+      "machine": {
+        "samples": 60,
+        "machine": [
+          63.4,
+          85.6
+        ],
+        "server": [
+          84.4,
+          97.1
+        ],
+        "k6": [
+          42.2,
+          68.2
+        ],
+        "dbVm": [
+          228.8,
+          309
+        ],
+        "docker": [
+          40.5,
+          50.5
+        ]
+      },
+      "db": {
+        "ttftSamples": 10978,
+        "ttftP50": 9,
+        "ttftP95": 148,
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "10-again",
+      "vus": 10,
+      "from": "2026-11-11T12:20:52.613Z",
+      "to": "2026-11-11T12:21:52.613Z",
+      "holdS": 60,
+      "turnsPerS": 1.5,
+      "k6": {
+        "turns": 90,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 7.8,
+          "p95": 16.4,
+          "p99": 25.1,
+          "max": 28.3,
+          "count": 90
+        },
+        "stream": {
+          "p50": 2367,
+          "p95": 2395.2,
+          "p99": 2405.1,
+          "max": 2411,
+          "count": 90
+        },
+        "frame": {
+          "p50": 4.1,
+          "p95": 5.6,
+          "p99": 6.5,
+          "max": 7,
+          "count": 45
+        },
+        "greeting": {
+          "p50": 2,
+          "p95": 2.7,
+          "p99": 3.1,
+          "max": 3.1,
+          "count": 45
+        },
+        "event": {
+          "p50": 2.4,
+          "p95": 5.2,
+          "p99": 5.6,
+          "max": 5.9,
+          "count": 90
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 3.4,
+        "cpuMax": 11.5,
+        "eluAvg": 0.036,
+        "eluMax": 0.071,
+        "rssMaxMb": 376.8,
+        "lagP99MaxMs": 6.57,
+        "gcMsPerSAvg": 0.4,
+        "gcMaxMs": 6.5,
+        "inFlightMax": 8
+      },
+      "machine": {
+        "samples": 60,
+        "machine": [
+          12.2,
+          25.2
+        ],
+        "server": [
+          3.5,
+          11.3
+        ],
+        "k6": [
+          1.6,
+          3.1
+        ],
+        "dbVm": [
+          13.5,
+          88.3
+        ],
+        "docker": [
+          1.4,
+          8
+        ]
+      },
+      "db": {
+        "ttftSamples": 90,
+        "ttftP50": 7,
+        "ttftP95": 16,
+        "ledgerRowsBefore": 1
+      }
+    }
+  ]
+}

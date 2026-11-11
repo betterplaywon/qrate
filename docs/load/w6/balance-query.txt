@@ -1,0 +1,26 @@
+# 잔액 조회(원장 합계) 한 번의 실행 시간. 측정 뒤 부하 없는 DB에서 테넌트마다 3번 (2026-11-11)
+# select sum(delta) from "CreditLedger" where "tenantId" = <테넌트>  (src/repo/prisma/credits.ts balance)
+
+## load-mwc41wr9-400 원장 4547행
+Execution Time: 1.693 ms
+Execution Time: 1.478 ms
+Execution Time: 1.325 ms
+
+## load-mwc52onk-400 원장 104547행
+->  Bitmap Heap Scan on "CreditLedger"  (cost=2088.59..12433.50 rows=110473 width=4) (actual time=1.672..11.201 rows=104547 loops=1)
+->  Bitmap Index Scan on "CreditLedger_tenantId_createdAt_idx"  (cost=0.00..2060.97 rows=110473 width=0) (actual time=1.545..1.545 rows=104547 loops=1)
+Execution Time: 14.840 ms
+->  Bitmap Heap Scan on "CreditLedger"  (cost=2088.59..12433.50 rows=110473 width=4) (actual time=1.671..12.989 rows=104547 loops=1)
+->  Bitmap Index Scan on "CreditLedger_tenantId_createdAt_idx"  (cost=0.00..2060.97 rows=110473 width=0) (actual time=1.546..1.546 rows=104547 loops=1)
+Execution Time: 17.198 ms
+->  Bitmap Heap Scan on "CreditLedger"  (cost=2088.59..12433.50 rows=110473 width=4) (actual time=1.776..11.642 rows=104547 loops=1)
+->  Bitmap Index Scan on "CreditLedger_tenantId_createdAt_idx"  (cost=0.00..2060.97 rows=110473 width=0) (actual time=1.648..1.648 rows=104547 loops=1)
+Execution Time: 15.543 ms
+
+## load-mwc55w5z-400 원장 304517행
+->  Parallel Seq Scan on "CreditLedger"  (cost=0.00..12142.90 rows=129072 width=4) (actual time=0.020..19.269 rows=101506 loops=3)
+Execution Time: 27.441 ms
+->  Parallel Seq Scan on "CreditLedger"  (cost=0.00..12142.90 rows=129072 width=4) (actual time=0.021..19.124 rows=101506 loops=3)
+Execution Time: 27.226 ms
+->  Parallel Seq Scan on "CreditLedger"  (cost=0.00..12142.90 rows=129072 width=4) (actual time=0.021..18.647 rows=101506 loops=3)
+Execution Time: 26.778 ms

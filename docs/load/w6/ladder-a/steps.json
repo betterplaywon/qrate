@@ -1,0 +1,822 @@
+{
+  "meta": {
+    "date": "2026-11-11T12:44:06.696Z",
+    "machine": "Apple M1 8코어, 메모리 16GB, Darwin 25.6.0",
+    "node": "v24.22.1",
+    "k6": "k6 v2.3.0 (commit/devel, go1.27.1, darwin/arm64)",
+    "postgres": "PostgreSQL 16.15",
+    "fileLimit": "1048576",
+    "settings": {
+      "vus": [
+        10,
+        50,
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "rampS": 15,
+      "holdS": 60,
+      "thinkS": 3,
+      "mockDelayMs": 20,
+      "pool": "default",
+      "ledgerRows": 0,
+      "profile": false
+    }
+  },
+  "steps": [
+    {
+      "label": "10",
+      "vus": 10,
+      "from": "2026-11-11T12:45:03.771Z",
+      "to": "2026-11-11T12:46:03.771Z",
+      "holdS": 60,
+      "turnsPerS": 1.48,
+      "k6": {
+        "turns": 89,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 9.9,
+          "p95": 19.5,
+          "p99": 31.9,
+          "max": 36.8,
+          "count": 89
+        },
+        "stream": {
+          "p50": 2368.3,
+          "p95": 2395.2,
+          "p99": 2406.8,
+          "max": 2411.6,
+          "count": 89
+        },
+        "frame": {
+          "p50": 4.4,
+          "p95": 6.7,
+          "p99": 7.1,
+          "max": 7.3,
+          "count": 46
+        },
+        "assets": {
+          "p50": 1.1,
+          "p95": 1.8,
+          "p99": 2.5,
+          "max": 2.7,
+          "count": 92
+        },
+        "greeting": {
+          "p50": 2.3,
+          "p95": 3.5,
+          "p99": 4.2,
+          "max": 4.6,
+          "count": 46
+        },
+        "event": {
+          "p50": 2.8,
+          "p95": 6.3,
+          "p99": 6.8,
+          "max": 7,
+          "count": 91
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 5,
+        "cpuMax": 8.8,
+        "eluAvg": 0.04,
+        "eluMax": 0.061,
+        "rssMaxMb": 219.4,
+        "lagP99MaxMs": 7.04,
+        "gcMsPerSAvg": 0.6,
+        "gcMaxMs": 3.3,
+        "inFlightMax": 8
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          13.5,
+          33.3
+        ],
+        "server": [
+          5,
+          8.9
+        ],
+        "k6": [
+          1.7,
+          3
+        ],
+        "dbVm": [
+          12.9,
+          64.4
+        ],
+        "docker": [
+          1.4,
+          8.1
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 89,
+          "p50Ms": 9,
+          "p95Ms": 21
+        },
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "50",
+      "vus": 50,
+      "from": "2026-11-11T12:46:36.526Z",
+      "to": "2026-11-11T12:47:36.526Z",
+      "holdS": 60,
+      "turnsPerS": 7.68,
+      "k6": {
+        "turns": 461,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 8.3,
+          "p95": 14.2,
+          "p99": 19.9,
+          "max": 33.9,
+          "count": 461
+        },
+        "stream": {
+          "p50": 2335.5,
+          "p95": 2363.1,
+          "p99": 2377.7,
+          "max": 2386.4,
+          "count": 461
+        },
+        "frame": {
+          "p50": 3.5,
+          "p95": 5.5,
+          "p99": 6.3,
+          "max": 6.5,
+          "count": 225
+        },
+        "assets": {
+          "p50": 1,
+          "p95": 2.5,
+          "p99": 4.5,
+          "max": 8.9,
+          "count": 450
+        },
+        "greeting": {
+          "p50": 1.9,
+          "p95": 3.1,
+          "p99": 4.7,
+          "max": 7.3,
+          "count": 225
+        },
+        "event": {
+          "p50": 2.3,
+          "p95": 5.4,
+          "p99": 7.3,
+          "max": 17.6,
+          "count": 454
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 14.7,
+        "cpuMax": 22,
+        "eluAvg": 0.134,
+        "eluMax": 0.188,
+        "rssMaxMb": 233.8,
+        "lagP99MaxMs": 4.18,
+        "gcMsPerSAvg": 1.9,
+        "gcMaxMs": 12.3,
+        "inFlightMax": 26
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          15.4,
+          40.7
+        ],
+        "server": [
+          14.7,
+          22.3
+        ],
+        "k6": [
+          5.6,
+          8.2
+        ],
+        "dbVm": [
+          28.6,
+          47.9
+        ],
+        "docker": [
+          4.5,
+          11
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 461,
+          "p50Ms": 7,
+          "p95Ms": 13
+        },
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "100",
+      "vus": 100,
+      "from": "2026-11-11T12:48:10.631Z",
+      "to": "2026-11-11T12:49:10.631Z",
+      "holdS": 60,
+      "turnsPerS": 15.23,
+      "k6": {
+        "turns": 914,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 7.2,
+          "p95": 12,
+          "p99": 14.9,
+          "max": 27.6,
+          "count": 914
+        },
+        "stream": {
+          "p50": 2314.2,
+          "p95": 2350.4,
+          "p99": 2366.8,
+          "max": 2393.1,
+          "count": 914
+        },
+        "frame": {
+          "p50": 2.6,
+          "p95": 4.9,
+          "p99": 5.4,
+          "max": 8.3,
+          "count": 454
+        },
+        "assets": {
+          "p50": 0.9,
+          "p95": 2.2,
+          "p99": 3.8,
+          "max": 5.8,
+          "count": 908
+        },
+        "greeting": {
+          "p50": 1.6,
+          "p95": 2.7,
+          "p99": 4.6,
+          "max": 9,
+          "count": 454
+        },
+        "event": {
+          "p50": 2,
+          "p95": 4.6,
+          "p99": 5.9,
+          "max": 16.7,
+          "count": 916
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 22.7,
+        "cpuMax": 33.7,
+        "eluAvg": 0.213,
+        "eluMax": 0.277,
+        "rssMaxMb": 272,
+        "lagP99MaxMs": 3.88,
+        "gcMsPerSAvg": 2.2,
+        "gcMaxMs": 7.7,
+        "inFlightMax": 46
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          17.2,
+          31.9
+        ],
+        "server": [
+          22.7,
+          32.3
+        ],
+        "k6": [
+          9.5,
+          14.8
+        ],
+        "dbVm": [
+          43.5,
+          64.9
+        ],
+        "docker": [
+          7.6,
+          17.4
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 913,
+          "p50Ms": 6,
+          "p95Ms": 11
+        },
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "200",
+      "vus": 200,
+      "from": "2026-11-11T12:49:42.440Z",
+      "to": "2026-11-11T12:50:42.440Z",
+      "holdS": 60,
+      "turnsPerS": 30.5,
+      "k6": {
+        "turns": 1830,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 5.5,
+          "p95": 9.6,
+          "p99": 13.5,
+          "max": 54.3,
+          "count": 1830
+        },
+        "stream": {
+          "p50": 2283.6,
+          "p95": 2312.4,
+          "p99": 2332,
+          "max": 2353.7,
+          "count": 1830
+        },
+        "frame": {
+          "p50": 1.9,
+          "p95": 3.9,
+          "p99": 5.4,
+          "max": 9.6,
+          "count": 923
+        },
+        "assets": {
+          "p50": 0.7,
+          "p95": 2.6,
+          "p99": 4.1,
+          "max": 7.1,
+          "count": 1846
+        },
+        "greeting": {
+          "p50": 1.1,
+          "p95": 2.1,
+          "p99": 3.4,
+          "max": 8.5,
+          "count": 923
+        },
+        "event": {
+          "p50": 1.4,
+          "p95": 3.5,
+          "p99": 5,
+          "max": 18.3,
+          "count": 1848
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 31.5,
+        "cpuMax": 38.5,
+        "eluAvg": 0.302,
+        "eluMax": 0.361,
+        "rssMaxMb": 285.1,
+        "lagP99MaxMs": 8.17,
+        "gcMsPerSAvg": 3.4,
+        "gcMaxMs": 4.9,
+        "inFlightMax": 92
+      },
+      "machine": {
+        "samples": 59,
+        "allCores": [
+          21,
+          34.4
+        ],
+        "server": [
+          31.6,
+          38.6
+        ],
+        "k6": [
+          14.3,
+          21.2
+        ],
+        "dbVm": [
+          55.3,
+          73.7
+        ],
+        "docker": [
+          10.2,
+          15.3
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 1830,
+          "p50Ms": 5,
+          "p95Ms": 9
+        },
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "400",
+      "vus": 400,
+      "from": "2026-11-11T12:51:17.054Z",
+      "to": "2026-11-11T12:52:17.054Z",
+      "holdS": 60,
+      "turnsPerS": 61.45,
+      "k6": {
+        "turns": 3687,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 4.2,
+          "p95": 8.2,
+          "p99": 16.5,
+          "max": 85.2,
+          "count": 3687
+        },
+        "stream": {
+          "p50": 2257,
+          "p95": 2306,
+          "p99": 2335.9,
+          "max": 2362.9,
+          "count": 3687
+        },
+        "frame": {
+          "p50": 1.2,
+          "p95": 3.3,
+          "p99": 7.5,
+          "max": 48.3,
+          "count": 1835
+        },
+        "assets": {
+          "p50": 0.5,
+          "p95": 2,
+          "p99": 4.4,
+          "max": 24,
+          "count": 3670
+        },
+        "greeting": {
+          "p50": 0.8,
+          "p95": 1.9,
+          "p99": 3.6,
+          "max": 28.7,
+          "count": 1835
+        },
+        "event": {
+          "p50": 1,
+          "p95": 2.8,
+          "p99": 5.2,
+          "max": 54.6,
+          "count": 3690
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 38.5,
+        "cpuMax": 48,
+        "eluAvg": 0.372,
+        "eluMax": 0.46,
+        "rssMaxMb": 329.7,
+        "lagP99MaxMs": 24.67,
+        "gcMsPerSAvg": 5,
+        "gcMaxMs": 6.8,
+        "inFlightMax": 163
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          25.8,
+          56.7
+        ],
+        "server": [
+          38.5,
+          48.9
+        ],
+        "k6": [
+          18.3,
+          29.2
+        ],
+        "dbVm": [
+          73,
+          189.2
+        ],
+        "docker": [
+          14.5,
+          19
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 3687,
+          "p50Ms": 4,
+          "p95Ms": 7
+        },
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "800",
+      "vus": 800,
+      "from": "2026-11-11T12:52:51.798Z",
+      "to": "2026-11-11T12:53:51.798Z",
+      "holdS": 60,
+      "turnsPerS": 123.68,
+      "k6": {
+        "turns": 7421,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 5.1,
+          "p95": 13.1,
+          "p99": 69.6,
+          "max": 403.1,
+          "count": 7421
+        },
+        "stream": {
+          "p50": 2237,
+          "p95": 2275.2,
+          "p99": 2372.9,
+          "max": 2632.4,
+          "count": 7421
+        },
+        "frame": {
+          "p50": 1.2,
+          "p95": 5,
+          "p99": 46.6,
+          "max": 127.8,
+          "count": 3685
+        },
+        "assets": {
+          "p50": 0.7,
+          "p95": 3.7,
+          "p99": 13.4,
+          "max": 92.9,
+          "count": 7370
+        },
+        "greeting": {
+          "p50": 0.9,
+          "p95": 3.5,
+          "p99": 50.6,
+          "max": 112.6,
+          "count": 3685
+        },
+        "event": {
+          "p50": 1.1,
+          "p95": 3.9,
+          "p99": 32.8,
+          "max": 112.8,
+          "count": 7428
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 61.1,
+        "cpuMax": 82.3,
+        "eluAvg": 0.579,
+        "eluMax": 0.782,
+        "rssMaxMb": 370.2,
+        "lagP99MaxMs": 18.07,
+        "gcMsPerSAvg": 9.3,
+        "gcMaxMs": 8.8,
+        "inFlightMax": 308
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          42,
+          69.2
+        ],
+        "server": [
+          61.2,
+          87.9
+        ],
+        "k6": [
+          30.8,
+          60.4
+        ],
+        "dbVm": [
+          139.7,
+          247.9
+        ],
+        "docker": [
+          27.5,
+          37.1
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 7429,
+          "p50Ms": 5,
+          "p95Ms": 12
+        },
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "1200",
+      "vus": 1200,
+      "from": "2026-11-11T12:54:26.589Z",
+      "to": "2026-11-11T12:55:26.589Z",
+      "holdS": 60,
+      "turnsPerS": 183.48,
+      "k6": {
+        "turns": 11009,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 10.6,
+          "p95": 88.7,
+          "p99": 148.7,
+          "max": 231.2,
+          "count": 11009
+        },
+        "stream": {
+          "p50": 2301.1,
+          "p95": 2395.8,
+          "p99": 2453.2,
+          "max": 2568.5,
+          "count": 11009
+        },
+        "frame": {
+          "p50": 4.1,
+          "p95": 28.3,
+          "p99": 46.3,
+          "max": 133,
+          "count": 5440
+        },
+        "assets": {
+          "p50": 4.6,
+          "p95": 15.6,
+          "p99": 24.8,
+          "max": 49.3,
+          "count": 10882
+        },
+        "greeting": {
+          "p50": 2.6,
+          "p95": 25,
+          "p99": 38.8,
+          "max": 64,
+          "count": 5443
+        },
+        "event": {
+          "p50": 3,
+          "p95": 25,
+          "p99": 40.3,
+          "max": 116.8,
+          "count": 10970
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 92.9,
+        "cpuMax": 107.8,
+        "eluAvg": 0.897,
+        "eluMax": 0.974,
+        "rssMaxMb": 416.2,
+        "lagP99MaxMs": 20.03,
+        "gcMsPerSAvg": 14.8,
+        "gcMaxMs": 4.6,
+        "inFlightMax": 483
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          57.2,
+          74.4
+        ],
+        "server": [
+          92.9,
+          106.6
+        ],
+        "k6": [
+          45.8,
+          78.3
+        ],
+        "dbVm": [
+          207.8,
+          250.8
+        ],
+        "docker": [
+          39.9,
+          45.2
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 11008,
+          "p50Ms": 9,
+          "p95Ms": 85
+        },
+        "ledgerRowsBefore": 1
+      }
+    },
+    {
+      "label": "10-again",
+      "vus": 10,
+      "from": "2026-11-11T12:56:01.817Z",
+      "to": "2026-11-11T12:57:01.817Z",
+      "holdS": 60,
+      "turnsPerS": 1.57,
+      "k6": {
+        "turns": 94,
+        "chatOkRate": 1,
+        "chatFailed": 0,
+        "ttfb": {
+          "p50": 9.7,
+          "p95": 16.3,
+          "p99": 27.1,
+          "max": 30.3,
+          "count": 94
+        },
+        "stream": {
+          "p50": 2364.2,
+          "p95": 2396.7,
+          "p99": 2411.1,
+          "max": 2414.6,
+          "count": 94
+        },
+        "frame": {
+          "p50": 4.8,
+          "p95": 6.3,
+          "p99": 7.1,
+          "max": 7.4,
+          "count": 47
+        },
+        "assets": {
+          "p50": 0.9,
+          "p95": 1.4,
+          "p99": 2.4,
+          "max": 2.5,
+          "count": 94
+        },
+        "greeting": {
+          "p50": 2.2,
+          "p95": 2.6,
+          "p99": 3.3,
+          "max": 3.9,
+          "count": 47
+        },
+        "event": {
+          "p50": 2.7,
+          "p95": 5.7,
+          "p99": 6.4,
+          "max": 6.5,
+          "count": 96
+        },
+        "stepFailed": 0
+      },
+      "server": {
+        "samples": 60,
+        "cpuAvg": 4,
+        "cpuMax": 15.2,
+        "eluAvg": 0.04,
+        "eluMax": 0.078,
+        "rssMaxMb": 312.4,
+        "lagP99MaxMs": 6.66,
+        "gcMsPerSAvg": 0.6,
+        "gcMaxMs": 8.5,
+        "inFlightMax": 7
+      },
+      "machine": {
+        "samples": 60,
+        "allCores": [
+          11.2,
+          38.1
+        ],
+        "server": [
+          4,
+          12
+        ],
+        "k6": [
+          1.8,
+          4
+        ],
+        "dbVm": [
+          12.5,
+          38.2
+        ],
+        "docker": [
+          1.5,
+          9
+        ]
+      },
+      "db": {
+        "ttft": {
+          "samples": 94,
+          "p50Ms": 8,
+          "p95Ms": 16
+        },
+        "ledgerRowsBefore": 1
+      }
+    }
+  ]
+}
