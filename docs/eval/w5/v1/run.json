@@ -1,0 +1,61 @@
+{
+  "createdAt": "2026-11-11T07:55:34.457Z",
+  "gitSha": "defff8d9d205f9ae662751810edeb4d76c2e53d4",
+  "gitDirty": false,
+  "cases": {
+    "path": "apps/server/eval/cases.json",
+    "sha256": "2d09d4f61086bf10a7a75687bdd366948af08fb13ed05fdbb212b0b8c7e4482e",
+    "version": 1,
+    "status": "approved",
+    "count": 30
+  },
+  "seedSha256": "f0a1813a582eb933b7414fb479dd270722442ab0f42a8f4be5e1ee398e6cd33e",
+  "models": {
+    "sonnet": "claude-sonnet-5-5",
+    "haiku": "claude-haiku-5-5",
+    "judge": "claude-opus-5-5"
+  },
+  "settings": {
+    "thinking": "off",
+    "maxTokens": 1024,
+    "fallback": true,
+    "concurrency": 3,
+    "maxAttempts": 3,
+    "answerTimeoutMs": 60000,
+    "judgeTimeoutMs": 120000,
+    "judge": {
+      "effort": "low",
+      "maxTokens": 4096
+    }
+  },
+  "prices": {
+    "claude-sonnet-5-5": {
+      "input": 2,
+      "cacheWrite": 2.5,
+      "cacheRead": 0.1,
+      "output": 10
+    },
+    "claude-haiku-5-5": {
+      "input": 0.1,
+      "cacheWrite": 0.125,
+      "cacheRead": 0.01,
+      "output": 0.5
+    },
+    "claude-opus-5-5": {
+      "input": 4,
+      "cacheWrite": 5,
+      "cacheRead": 0.2,
+      "output": 20
+    }
+  },
+  "pricesSource": "https://platform.claude.com/docs/en/about-claude/pricing (2026-11-11)",
+  "createdBy": {
+    "command": "answers",
+    "engine": "claude",
+    "judge": "fake",
+    "caps": {
+      "maxCalls": 12,
+      "maxUsd": 0.4
+    }
+  }
+}
