@@ -59,9 +59,20 @@ export function isMostlyEnglish(text: string): boolean {
 
 /**
  * 방문자에게 쓰면 안 되는 내부 표현(답 기준 2026-11-11). 방문자는 "안내 자료"가 무엇인지 모르고, 이 말이 붙은 답은 답을 피하는 것으로 읽힌다.
- * W5 v1에서 Sonnet 답 60개 중 33개에 들어 있었다.
+ * W5 v1에서 Sonnet 답 60개 중 33개에 들어 있었다. 데모 고객사 FAQ 원문에는 "자료"라는 낱말이 없어서, 답에 나오면 그 자체로 내부 표현이다
+ * ("자료에는 … 없습니다", "자료로 확인할 수 없는" 같은 변형까지 잡는다 — v2 짧은 시험).
  */
-export const INTERNAL_TERMS = ['안내 자료', '자료에 없', '자료에 나와 있지 않', '자료에서 확인'] as const;
+export const INTERNAL_TERMS = ['자료'] as const;
+
+/** 글자 중 로마자 비율. 한국어 답도 API·PDF·CSV 같은 낱말을 쓰므로 0이 아니다(v2 짧은 시험의 정상 답은 0.16 이하). */
+function latinShare(text: string): number {
+  const latin = text.match(/[A-Za-z]/g)?.length ?? 0;
+  const hangul = text.match(/[ㄱ-ㆎ가-힣]/g)?.length ?? 0;
+  return latin + hangul === 0 ? 0 : latin / (latin + hangul);
+}
+
+/** 한국어 질문의 답이 이보다 로마자가 많으면 한국어로 답하지 않은 것으로 본다(v2 짧은 시험에서 Haiku가 영어로 답한 둘은 0.69, 1.00). */
+const KOREAN_LATIN_MAX = 0.3;
 
 /** 모델이 도구 호출을 본문 글자로 쓴 흔적. 엔진이 걸러 내므로(engine/tool-markup.ts) 저장된 답에 남아 있으면 그 장치가 샌 것이다. */
 const TOOL_MARKUP = ['<function_calls', '<invoke', '<parameter'] as const;
@@ -111,7 +122,16 @@ export function gradeRules(c: Case, answer: GradableAnswer): RuleResult {
         : missingGroups.length === 0
           ? PASS
           : fail(`없음: ${missingGroups.map((group) => group.join(' | ')).join(' / ')}`),
-    language: expect.language === 'en' ? (isMostlyEnglish(text) ? PASS : fail('영어 답이 아님')) : NA,
+    language:
+      expect.language === 'en'
+        ? isMostlyEnglish(text)
+          ? PASS
+          : fail('영어 답이 아님')
+        : text === ''
+          ? NA
+          : latinShare(text) > KOREAN_LATIN_MAX
+            ? fail('한국어 질문에 한국어로 답하지 않음')
+            : PASS,
     // 빈 답은 guidance·심판이 맡는다. 아래 셋은 글이 있을 때만 본다.
     plainWords: text === '' ? NA : internalTerms.length === 0 ? PASS : fail(`내부 표현: ${internalTerms.join(', ')}`),
     toolMarkup: text === '' ? NA : TOOL_MARKUP.some((marker) => text.includes(marker)) ? fail('본문에 도구 호출 태그') : PASS,

@@ -79,8 +79,18 @@ describe('규칙 채점 — gradeRules', () => {
     const c = makeCase('e', { expect: { language: 'en' } });
     expect(gradeRules(c, answer({ text: 'Yes. With annual billing you pay for 10 months; Starter is 99,000원 per year at 마루인보이스.' })).language.verdict).toBe('pass');
     expect(gradeRules(c, answer({ text: '연간 결제를 하면 2개월분이 할인됩니다. Starter 플랜 기준입니다.' })).language.verdict).toBe('fail');
-    expect(gradeRules(makeCase('k'), answer()).language.verdict).toBe('na');
     expect(isMostlyEnglish('')).toBe(false);
+  });
+
+  it('한국어 사례는 한국어로 답해야 한다 — API·CSV 같은 낱말은 괜찮고, 영어 문장이 섞이면 실패', () => {
+    const k = makeCase('k');
+    expect(gradeRules(k, answer()).language.verdict).toBe('pass');
+    expect(gradeRules(k, answer({ text: '아니요, 공개 API와 웹훅은 제공하지 않습니다. 데이터는 CSV나 PDF 묶음(zip)으로 내보낼 수 있습니다.' })).language.verdict).toBe('pass');
+    // v2 짧은 시험 Haiku h02: 영어 메모가 답 앞에 붙었다
+    const mixed =
+      "This is an account change request, which needs a human agent to process. The materials don't describe how to change the login email, so I'll hand it off. 로그인 이메일 변경은 상담원이 이어서 안내해 드리겠습니다.";
+    expect(gradeRules(k, answer({ text: mixed })).language.verdict).toBe('fail');
+    expect(gradeRules(k, answer({ text: '' })).language.verdict).toBe('na');
   });
 
   it('잘림·거절·차단은 정상 종료가 아니라서 다른 규칙과 상관없이 통과하지 못한다', () => {
@@ -93,10 +103,15 @@ describe('규칙 채점 — gradeRules', () => {
     expect(rulesPass(gradeRules(c, answer()))).toBe(true);
   });
 
-  it('방문자에게 내부 표현("안내 자료" 등)을 쓰면 실패한다 — 띄어쓰기가 달라도', () => {
+  it('방문자에게 내부 표현("자료")을 쓰면 실패한다 — 띄어쓰기가 다르거나 말을 바꿔도', () => {
     const c = makeCase('x');
-    // W5 v1 Sonnet 답에서 실제로 나온 문장들
-    for (const text of ['원천징수 3.3% 자동 계산 여부는 안내 자료에 없는 내용입니다.', 'API나 웹훅 제공 여부는 안내자료에서 확인되지 않습니다.', '그 내용은 자료에 없습니다.']) {
+    // W5 v1 Sonnet 답과 v2 짧은 시험 Haiku 답에서 실제로 나온 문장들
+    for (const text of [
+      '원천징수 3.3% 자동 계산 여부는 안내 자료에 없는 내용입니다.',
+      'API나 웹훅 제공 여부는 안내자료에서 확인되지 않습니다.',
+      '자료에는 기업용 요금이나 별도 견적에 관한 내용이 없습니다.',
+      '이 부분은 제가 자료로 확인할 수 없는 개별 발송 건의 원인이라, 상담원이 이어서 안내해 드리겠습니다.',
+    ]) {
       expect(gradeRules(c, answer({ text })).plainWords.verdict).toBe('fail');
     }
     expect(gradeRules(c, answer({ text: '그 부분은 상담원이 이어서 안내해 드릴게요.' })).plainWords.verdict).toBe('pass');

@@ -133,7 +133,7 @@ describe('보고서 — buildSummary', () => {
       guidance: { count: 0, n: 4 },
       cites: { count: 0, n: 1 },
       mustInclude: { count: 0, n: 1 },
-      language: { count: 0, n: 0 },
+      language: { count: 0, n: 7 },
       plainWords: { count: 0, n: 7 },
       toolMarkup: { count: 0, n: 7 },
       repetition: { count: 0, n: 7 },
