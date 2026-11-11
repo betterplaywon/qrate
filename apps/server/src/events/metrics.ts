@@ -43,7 +43,7 @@ export function nearestRank(sortedAsc: readonly number[], percent: 50 | 95): num
   return sortedAsc[Math.ceil((percent * sortedAsc.length) / 100) - 1] ?? null;
 }
 
-function summarizeTtft(values: readonly number[]): ConsoleMetrics['ttft'] {
+export function summarizeTtft(values: readonly number[]): ConsoleMetrics['ttft'] {
   const sorted = [...values].sort((a, b) => a - b);
   return { samples: sorted.length, p50Ms: nearestRank(sorted, 50), p95Ms: nearestRank(sorted, 95) };
 }

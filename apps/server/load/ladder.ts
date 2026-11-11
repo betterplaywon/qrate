@@ -1,5 +1,3 @@
-// 부하 측정 사다리(W6). 측정 서버(load/server.ts)를 띄우고, 데우기 한 번 뒤 동시 방문자 수마다 k6 시나리오(load/visit.js)를 돌려
-// 실행 폴더에 원본(k6 요약·서버 표본·로그)과 표(report.md)를 남긴다. 사용법과 전제는 load/README.md.
 import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -7,10 +5,20 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import type { z } from 'zod';
 import { applySeed, createPrismaClient, createPrismaRepositories } from '../src/repo/prisma.js';
 import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
-import { sampleCpu, type CpuSample } from './cpu.js';
-import { formatReport, readK6Export, summarizeMachine, summarizeServer, summarizeTtft, type StatsSample, type StepResult } from './summary.js';
+import { cpuSampleSchema, sampleCpu, type CpuSample } from './cpu.js';
+import {
+  formatReport,
+  readK6Export,
+  statsSampleSchema,
+  summarizeDb,
+  summarizeMachine,
+  summarizeServer,
+  type StepResult,
+  type Window,
+} from './summary.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const serverDir = path.resolve(here, '..');
@@ -22,13 +30,11 @@ const { values: args } = parseArgs({
     ramp: { type: 'string', default: '15' },
     hold: { type: 'string', default: '60' },
     think: { type: 'string', default: '3' },
-    pool: { type: 'string', default: '0' },
+    pool: { type: 'string' },
     delay: { type: 'string', default: '20' },
     port: { type: 'string', default: '8789' },
     'repeat-first': { type: 'boolean', default: false },
-    /** 단계마다 새 테넌트의 크레딧 원장에 미리 넣을 행 수(차감 기록). 잔액이 원장 합계라 행 수가 잔액 조회 비용을 정한다. */
     'ledger-rows': { type: 'string', default: '0' },
-    /** 측정 서버를 node --cpu-prof로 띄워 실행 폴더에 server.cpuprofile을 남긴다(프로파일러 비용이 측정에 들어간다). */
     profile: { type: 'boolean', default: false },
   },
 });
@@ -46,6 +52,7 @@ const rampS = int('ramp', args.ramp);
 const holdS = int('hold', args.hold);
 const thinkS = Number(args.think);
 const ledgerRows = int('ledger-rows', args['ledger-rows']);
+const pool = args.pool === undefined ? undefined : int('pool', args.pool);
 const port = int('port', args.port);
 const base = `http://127.0.0.1:${port}`;
 const databaseUrl = process.env.DATABASE_URL;
@@ -53,13 +60,15 @@ if (!databaseUrl) throw new Error('DATABASE_URL이 필요하다(이름에 load�
 if (existsSync(path.join(runDir, 'steps.json'))) throw new Error(`${runDir}에 이미 결과가 있다. 새 폴더를 쓴다`);
 mkdirSync(runDir, { recursive: true });
 
+const STEP_TENANT_BALANCE = 1_000_000;
+const FILL_CHUNK = 10_000;
+
 function k6Version(): string {
   const r = spawnSync('k6', ['version'], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error('k6가 PATH에 없다 (brew install k6)');
   return r.stdout.trim();
 }
 
-/** 이 셸에서 연 프로세스가 열 수 있는 파일 수. 낮으면(256) 방문자가 많을 때 소켓이 모자라 서버가 아니라 환경이 막힌다. */
 function fileLimit(): string {
   return spawnSync('/bin/sh', ['-c', 'ulimit -n'], { encoding: 'utf8' }).stdout.trim();
 }
@@ -85,19 +94,25 @@ async function waitForHealth(child: ReturnType<typeof spawn>, logPath: string): 
   throw new Error(`측정 서버가 60초 안에 뜨지 않았다 — ${logPath}`);
 }
 
+async function requireFrameAssets(): Promise<void> {
+  for (const file of ['app.js', 'app.css']) {
+    const res = await fetch(`${base}/frame/${file}`);
+    if (res.status !== 200) throw new Error(`/frame/${file}이 ${res.status}다. 위젯을 먼저 빌드한다 (pnpm --filter @qrate/widget build)`);
+  }
+}
+
 interface K6Run {
   label: string;
   vus: number;
   ramp: number;
   hold: number;
-  /** k6가 부를 테넌트 키. */
-  tenant: string;
+  tenantKey: string;
 }
 
-async function runK6({ label, vus, ramp, hold, tenant }: K6Run): Promise<{ exportPath: string; startedAt: number }> {
+async function runK6({ label, vus, ramp, hold, tenantKey }: K6Run): Promise<{ exportPath: string; startedAt: number }> {
   const exportPath = path.join(runDir, `k6-${label}.json`);
   const log = openSync(path.join(runDir, `k6-${label}.log`), 'a');
-  const env = [`VUS=${vus}`, `RAMP_S=${ramp}`, `HOLD_S=${hold}`, `THINK_S=${thinkS}`, `BASE_URL=${base}`, `TENANT=${tenant}`];
+  const env = [`VUS=${vus}`, `RAMP_S=${ramp}`, `HOLD_S=${hold}`, `THINK_S=${thinkS}`, `BASE_URL=${base}`, `TENANT=${tenantKey}`];
   const startedAt = Date.now();
   const child = spawn('k6', ['run', '--quiet', '--summary-export', exportPath, ...env.flatMap((e) => ['-e', e]), path.join(here, 'visit.js')], {
     stdio: ['ignore', log, log],
@@ -107,36 +122,45 @@ async function runK6({ label, vus, ramp, hold, tenant }: K6Run): Promise<{ expor
   return { exportPath, startedAt };
 }
 
-/** 이 실행이 직접 쓴 JSONL(측정 서버의 표본, 기기 CPU 표본)을 읽는다. */
-function readJsonl<T>(file: string): T[] {
+function readJsonl<T>(file: string, schema: z.ZodType<T>): T[] {
   if (!existsSync(file)) return [];
   return readFileSync(file, 'utf8')
     .split('\n')
     .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as T);
+    .map((line) => schema.parse(JSON.parse(line)));
 }
 
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const prisma = createPrismaClient(databaseUrl);
 const repos = createPrismaRepositories(prisma);
 const runStamp = Date.now().toString(36);
-const FILL_CHUNK = 10_000;
 
-/**
- * 단계 전용 테넌트(데모와 같은 지식·허용 오리진, 키 = id). 단계마다 원장이 비어 있어야 앞 단계가 쌓은 행이 뒤 단계의 잔액 조회를
- * 무겁게 하지 않는다. ledgerRows만큼 차감 기록을 미리 넣고, 잔액은 그만큼 더 지급해 백만으로 맞춘다.
- */
-async function stepTenant(label: string): Promise<{ id: string; ledgerRowsBefore: number }> {
+async function stepTenant(label: string): Promise<{ id: string; apiKey: string; ledgerRowsBefore: number }> {
   const id = `load-${runStamp}-${label}`;
-  await applySeed(prisma, { ...seed, tenant: { ...seed.tenant, id, apiKey: id }, initialCredits: 1_000_000 + ledgerRows });
+  const apiKey = id;
+  await applySeed(prisma, { ...seed, tenant: { ...seed.tenant, id, apiKey }, initialCredits: STEP_TENANT_BALANCE + ledgerRows });
   for (let offset = 0; offset < ledgerRows; offset += FILL_CHUNK) {
     const size = Math.min(FILL_CHUNK, ledgerRows - offset);
     await prisma.creditLedger.createMany({
       data: Array.from({ length: size }, (_, i) => ({ tenantId: id, delta: -1, reason: 'turn' as const, idempotencyKey: `turn:fill-${offset + i}` })),
     });
   }
-  return { id, ledgerRowsBefore: await prisma.creditLedger.count({ where: { tenantId: id } }) };
+  return { id, apiKey, ledgerRowsBefore: await prisma.creditLedger.count({ where: { tenantId: id } }) };
 }
+
+/** 대화 요청 사건은 응답을 다 보낸 뒤 기다리지 않고 저장된다. 표본 수가 0.5초 사이에 그대로일 때까지 다시 센다. */
+async function settledTtft(tenantId: string, window: Window): Promise<number[]> {
+  const range = { from: new Date(window.from), to: new Date(window.to) };
+  let previous = -1;
+  for (let i = 0; i < 60; i += 1) {
+    const samples = await repos.events.ttftSamples(tenantId, range);
+    if (samples.length === previous) return samples;
+    previous = samples.length;
+    await sleep(500);
+  }
+  throw new Error(`${tenantId}: 대화 요청 사건 수가 30초 안에 멈추지 않았다`);
+}
+
 const statsPath = path.join(runDir, 'server-stats.jsonl');
 const cpuPath = path.join(runDir, 'cpu.jsonl');
 const serverLogPath = path.join(runDir, 'server.log');
@@ -156,7 +180,7 @@ const meta = {
     holdS,
     thinkS,
     mockDelayMs: int('delay', args.delay),
-    pool: int('pool', args.pool) || 'default(10)',
+    pool: pool ?? 'default',
     ledgerRows,
     profile: args.profile,
   },
@@ -171,7 +195,7 @@ const server = spawn(process.execPath, [...profileArgs, '--conditions=source', '
     ...process.env,
     PORT: String(port),
     QRATE_LOAD_DELAY_MS: args.delay,
-    QRATE_LOAD_POOL: args.pool,
+    ...(pool === undefined ? {} : { QRATE_LOAD_POOL: String(pool) }),
     QRATE_LOAD_STATS_FILE: statsPath,
   },
   stdio: ['ignore', serverLog, serverLog],
@@ -182,8 +206,9 @@ const stopCpu = sampleCpu(server.pid ?? -1, (sample: CpuSample) => appendFileSyn
 const steps: StepResult[] = [];
 try {
   await waitForHealth(server, serverLogPath);
+  await requireFrameAssets();
   console.log(`[load] 데우기 10명 ${rampS + 10}초`);
-  await runK6({ label: 'warmup', vus: 10, ramp: rampS, hold: 10, tenant: seed.tenant.apiKey });
+  await runK6({ label: 'warmup', vus: 10, ramp: rampS, hold: 10, tenantKey: seed.tenant.apiKey });
   await sleep(3000);
 
   const labels = vusList.map((vus) => ({ label: String(vus), vus }));
@@ -192,15 +217,13 @@ try {
 
   for (const { label, vus } of labels) {
     const tenant = await stepTenant(label);
-    const run: K6Run = { label, vus, ramp: rampS, hold: holdS, tenant: tenant.id };
+    const run: K6Run = { label, vus, ramp: rampS, hold: holdS, tenantKey: tenant.apiKey };
     console.log(`[load] 동시 방문자 ${run.vus}명: 램프 ${run.ramp}초 + 유지 ${run.hold}초, 테넌트 ${tenant.id}(원장 ${tenant.ledgerRowsBefore}행)`);
     const { exportPath, startedAt } = await runK6(run);
-    // 사건은 응답이 끝난 뒤 따로 저장된다. 마지막 몇 건이 들어올 때까지 기다린다.
-    await sleep(2000);
     const window = { from: startedAt + run.ramp * 1000, to: startedAt + (run.ramp + run.hold) * 1000 };
+    const ttft = await settledTtft(tenant.id, window);
+    writeFileSync(path.join(runDir, `ttft-${label}.json`), `${JSON.stringify(ttft)}\n`);
     const k6Step = readK6Export(JSON.parse(readFileSync(exportPath, 'utf8')));
-    const ttft = await repos.events.ttftSamples(tenant.id, { from: new Date(window.from), to: new Date(window.to) });
-    const ledgerRowsBefore = tenant.ledgerRowsBefore;
     steps.push({
       label: run.label,
       vus: run.vus,
@@ -209,9 +232,9 @@ try {
       holdS: run.hold,
       turnsPerS: Number((k6Step.turns / run.hold).toFixed(2)),
       k6: k6Step,
-      server: summarizeServer(readJsonl<StatsSample>(statsPath), window),
-      machine: summarizeMachine(readJsonl<CpuSample>(cpuPath), window),
-      db: { ...summarizeTtft(ttft), ledgerRowsBefore },
+      server: summarizeServer(readJsonl(statsPath, statsSampleSchema), window),
+      machine: summarizeMachine(readJsonl(cpuPath, cpuSampleSchema), window),
+      db: summarizeDb(ttft, tenant.ledgerRowsBefore),
     });
     await sleep(3000);
   }

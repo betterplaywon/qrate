@@ -1,12 +1,3 @@
-// 부하 측정용 서버(W6). 운영 진입점(src/index.ts)과 같은 createApp 조립이고, 다른 점은 아래뿐이다.
-//   엔진       목업. 첫 조각이 지연 없이 나오므로 응답 첫 바이트까지의 시간이 곧 서버 몫(테넌트·잔액·이전 대화·지식 조회와 모더레이션)이다.
-//              이후 글자마다 QRATE_LOAD_DELAY_MS(기본 20ms, 목업 기본값)를 쉬어 연결이 실제 답처럼 몇 초 열려 있다.
-//   저장소     Postgres만. DB 이름에 load가 들어 있어야 뜬다 — 개발 DB에 수만 행을 쌓지 않게.
-//   요율 제한  대화·위젯 사건의 IP당 상한을 크게 올린다. k6는 127.0.0.1 한 곳에서 방문자 수백 명을 흉내 내므로 운영 상한(대화 분당 20)이면 429만 잰다.
-//              미들웨어는 그대로 지나가므로 세는 비용은 측정에 들어간다.
-//   끈 것      콘솔·결제·Sentry. 방문자 경로가 아니다.
-//   더한 것    1초마다 CPU·메모리·이벤트 루프 지연·처리 중 요청 수를 QRATE_LOAD_STATS_FILE에 JSONL로 남긴다.
-// 시작할 때 데모 시드를 넣고(멱등) 크레딧을 TOP_UP_TO까지 채운다. 답이 있는 턴마다 1씩 빠진다.
 import { PrismaPg } from '@prisma/adapter-pg';
 import express from 'express';
 import { createWriteStream } from 'node:fs';
@@ -21,7 +12,8 @@ import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
 import type { StatsSample } from './summary.js';
 
 const TOP_UP_TO = 1_000_000;
-const UNLIMITED = { max: 1_000_000_000, windowMs: 60_000 };
+/** 요율 제한 미들웨어는 운영과 같이 지나가되, 상한에는 닿지 않는다. */
+const UNREACHED_LIMIT = { max: 1_000_000_000, windowMs: 60_000 };
 /** 이벤트 루프 지연 측정 타이머의 간격. 히스토그램은 타이머 사이 간격 전체를 담으므로 이 값을 빼야 밀린 시간이 된다. */
 const LOOP_RESOLUTION_MS = 10;
 
@@ -31,15 +23,14 @@ function requireEnv(name: string): string {
   return value;
 }
 
-function positiveInt(name: string, fallback: number): number {
+function envInt(name: string): number | undefined {
   const raw = process.env[name];
-  if (!raw) return fallback;
+  if (!raw) return undefined;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) throw new Error(`${name}=${raw}: 0 이상의 정수여야 한다`);
   return n;
 }
 
-/** 전용 DB만 받는다. 이름은 연결 주소의 경로(/qrate_load). */
 function loadDatabaseUrl(): string {
   const url = requireEnv('DATABASE_URL');
   const name = new URL(url).pathname.replace(/^\//, '');
@@ -50,16 +41,17 @@ function loadDatabaseUrl(): string {
 const round = (n: number, digits = 1): number => Number(n.toFixed(digits));
 const lagMs = (ns: number): number => round(Math.max(0, ns / 1e6 - LOOP_RESOLUTION_MS), 2);
 
-const port = positiveInt('PORT', 8789);
-const delayMs = positiveInt('QRATE_LOAD_DELAY_MS', 20);
-// 0이면 운영과 같은 클라이언트(createPrismaClient, node-postgres 풀 기본 10개). 숫자를 주면 그 크기의 풀로 비교 실험을 한다.
-const poolSize = positiveInt('QRATE_LOAD_POOL', 0);
+const port = envInt('PORT') ?? 8789;
+const delayMs = envInt('QRATE_LOAD_DELAY_MS') ?? 20;
+const poolSize = envInt('QRATE_LOAD_POOL');
 const databaseUrl = loadDatabaseUrl();
 const statsFile = process.env.QRATE_LOAD_STATS_FILE;
 const publicOrigin = `http://127.0.0.1:${port}`;
 
 const prisma =
-  poolSize > 0 ? new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl, max: poolSize }) }) : createPrismaClient(databaseUrl);
+  poolSize === undefined
+    ? createPrismaClient(databaseUrl)
+    : new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl, max: poolSize }) });
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 await applySeed(prisma, seed);
 const repos = createPrismaRepositories(prisma);
@@ -75,9 +67,9 @@ const app = createApp({
   repos,
   publicOrigin,
   frameAssetsDir,
-  chatRequests: UNLIMITED,
-  eventRequests: UNLIMITED,
-  handoffRequests: UNLIMITED,
+  chatRequests: UNREACHED_LIMIT,
+  eventRequests: UNREACHED_LIMIT,
+  handoffRequests: UNREACHED_LIMIT,
 });
 
 let inFlight = 0;
@@ -96,7 +88,6 @@ outer.use(app);
 
 const loopDelay = monitorEventLoopDelay({ resolution: LOOP_RESOLUTION_MS });
 loopDelay.enable();
-// GC가 JS 실행을 멈춘 시간. 지연이 튈 때 GC 때문인지 가른다.
 let gcMs = 0;
 let gcMaxMs = 0;
 const gcObserver = new PerformanceObserver((list) => {
@@ -140,7 +131,7 @@ const sampler = setInterval(() => {
 
 const server = outer.listen(port, '127.0.0.1', () => {
   console.log(
-    `[load-server] ${publicOrigin} engine=mock delay=${delayMs}ms pool=${poolSize > 0 ? poolSize : 'default'} tenant=${seed.tenant.apiKey} credits>=${TOP_UP_TO}`,
+    `[load-server] ${publicOrigin} engine=mock delay=${delayMs}ms pool=${poolSize ?? 'default'} tenant=${seed.tenant.apiKey} credits>=${TOP_UP_TO}`,
   );
 });
 

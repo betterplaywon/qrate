@@ -1,21 +1,21 @@
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
+import { z } from 'zod';
 
-// 같은 기기에서 도는 프로세스들의 CPU를 1초마다 잰다. 서버·DB·k6가 한 기기를 나눠 쓰므로, 지연이 늘 때
-// 서버가 바빠서인지 기기 전체가 바빠서인지(부하를 만드는 k6 자신 포함) 가르려면 이 값이 필요하다.
 // 프로세스별 값은 ps의 누적 CPU 시간 차이로 센다(ps의 %cpu는 감쇠 평균이라 1초 단위에 맞지 않는다).
 
-/** 1초 표본. 프로세스 묶음은 코어 하나 기준 %(200이면 코어 두 개분), 기기 전체는 모든 코어 기준 %(100이 최대). */
-export interface CpuSample {
-  t: number;
-  machinePct: number;
-  serverPct: number;
-  k6Pct: number;
+/** allCoresPct는 모든 코어 기준 %(100이 최대), 나머지는 코어 하나 기준 %(200이면 코어 두 개분). */
+export const cpuSampleSchema = z.object({
+  t: z.number(),
+  allCoresPct: z.number(),
+  serverPct: z.number(),
+  k6Pct: z.number(),
   /** Docker의 Linux VM(Postgres가 그 안에서 돈다). */
-  dbVmPct: number;
+  dbVmPct: z.number(),
   /** Docker Desktop 백엔드(호스트 포트 5432를 VM으로 넘기는 프록시 포함). */
-  dockerPct: number;
-}
+  dockerPct: z.number(),
+});
+export type CpuSample = z.infer<typeof cpuSampleSchema>;
 
 type Group = 'serverPct' | 'k6Pct' | 'dbVmPct' | 'dockerPct';
 
@@ -58,7 +58,6 @@ function machineTimes(): { busy: number; total: number } {
   return { busy, total };
 }
 
-/** 1초마다 표본을 onSample로 넘긴다. 돌려준 함수를 부르면 멈춘다. */
 export function sampleCpu(serverPid: number, onSample: (sample: CpuSample) => void): () => void {
   let lastProc = processTimes(serverPid);
   let lastMachine = machineTimes();
@@ -72,7 +71,7 @@ export function sampleCpu(serverPid: number, onSample: (sample: CpuSample) => vo
     const machineTotal = machine.total - lastMachine.total;
     onSample({
       t: Date.now(),
-      machinePct: machineTotal > 0 ? Number((((machine.busy - lastMachine.busy) / machineTotal) * 100).toFixed(1)) : 0,
+      allCoresPct: machineTotal > 0 ? Number((((machine.busy - lastMachine.busy) / machineTotal) * 100).toFixed(1)) : 0,
       serverPct: pct('serverPct'),
       k6Pct: pct('k6Pct'),
       dbVmPct: pct('dbVmPct'),

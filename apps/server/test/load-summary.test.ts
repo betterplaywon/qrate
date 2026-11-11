@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePsTime, type CpuSample } from '../load/cpu.js';
 import { groupOf, groupProfile } from '../load/profile.js';
-import { formatReport, readK6Export, summarizeMachine, summarizeServer, summarizeTtft, type StatsSample } from '../load/summary.js';
+import { formatReport, readK6Export, summarizeDb, summarizeMachine, summarizeServer, type StatsSample } from '../load/summary.js';
 
 const trend = (med: number, p95: number, count: number) => ({ avg: med, min: 1, med, 'p(95)': p95, 'p(99)': p95 + 1, max: p95 + 2, count });
 
@@ -31,6 +31,7 @@ describe('readK6Export', () => {
         chat_ok: { passes: 98, fails: 2, value: 0.98 },
         chat_turns: { count: 100, rate: 1.6 },
         step_frame: trend(3, 5, 50),
+        step_assets: trend(2, 3, 100),
         step_greeting: trend(2, 4, 50),
         step_event: trend(2, 3, 100),
         step_ok: { passes: 199, fails: 1, value: 0.995 },
@@ -39,6 +40,7 @@ describe('readK6Export', () => {
     });
     expect(step).toMatchObject({ turns: 100, chatOkRate: 0.98, chatFailed: 2, stepFailed: 1 });
     expect(step.ttfb).toEqual({ p50: 4, p95: 9, p99: 10, max: 11, count: 98 });
+    expect(step.assets?.count).toBe(100);
   });
 
   it('대화가 모두 실패해 표본이 없는 지표는 null로 둔다', () => {
@@ -65,23 +67,24 @@ describe('summarizeServer', () => {
     });
   });
 
-  it('구간에 표본이 없으면 samples=0을 돌려준다', () => {
-    expect(summarizeServer([stats(5)], { from: 10, to: 20 }).samples).toBe(0);
+  it('구간에 표본이 없으면 한가한 서버(0)가 아니라 null이다', () => {
+    expect(summarizeServer([stats(5)], { from: 10, to: 20 })).toBeNull();
   });
 });
 
 describe('summarizeMachine', () => {
-  it('프로세스 묶음마다 평균 / 최대를 낸다', () => {
-    const cpu = (t: number, machinePct: number, dbVmPct: number): CpuSample => ({ t, machinePct, serverPct: 50, k6Pct: 10, dbVmPct, dockerPct: 5 });
+  it('프로세스 묶음마다 평균 / 최대를 내고, 표본이 없으면 null이다', () => {
+    const cpu = (t: number, allCoresPct: number, dbVmPct: number): CpuSample => ({ t, allCoresPct, serverPct: 50, k6Pct: 10, dbVmPct, dockerPct: 5 });
     const step = summarizeMachine([cpu(0, 20, 100), cpu(1000, 40, 300)], { from: 0, to: 2000 });
-    expect(step).toMatchObject({ samples: 2, machine: [30, 40], dbVm: [200, 300], server: [50, 50] });
+    expect(step).toMatchObject({ samples: 2, allCores: [30, 40], dbVm: [200, 300], server: [50, 50] });
+    expect(summarizeMachine([cpu(0, 20, 100)], { from: 5000, to: 6000 })).toBeNull();
   });
 });
 
-describe('summarizeTtft', () => {
-  it('콘솔 지표와 같은 nearest-rank로 p50·p95를 낸다', () => {
-    expect(summarizeTtft([5, 1, 4, 2, 3])).toEqual({ ttftSamples: 5, ttftP50: 3, ttftP95: 5 });
-    expect(summarizeTtft([])).toEqual({ ttftSamples: 0, ttftP50: null, ttftP95: null });
+describe('summarizeDb', () => {
+  it('서버 기록 TTFT를 콘솔 지표와 같은 nearest-rank로 줄인다', () => {
+    expect(summarizeDb([5, 1, 4, 2, 3], 7)).toEqual({ ttft: { samples: 5, p50Ms: 3, p95Ms: 5 }, ledgerRowsBefore: 7 });
+    expect(summarizeDb([], 1).ttft).toEqual({ samples: 0, p50Ms: null, p95Ms: null });
   });
 });
 
@@ -99,11 +102,12 @@ describe('formatReport', () => {
         k6,
         server: summarizeServer([], { from: 0, to: 1 }),
         machine: summarizeMachine([], { from: 0, to: 1 }),
-        db: { ttftSamples: 10, ttftP50: 3, ttftP95: 8, ledgerRowsBefore: 1 },
+        db: summarizeDb([3, 8, 1], 1),
       },
     ]);
     expect(report).toContain('| 100 | 15 | 10 | 100% | 4 / 9 / 10 |');
-    expect(report).toContain('3 / 8 (10)');
+    expect(report).toContain('| 100 | - | - | - | - | - | - | 3 / 8 (3) | 1 |');
+    expect(report).toContain('| 100 | - | - | - | - | - |');
     expect(report.match(/^\| 100 \|/gm)).toHaveLength(3);
   });
 });
