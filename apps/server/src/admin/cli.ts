@@ -17,8 +17,9 @@ const USAGE = [
   '  console-key:revoke <회사 키>',
 ].join('\n');
 
+/** what은 조사까지 붙인 말이다("회사 키가", "명령이"). */
 function required(value: string | undefined, what: string): string {
-  if (!value) throw new AdminError(`${what}가 필요하다\n${USAGE}`);
+  if (!value) throw new AdminError(`${what} 필요하다\n${USAGE}`);
   return value;
 }
 
@@ -58,7 +59,7 @@ async function runWith(
 ): Promise<void> {
   switch (command) {
     case 'tenant:add': {
-      const added = await addTenant(prisma, readCompanyFile(required(arg, '회사 파일 경로')), { update });
+      const added = await addTenant(prisma, readCompanyFile(required(arg, '회사 파일 경로가')), { update });
       const { tenant } = added;
       console.log(
         `[admin] ${added.created ? '회사를 등록했다' : '회사 정보와 FAQ를 파일대로 바꿨다'}: ${tenant.name}(id ${tenant.id}, 회사 키 ${tenant.apiKey}), FAQ ${added.knowledge}개, 초기 크레딧 ${added.initialCredits}`,
@@ -81,14 +82,14 @@ async function runWith(
       break;
     }
     case 'console-key:issue': {
-      const { tenant, key } = await issueConsoleKey(repos.tenants, required(arg, '회사 키'));
+      const { tenant, key } = await issueConsoleKey(repos.tenants, required(arg, '회사 키가'));
       console.log(`[admin] ${tenant.name}(회사 키 ${tenant.apiKey})의 콘솔 키를 발급했다. 이전 키와 그 키로 들어온 로그인 세션은 지금부터 쓸 수 없다.`);
       console.log('[admin] 아래 키는 다시 볼 수 없다. 회사 담당자에게 안전한 길로 전한다.');
       console.log(key);
       break;
     }
     case 'console-key:revoke': {
-      const tenant = await revokeConsoleKey(repos.tenants, required(arg, '회사 키'));
+      const tenant = await revokeConsoleKey(repos.tenants, required(arg, '회사 키가'));
       console.log(`[admin] ${tenant.name}(회사 키 ${tenant.apiKey})의 콘솔 키를 회수했다. 콘솔에 로그인할 수 없고, 열려 있던 세션도 끝났다.`);
       break;
     }
@@ -111,7 +112,7 @@ try {
   const { command, arg, update } = parseCommandLine();
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new AdminError(`DATABASE_URL이 필요하다. 이 명령은 DB를 쓰는 서버에서만 쓴다\n${USAGE}`);
-  await run(required(command, '명령'), arg, update, databaseUrl);
+  await run(required(command, '명령이'), arg, update, databaseUrl);
 } catch (err) {
   if (!(err instanceof AdminError)) throw err;
   console.error(`[admin] ${err.message}`);
