@@ -74,24 +74,24 @@ describe('Turn — 사건을 화면에 반영한다', () => {
     expect(long.calls).toEqual(['start:1', 'append:1:…', 'finish:1:complete', 'notice:답변이 길어 잘렸어요.']);
   });
 
-  it('모델의 연결 신호는 버튼 달린 안내가 되고, 버튼은 offerHandoff를 부른다', () => {
+  it('모델의 연결 신호는 버튼 달린 안내가 되고, 버튼은 offerHandoff를 부른다. 메시지를 보내지 않으므로 답을 받는 중에도 누를 수 있다', () => {
     const { view, notices } = fakeView();
     const { effects, fired } = fakeEffects();
     new Turn(view, effects).apply({ type: 'handoff', reason: 'not_in_knowledge', summary: null });
     expect(notices[0]?.text).toBe('상담원에게 연결해 드릴까요?');
-    expect(notices[0]?.action?.label).toBe('상담원 연결');
+    expect(notices[0]?.action).toMatchObject({ label: '상담원 연결', sends: false });
     notices[0]?.action?.run();
     expect(fired).toEqual(['offerHandoff']);
   });
 
-  it('실패: 부분 답은 중단으로 닫히고, 재시도 가능할 때만 "다시 보내기"(Retry-After 잠금)가 붙어 retry를 부른다', () => {
+  it('실패: 부분 답은 중단으로 닫히고, 재시도 가능할 때만 "다시 보내기"가 붙어 retry를 부른다. 그 버튼은 메시지를 보내므로 전송 버튼과 같은 때 잠긴다', () => {
     const { view, calls, notices } = fakeView();
     const { effects, fired } = fakeEffects();
     const turn = new Turn(view, effects);
     turn.apply({ type: 'delta', text: '부분' });
     turn.apply({ type: 'failed', stage: 'stream', status: null, code: null, retryable: true, retryAfterMs: 2000 });
     expect(calls).toEqual(['start:1', 'append:1:부분', 'finish:1:interrupted', 'notice:답변이 중단됐어요.']);
-    expect(notices[0]?.action).toMatchObject({ label: '다시 보내기', disabledForMs: 2000 });
+    expect(notices[0]?.action).toMatchObject({ label: '다시 보내기', sends: true });
     notices[0]?.action?.run();
     expect(fired).toEqual(['wait:2000', 'retry']);
 

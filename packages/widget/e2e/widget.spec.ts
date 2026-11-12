@@ -8,7 +8,7 @@
 // 선택자는 런처(src/loader.ts)와 화면(src/frame/view.ts)의 클래스·id다. Playwright 로케이터는 열린 shadow root를 뚫는다.
 // 목업 훅([[fail:429]] 등)은 apps/server/src/engine/mock.ts.
 
-import type { ConsoleMetricsResponse, GreetingResponse, WidgetEventBody } from '@qrate/contracts';
+import type { ChatRequestBody, ConsoleMetricsResponse, GreetingResponse, WidgetEventBody } from '@qrate/contracts';
 import { expect, test as base, type APIRequestContext, type FrameLocator, type Page, type Response } from '@playwright/test';
 import { CONSOLE_KEY, DEMO_ORIGIN, NOT_ALLOWED_DEMO_ORIGIN, SERVER_ORIGIN } from './servers';
 
@@ -240,6 +240,51 @@ test('서버가 재시도 가능하다고 한 실패에만 "다시 보내기"가
   await expect(notices.last().locator('.notice-action')).toHaveCount(0);
 
   // 5xx 응답마다 브라우저가 "Failed to load resource"를 콘솔 오류로 남긴다. 그 밖의 오류는 없어야 한다
+  expect(consoleErrors.filter((e) => !e.startsWith('Failed to load resource'))).toEqual([]);
+});
+
+test('앞 실패의 "다시 보내기"는 전송 버튼과 같은 때 잠긴다 — 뒤 실패의 Retry-After 동안, 새 질문의 답을 받는 동안. 풀리면 그 질문을 다시 보낸다', async ({
+  page,
+  consoleErrors,
+}) => {
+  // 실패 두 번은 서버의 오류 응답 모양으로 대신 답한다(요율 제한 창을 쓰지 않게). 세 번째 질문과 다시 보내기만 서버로 가서 답을 받는다
+  const failOnce = (status: number, retryAfter: string, body: object) =>
+    page.route(
+      CHAT_URL,
+      (route) => route.fulfill({ status, headers: { 'Retry-After': retryAfter }, contentType: 'application/json', body: JSON.stringify(body) }),
+      { times: 1 },
+    );
+  const asked: string[] = [];
+  page.on('request', (r) => {
+    if (r.url() === CHAT_URL && r.method() === 'POST') asked.push((r.postDataJSON() as ChatRequestBody).message);
+  });
+  const frame = await openWidget(page);
+  const firstRetry = frame.locator('.msg.notice').first().locator('.notice-action');
+
+  await failOnce(503, '1', { error: 'rate_limited', retryable: true });
+  await send(frame, '요금제가 뭐가 있나요?');
+  await expect(firstRetry).toHaveText('다시 보내기');
+  await expect(firstRetry).toBeEnabled();
+
+  // 뒤 실패가 기다리라고 한 동안 보내면 또 거절된다 — 앞 실패의 버튼도 입력창과 함께 잠긴다
+  await failOnce(429, '2', { error: 'too_many_requests' });
+  await send(frame, '환불되나요?');
+  await expect(frame.locator('#qrate-input')).toBeDisabled();
+  await expect(firstRetry).toBeDisabled();
+  await expect(firstRetry).toBeEnabled();
+
+  // 답을 받는 동안 누르면 보낼 수 없다 — 버튼만 사라지고 그 질문을 다시 보낼 길이 없어지면 안 된다
+  await send(frame, '추가 인원 비용은요?');
+  await expect(frame.locator('.msg.bot[aria-busy="true"]')).toHaveCount(1);
+  await expect(frame.locator('.send')).toBeDisabled();
+  await expect(firstRetry).toBeDisabled();
+
+  await expect(finishedAnswers(frame)).toHaveCount(1);
+  await expect(firstRetry).toBeEnabled();
+  await firstRetry.click();
+  await expect(finishedAnswers(frame)).toHaveCount(2);
+  expect(asked).toEqual(['요금제가 뭐가 있나요?', '환불되나요?', '추가 인원 비용은요?', '요금제가 뭐가 있나요?']);
+  await expect(frame.locator('.msg.user')).toHaveCount(3);
   expect(consoleErrors.filter((e) => !e.startsWith('Failed to load resource'))).toEqual([]);
 });
 
