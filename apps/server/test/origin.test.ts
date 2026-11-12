@@ -22,6 +22,25 @@ describe('오리진 문자열 검증 (테넌트 allowedOrigins → CSP 헤더에
     expect(isOriginString("https://a.example.com; script-src 'unsafe-inline'")).toBe(false);
     expect(isOriginString('https://a.example.com https://b.example.com')).toBe(false);
   });
+
+  it('URL 파서가 그대로 두는 호스트 글자(; , 따옴표 _ 끝 점 IPv6)와 포트 0은 CSP 호스트 문법 밖이라 거부한다', () => {
+    // 모두 new URL(v).origin === v가 성립해 예전 검사를 지나갔다. frame-ancestors에 들어가면 지시어가 끼어든다.
+    for (const v of [
+      'https://example.com;',
+      'https://example.com;sandbox',
+      'https://a.com,b.com',
+      "https://'self'",
+      'https://x"onerror=alert(1)',
+      'https://example.com.',
+      'https://[::1]:8443',
+      'https://a_b.example',
+      'https://example.com:0',
+    ]) {
+      expect(isOriginString(v), v).toBe(false);
+    }
+    expect(isOriginString('https://xn--bcher-kva.example')).toBe(true); // 한글·유니코드 도메인은 퓨니코드로 받는다
+    expect(isOriginString('http://127.0.0.1:5173')).toBe(true);
+  });
 });
 
 describe('QRATE_PUBLIC_ORIGIN 해석', () => {

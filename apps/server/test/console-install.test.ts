@@ -144,6 +144,12 @@ describe('허용 사이트 — PUT /api/console/install/origins', () => {
       { origins: ['javascript:alert(1)'] },
       { origins: ['https://shop.example.com:443'] },
       { origins: ['https://shop.example.com https://evil.example'] },
+      // URL 파서가 그대로 두는 호스트 글자. frame-ancestors에 지시어가 끼어들어 등록한 사이트까지 막혔다
+      { origins: ['https://a.com,b.com', 'https://www.haram-bio.example'] },
+      { origins: ['https://example.com;sandbox'] },
+      { origins: ["https://'self'"] },
+      { origins: ['https://example.com.'] },
+      { origins: ['https://[::1]:8443'] },
       { origins: [''] },
       { origins: [42] },
       { origins: 'https://shop.example.com' },
