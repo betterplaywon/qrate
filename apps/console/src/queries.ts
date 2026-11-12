@@ -11,7 +11,7 @@ import type {
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from './api';
 import { setupProgress } from './install';
-import { ME_KEY } from './queryClient';
+import { ME_KEY, signOut } from './queryClient';
 import type { Route } from './route';
 import { clearTossReturn, openTossPaymentWindow, type TossSuccess } from './toss';
 
@@ -58,12 +58,8 @@ export function useLogout() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => api.logout(),
-    // 서버가 쿠키를 지우지 못해도(네트워크) 화면은 로그아웃한다. me를 null로 바꾸면 화면이 로그인으로 가고,
-    // 나머지 쿼리는 지운다 — 다른 테넌트로 다시 로그인해도 이전 테넌트의 데이터가 잠깐이라도 보이지 않게.
-    onSettled: () => {
-      client.setQueryData<ConsoleTenant | null>(keys.me, null);
-      client.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
-    },
+    // 서버가 쿠키를 지우지 못해도(네트워크) 화면은 로그아웃한다.
+    onSettled: () => signOut(client),
   });
 }
 
