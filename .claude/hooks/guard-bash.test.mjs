@@ -34,6 +34,22 @@ test('heredoc 메시지의 제목 형식과 금칙어를 검사한다', () => {
   assert.equal(guard(heredoc(`fix(hooks): 제목\n\n본문 ${WORD}`)), 'forbidden');
 });
 
+test('heredoc 본문이나 제목의 큰따옴표에서 메시지를 자르지 않는다', () => {
+  assert.equal(guard(heredoc(`fix(hooks): 제목\n\n앞 "인용" 뒤 ${WORD}`)), 'forbidden');
+  assert.equal(guard(heredoc('fix(hooks): "인용" 제목\n\n본문')), 'allow');
+});
+
+test('heredoc 구분자를 따옴표 없이 써도, 큰따옴표로 감싸도 같은 메시지를 읽는다', () => {
+  for (const head of ['<<EOF', '<<"EOF"']) {
+    assert.equal(guard(heredoc(`fix(hooks): 제목\n\n앞 "인용" 뒤 ${WORD}`, head)), 'forbidden', head);
+    assert.equal(guard(heredoc('형식 없는 제목', head)), 'subject', head);
+  }
+});
+
+test('heredoc 메시지는 구분자와 똑같은 줄에서만 끝난다', () => {
+  assert.equal(guard(heredoc(`fix(hooks): 제목\n\nEOF로 시작하는 줄 ${WORD}`)), 'forbidden');
+});
+
 test('-m 따옴표 문자열과 --message=의 제목 형식과 금칙어를 검사한다', () => {
   assert.equal(guard('git commit -m "fix(hooks): 제목"'), 'allow');
   assert.equal(guard("git commit -m 'fix(hooks): 제목'"), 'allow');

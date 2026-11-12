@@ -144,13 +144,18 @@ function checkPassed(c) {
 }
 
 function commitMessage(seg) {
-  const m = seg.match(/(?:^|\s)(?:-m|--message)(?:=|\s+)("(?:[^"\\]|\\.)*"|'[^']*'|\S+)/s);
+  // -m "$(cat <<'EOF' … EOF\n)"는 따옴표 짝으로 읽지 않는다. 명령 치환 안의 큰따옴표는 바깥 따옴표를 닫지 않아서
+  // 짝으로 읽으면 본문의 첫 큰따옴표에서 메시지가 잘린다. 셸처럼 구분자만 있는 줄 앞까지 읽는다.
+  const m = seg.match(/(?:^|\s)(?:-m|--message)(?:=|\s+)(?:"\$\(cat\s*<<\s*(\S+)[^\n]*\n|("(?:[^"\\]|\\.)*"|'[^']*'|\S+))/s);
   if (!m) return null;
-  let text = m[1].replace(/^(["'])(.*)\1$/s, '$2');
-  // -m "$(cat <<'EOF' ... )" 형태는 첫 줄이 heredoc 머리이므로 그다음 줄이 제목이다.
-  if (/^\$\(cat\s*<</.test(text)) text = text.split('\n').slice(1).join('\n');
-  else if (text.startsWith('$(')) return null;
-  return text;
+  const [head, heredocWord, value] = m;
+  if (heredocWord) {
+    const lines = seg.slice(m.index + head.length).split('\n');
+    const end = lines.indexOf(heredocWord.replace(/['"\\]/g, ''));
+    return lines.slice(0, end === -1 ? lines.length : end).join('\n');
+  }
+  const text = value.replace(/^(["'])(.*)\1$/s, '$2');
+  return text.startsWith('$(') ? null : text;
 }
 
 function segments(cmd) {
