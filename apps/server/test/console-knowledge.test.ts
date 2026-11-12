@@ -273,7 +273,7 @@ describe('FAQ 상한', () => {
     expect(await errorOf(over)).toBe('knowledge_limit');
     expect((await save('faq:fill-30', input(['고친 문단']))).status).toBe(200);
 
-    for (let i = start; i < KNOWLEDGE_LIMITS.items; i++) await local.knowledge.remove('reception', `faq:fill-${i}`);
+    for (let i = start; i < KNOWLEDGE_LIMITS.items; i++) await local.knowledge.remove(`faq:fill-${i}`, 'reception');
     expect(await local.knowledge.listByTenant('reception')).toHaveLength(start);
   });
 
