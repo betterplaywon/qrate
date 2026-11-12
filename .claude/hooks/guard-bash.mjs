@@ -107,7 +107,9 @@ function ghJson(args) {
 }
 
 function forbiddenWords() {
-  const file = path.join(toplevel() ?? cwd, '.claude', 'hooks', 'forbidden-words.local.txt');
+  // 목록은 커밋되지 않아 worktree에는 없다. worktree의 toplevel이 아니라 주 저장소(공통 .git의 부모)에서 찾는다.
+  const commonDir = git(['rev-parse', '--path-format=absolute', '--git-common-dir'], cwd);
+  const file = path.join(commonDir ? path.dirname(commonDir) : cwd, '.claude', 'hooks', 'forbidden-words.local.txt');
   if (!existsSync(file)) return [];
   return readFileSync(file, 'utf8')
     .split('\n')
