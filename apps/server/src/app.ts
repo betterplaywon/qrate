@@ -7,6 +7,7 @@ import {
   GREETING_PATH,
   HANDOFF_PATH,
   PAYMENT_WEBHOOK_ROUTE,
+  WIDGET_SCRIPT_PATH,
 } from '@qrate/contracts';
 import express from 'express';
 import type { PaymentProvider } from './billing/provider.js';
@@ -54,6 +55,8 @@ export interface AppOptions {
   publicOrigin: string;
   /** 대화창 앱 정적 파일(app.js·app.css)이 있는 디렉터리. 위젯 패키지의 빌드 산출물 dist/frame. (index.ts가 찾는다) */
   frameAssetsDir: string;
+  /** 위젯 런처 스크립트 파일(위젯 패키지의 dist/widget.js). 있으면 GET /widget.js로 준다. 설치 스니펫이 이 주소를 쓴다. */
+  widgetScript?: string;
   sentryEnabled?: boolean;
   /** 사건 기록 통로. 기본은 저장소(repos.events)에 쓰는 통로. index.ts는 stdout 미러를 켠 것을 넣고, 테스트는 가로챈다. */
   recordEvent?: EventSink;
@@ -82,6 +85,7 @@ export function createApp({
   repos,
   publicOrigin,
   frameAssetsDir,
+  widgetScript,
   sentryEnabled = false,
   recordEvent: recordEventOption,
   reportError = reportToStderr,
@@ -121,6 +125,16 @@ export function createApp({
   // 대화창 앱의 정적 파일(/frame/app.js 등). 파일 이름에 해시가 없으므로 매번 재검증(ETag)하게 한다 — 배포 뒤 옛 번들이 남지 않게.
   // /frame 자체(파일 없음)는 아래 문서 핸들러로 넘어간다. redirect: false — 기본값이면 /frame?t= 을 /frame/ 로 돌려보낸다.
   app.use(FRAME_PATH, express.static(frameAssetsDir, { index: false, redirect: false, maxAge: 0 }));
+  if (widgetScript) {
+    // 고객 사이트의 문서가 <script>로 읽는 파일이라 다른 오리진에서 읽게 CORP를 연다(그 사이트가 COEP를 걸어도 막히지 않게).
+    // 캐시는 5분. 새로 배포한 런처가 그 안에 퍼지고, 방문마다 서버에 다시 묻지는 않는다.
+    app.get(WIDGET_SCRIPT_PATH, (_req, res, next) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.sendFile(widgetScript, { maxAge: 5 * 60_000 }, (err) => {
+        if (err && !res.headersSent) next();
+      });
+    });
+  }
 
   // 대화창 문서. 어느 고객 사이트가 iframe으로 넣을 수 있는지는 이 응답의 CSP frame-ancestors가 정한다. (http/frame.ts)
   app.get(FRAME_PATH, createFrameHandler({ repos }));

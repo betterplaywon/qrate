@@ -3,13 +3,17 @@ import { useSyncExternalStore } from 'react';
 
 // 해시 라우팅. 서버가 /console/ 아래를 정적 파일로만 서빙하므로(SPA 폴백 없음) 화면 상태는 해시에 둔다.
 //   #/queue/open · #/queue/in_progress · #/queue/done · #/conversations · #/conversations/<id> · #/metrics · #/billing
-//   #/faq · #/faq/new · #/faq/<id> · 저장·지우기 뒤의 목록은 #/faq?saved=<id> · #/faq?deleted=1
+//   #/faq · #/faq/new · #/faq/<id> · 저장·지우기 뒤의 목록은 #/faq?saved=<id> · #/faq?deleted=1 · #/start · #/install
+//   해시가 비면 home이다. 시작하기가 끝났는지에 따라 Shell이 시작하기나 미응답 큐를 보여 준다(queries.ts useLanding).
 // location.hash는 React 밖의 상태라 useSyncExternalStore로 구독한다(useEffect + useState 대신).
 
 /** FAQ 목록 위에 한 번 보이는 알림. 저장·지우기 뒤 목록으로 돌아올 때 해시 쿼리로 넘긴다. */
 export type FaqNotice = { kind: 'saved'; id: string } | { kind: 'deleted' };
 
 export type Route =
+  | { name: 'home' }
+  | { name: 'start' }
+  | { name: 'install' }
   | { name: 'queue'; status: HandoffStatus }
   | { name: 'conversations' }
   | { name: 'conversation'; id: string }
@@ -49,7 +53,9 @@ export function parseRoute(hash: string): Route {
   }
   if (parts[0] === 'metrics') return { name: 'metrics' };
   if (parts[0] === 'billing') return { name: 'billing' };
-  return { name: 'queue', status: 'open' };
+  if (parts[0] === 'start') return { name: 'start' };
+  if (parts[0] === 'install') return { name: 'install' };
+  return { name: 'home' };
 }
 
 export const href = {
@@ -64,6 +70,8 @@ export const href = {
   faqItem: (id: string): string => `#/faq/${encodeURIComponent(id)}`,
   metrics: (): string => '#/metrics',
   billing: (): string => '#/billing',
+  start: (): string => '#/start',
+  install: (): string => '#/install',
 };
 
 const subscribe = (onChange: () => void): (() => void) => {

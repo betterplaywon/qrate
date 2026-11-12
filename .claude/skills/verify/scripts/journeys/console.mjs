@@ -31,15 +31,18 @@ export async function run(h) {
     return '로그인 폼 유지 + 경고 "테넌트 키 또는 콘솔 키가 맞지 않아요."';
   });
 
-  await h.step('console-login', '맞는 키로 로그인하면 테넌트 이름이 보이고, 큐와 대화 로그는 비어 있다. 브라우저의 세션 쿠키로 /me가 200이다', async () => {
+  await h.step('console-login', '맞는 키로 로그인하면 테넌트 이름과 첫 화면 시작하기(새 launch라 설치 신호 없음)가 보이고, 큐와 대화 로그는 비어 있다. 브라우저의 세션 쿠키로 /me가 200이다', async () => {
     await loginConsole(h, page);
     await expect(page.getByTestId('tenant-name')).toHaveText(h.tenantName);
+    // 시작하기 네 단계가 끝나기 전에는 해시가 빈 첫 화면이 시작하기다(apps/console/src/queries.ts useLanding)
+    await expect(page.getByTestId('start-progress')).toHaveText('4단계 중 2단계 끝');
+    await page.goto(`${SERVER_ORIGIN}/console/#/queue/open`);
     await expect(page.getByTestId('queue-empty')).toBeVisible();
     await page.goto(`${SERVER_ORIGIN}/console/#/conversations`);
     await expect(page.getByTestId('conversations-empty')).toBeVisible();
     const me = await page.request.get('/api/console/me');
     assert(me.status() === 200, `로그인 뒤 GET /api/console/me ${me.status()}`);
-    return `테넌트 "${h.tenantName}" · 큐 비어 있음 · 대화 로그 비어 있음 · /me 200`;
+    return `테넌트 "${h.tenantName}" · 첫 화면 시작하기(4단계 중 2단계) · 큐 비어 있음 · 대화 로그 비어 있음 · /me 200`;
   });
 
   // 대화 두 건을 실제 위젯에서 만든다. 대화창 하나는 대화 하나를 이어 가므로, 새 대화마다 데모 페이지를 새로 연다.

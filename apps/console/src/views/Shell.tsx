@@ -1,18 +1,23 @@
 import type { ConsoleTenant } from '@qrate/contracts';
-import { useLogout } from '../queries';
+import { useLanding, useLogout } from '../queries';
 import { href, useRoute } from '../route';
 import { Billing } from './Billing';
 import { ConversationDetail } from './ConversationDetail';
 import { ConversationList } from './ConversationList';
 import { FaqEdit } from './FaqEdit';
 import { FaqList } from './FaqList';
+import { Install } from './Install';
 import { Metrics } from './Metrics';
 import { Queue } from './Queue';
+import { Start } from './Start';
 
 // 로그인 뒤의 틀 — 머리글(테넌트·메뉴·로그아웃)과 해시 라우팅에 따른 화면 하나.
 
 export function Shell({ tenant }: { tenant: ConsoleTenant }) {
-  const route = useRoute();
+  const hashRoute = useRoute();
+  // 해시가 비면 시작하기가 끝났는지 보고 첫 화면을 고른다. 고르는 동안은 null.
+  const landing = useLanding(hashRoute.name === 'home');
+  const route = hashRoute.name === 'home' ? landing : hashRoute;
   const logout = useLogout();
 
   return (
@@ -23,19 +28,25 @@ export function Shell({ tenant }: { tenant: ConsoleTenant }) {
           <span className="tenant" data-testid="tenant-name">{tenant.name}</span>
         </div>
         <nav className="nav" aria-label="주 메뉴">
-          <a href={href.queue('open')} className={route.name === 'queue' ? 'active' : ''}>
+          <a href={href.start()} className={route?.name === 'start' ? 'active' : ''} data-testid="nav-start">
+            시작하기
+          </a>
+          <a href={href.queue('open')} className={route?.name === 'queue' ? 'active' : ''}>
             미응답 큐
           </a>
-          <a href={href.conversations()} className={route.name === 'conversations' || route.name === 'conversation' ? 'active' : ''}>
+          <a href={href.conversations()} className={route?.name === 'conversations' || route?.name === 'conversation' ? 'active' : ''}>
             대화 로그
           </a>
-          <a href={href.faq()} className={route.name === 'faq' || route.name === 'faqItem' ? 'active' : ''} data-testid="nav-faq">
+          <a href={href.faq()} className={route?.name === 'faq' || route?.name === 'faqItem' ? 'active' : ''} data-testid="nav-faq">
             FAQ
           </a>
-          <a href={href.metrics()} className={route.name === 'metrics' ? 'active' : ''} data-testid="nav-metrics">
+          <a href={href.install()} className={route?.name === 'install' ? 'active' : ''} data-testid="nav-install">
+            설치
+          </a>
+          <a href={href.metrics()} className={route?.name === 'metrics' ? 'active' : ''} data-testid="nav-metrics">
             지표
           </a>
-          <a href={href.billing()} className={route.name === 'billing' ? 'active' : ''} data-testid="nav-billing">
+          <a href={href.billing()} className={route?.name === 'billing' ? 'active' : ''} data-testid="nav-billing">
             크레딧
           </a>
         </nav>
@@ -44,13 +55,16 @@ export function Shell({ tenant }: { tenant: ConsoleTenant }) {
         </button>
       </header>
       <main className="main">
-        {route.name === 'queue' && <Queue status={route.status} />}
-        {route.name === 'conversations' && <ConversationList />}
-        {route.name === 'conversation' && <ConversationDetail id={route.id} />}
-        {route.name === 'faq' && <FaqList notice={route.notice} />}
-        {route.name === 'faqItem' && <FaqEdit key={route.id ?? 'new'} id={route.id} tenantName={tenant.name} />}
-        {route.name === 'metrics' && <Metrics />}
-        {route.name === 'billing' && <Billing />}
+        {route === null && <p className="status">불러오는 중…</p>}
+        {route?.name === 'start' && <Start tenant={tenant} />}
+        {route?.name === 'install' && <Install />}
+        {route?.name === 'queue' && <Queue status={route.status} />}
+        {route?.name === 'conversations' && <ConversationList />}
+        {route?.name === 'conversation' && <ConversationDetail id={route.id} />}
+        {route?.name === 'faq' && <FaqList notice={route.notice} />}
+        {route?.name === 'faqItem' && <FaqEdit key={route.id ?? 'new'} id={route.id} tenantName={tenant.name} />}
+        {route?.name === 'metrics' && <Metrics />}
+        {route?.name === 'billing' && <Billing />}
       </main>
     </div>
   );

@@ -78,6 +78,8 @@ export interface TenantRepository {
   findById(id: string): Promise<Tenant | null>;
   /** 콘솔 키 해시를 바꾼다(발급) 또는 지운다(회수, null). 없는 테넌트면 false. */
   setConsoleKeyHash(id: string, consoleKeyHash: string | null): Promise<boolean>;
+  /** 허용 사이트 목록을 통째로 바꾼다. 값 검사(isOriginString)는 부르는 쪽 몫이다. 없는 테넌트면 false. */
+  setAllowedOrigins(id: string, allowedOrigins: string[]): Promise<boolean>;
 }
 
 export interface KnowledgeRepository {
@@ -358,6 +360,8 @@ export interface EventRepository {
   ttftSamples(tenantId: string, window: TimeWindow): Promise<number[]>;
   /** 창 안 사건을 (type, variant)로 묶은 개수. type 오름차순, 같으면 variant 오름차순(null 먼저), 코드 단위 비교. */
   counts(tenantId: string, window: TimeWindow): Promise<EventCount[]>;
+  /** 그 종류의 사건이 마지막으로 일어난 때. 없으면 null. 콘솔 설치 확인이 widget_open으로 쓴다. */
+  lastAt(tenantId: string, type: AppEvent['type']): Promise<Date | null>;
 }
 
 export interface Repositories {

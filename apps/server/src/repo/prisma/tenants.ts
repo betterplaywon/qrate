@@ -20,4 +20,9 @@ export class PrismaTenantRepository implements TenantRepository {
     const { count } = await this.prisma.tenant.updateMany({ where: { id }, data: { consoleKeyHash } });
     return count === 1;
   }
+
+  async setAllowedOrigins(id: string, allowedOrigins: string[]): Promise<boolean> {
+    const { count } = await this.prisma.tenant.updateMany({ where: { id }, data: { allowedOrigins } });
+    return count === 1;
+  }
 }

@@ -26,4 +26,12 @@ export class MemoryEventRepository implements EventRepository {
     }
     return sortEventCounts(counts);
   }
+
+  async lastAt(tenantId: string, type: AppEvent['type']): Promise<Date | null> {
+    let last: Date | null = null;
+    for (const r of this.rows) {
+      if (r.tenantId === tenantId && r.type === type && (!last || r.createdAt > last)) last = r.createdAt;
+    }
+    return last;
+  }
 }

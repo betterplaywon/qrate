@@ -5,7 +5,9 @@
 //   tenant:list                                     회사 목록
 //   console-key:issue <회사 키>                     콘솔 키 발급. 키는 이때 한 번만 보인다. 이전 키와 그 키로 들어온 세션은 바로 끝난다
 //   console-key:revoke <회사 키>                    콘솔 키 회수. 그 회사는 콘솔에 로그인할 수 없다
+import { WIDGET_SCRIPT_PATH, widgetSnippet } from '@qrate/contracts';
 import { parseArgs } from 'node:util';
+import { parseOrigin } from '../origin.js';
 import { createPrismaClient, createPrismaRepositories } from '../repo/prisma.js';
 import { loadSeedFile, type SeedFile } from '../repo/seed.js';
 import { AdminError, addTenant, issueConsoleKey, listTenants, revokeConsoleKey } from './tenants.js';
@@ -43,6 +45,17 @@ function readCompanyFile(path: string): SeedFile {
   }
 }
 
+/** 설치 스니펫의 스크립트 주소. 서버와 같은 QRATE_PUBLIC_ORIGIN을 읽고, 없으면 서버 주소 자리를 비워 둔다. */
+function scriptUrl(): string {
+  const raw = process.env.QRATE_PUBLIC_ORIGIN;
+  if (!raw) return `https://(위젯 서버 주소)${WIDGET_SCRIPT_PATH}`;
+  try {
+    return `${parseOrigin(raw)}${WIDGET_SCRIPT_PATH}`;
+  } catch (err) {
+    throw new AdminError(err instanceof Error ? err.message : String(err));
+  }
+}
+
 /** 표를 공백으로 맞춘다(한글 폭은 두 칸으로 센다). */
 function table(rows: readonly string[][]): string {
   const width = (s: string): number => [...s].reduce((w, ch) => w + (/[ᄀ-ᇿ㄰-㆏가-힯]/.test(ch) ? 2 : 1), 0);
@@ -60,6 +73,8 @@ async function runWith(
 ): Promise<void> {
   switch (command) {
     case 'tenant:add': {
+      // 주소 설정이 틀렸으면 DB를 바꾸기 전에 멈춘다.
+      const snippetScriptUrl = scriptUrl();
       const added = await addTenant(prisma, readCompanyFile(required(arg, '회사 파일 경로가')), { update });
       const { tenant } = added;
       const who = `${tenant.name}(id ${tenant.id}, 회사 키 ${tenant.apiKey})`;
@@ -69,8 +84,8 @@ async function runWith(
           : `[admin] 이름과 허용 사이트를 파일대로 바꿨다: ${who}. FAQ ${added.knowledge}개는 그대로 뒀다(FAQ는 회사 담당자가 콘솔에서 고친다)`,
       );
       console.log(`[admin] 허용 사이트: ${tenant.allowedOrigins.join(', ') || '(없음. 대화창이 어느 사이트에서도 열리지 않는다)'}`);
-      console.log('[admin] 회사 사이트에 넣을 설치 스니펫(스크립트 주소는 배포한 위젯 스크립트로 바꾼다):');
-      console.log(`<script src="https://cdn.example.com/widget.js" data-tenant="${tenant.apiKey}" defer></script>`);
+      console.log('[admin] 회사 사이트에 넣을 설치 스니펫(그 회사 콘솔의 "설치" 화면에서도 복사할 수 있다):');
+      console.log(widgetSnippet({ scriptUrl: snippetScriptUrl, tenantKey: tenant.apiKey }));
       if (added.created) console.log(`[admin] 다음: 콘솔 키 발급  admin console-key:issue ${tenant.apiKey}`);
       break;
     }
