@@ -8,16 +8,11 @@ export type HandoffResult =
   /** 서버가 거절했거나(code = 계약의 오류 코드) 닿지 못했다(status·code null). */
   | { ok: false; status: number | null; code: string | null };
 
-export interface HandoffOptions {
-  baseUrl?: string;
-  fetchImpl?: typeof fetch;
-}
-
-export async function requestHandoff(body: HandoffRequestBody, opts: HandoffOptions = {}): Promise<HandoffResult> {
+export async function requestHandoff(body: HandoffRequestBody, opts: { fetchImpl?: typeof fetch } = {}): Promise<HandoffResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   let res: Response;
   try {
-    res = await fetchImpl(`${opts.baseUrl ?? ''}${HANDOFF_PATH}`, {
+    res = await fetchImpl(HANDOFF_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

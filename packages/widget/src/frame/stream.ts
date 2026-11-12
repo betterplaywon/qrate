@@ -46,14 +46,6 @@ export type ChatEvent =
   /** code는 서버의 오류 본문 코드(계약 ApiErrorCode). 응답이 계약 모양이 아니거나 닿지 못했으면 null. */
   | { type: 'failed'; stage: FailureStage; status: number | null; code: string | null; retryable: boolean; retryAfterMs: number | null };
 
-export interface StreamOptions {
-  /** 대화 API의 기준 주소. 대화창은 같은 오리진이라 기본값 ''(상대 경로)을 쓴다. */
-  baseUrl?: string;
-  fetchImpl?: typeof fetch;
-  /** 호출자가 끊으면(abort) failed를 내지 않고 조용히 끝난다. 의도한 중단은 실패가 아니다. */
-  signal?: AbortSignal;
-}
-
 /** Retry-After 상한. 서버는 엔진 장애에 2초, 대화 요율 제한(429)에 창이 끝날 때까지(최대 60초)를 보낸다. 엉뚱하게 큰 값에 버튼이 오래 잠기지 않게 자른다. */
 const MAX_RETRY_AFTER_MS = 60_000;
 
@@ -65,21 +57,19 @@ export function parseRetryAfter(raw: string | null): number | null {
 
 export async function* streamChat(
   req: ChatRequestBody,
-  opts: StreamOptions = {},
+  opts: { fetchImpl?: typeof fetch } = {},
 ): AsyncGenerator<ChatEvent, void, undefined> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const lost: ChatEvent = { type: 'failed', stage: 'stream', status: null, code: null, retryable: true, retryAfterMs: null };
 
   let res: Response;
   try {
-    res = await fetchImpl(`${opts.baseUrl ?? ''}${CHAT_PATH}`, {
+    res = await fetchImpl(CHAT_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
-      signal: opts.signal,
     });
   } catch {
-    if (opts.signal?.aborted) return;
     yield { type: 'failed', stage: 'connect', status: null, code: null, retryable: true, retryAfterMs: null };
     return;
   }
@@ -127,7 +117,6 @@ export async function* streamChat(
         chunk = await reader.read();
       } catch {
         // 스트림 도중 연결이 끊김(네트워크, 서버 재시작).
-        if (opts.signal?.aborted) return;
         yield lost;
         return;
       }
@@ -173,6 +162,5 @@ export async function* streamChat(
   }
 
   // 서버 계약상 정상 종료에는 항상 [DONE]이 온다. 없이 끝났다면 중간에 끊긴 것이다.
-  if (opts.signal?.aborted) return;
   yield lost;
 }
