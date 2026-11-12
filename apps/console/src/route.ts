@@ -23,6 +23,9 @@ export type Route =
   | { name: 'metrics' }
   | { name: 'billing' };
 
+/** 화면 하나를 가리키는 경로. home은 Shell이 시작하기나 미응답 큐로 바꾼다(queries.ts useLanding). */
+export type ScreenRoute = Exclude<Route, { name: 'home' }>;
+
 /** 손으로 고친 주소의 깨진 퍼센트 문자(%E0%A4%A)는 decodeURIComponent가 던져 화면 전체가 멈춘다. 그대로 두면 그런 id는 없어서 "찾을 수 없음"이 된다. */
 function decodeSegment(segment: string): string {
   try {

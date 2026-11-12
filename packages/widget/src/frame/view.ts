@@ -16,8 +16,11 @@ export interface ViewHandlers {
 
 export interface NoticeAction {
   label: string;
-  /** 이 시간 동안 버튼을 누를 수 없다. 서버가 준 Retry-After를 그대로 쓴다. */
-  disabledForMs: number | null;
+  /**
+   * 메시지를 보내는 버튼("다시 보내기")이면 true. 전송 버튼과 같은 입력창 상태를 따라 ready일 때만 누를 수 있다.
+   * 답을 받는 중에 누르면 보낼 수 없는데 버튼만 사라져 그 질문을 다시 보낼 길이 없어지고, Retry-After 동안 보내면 또 거절된다.
+   */
+  sends: boolean;
   run(): void;
 }
 
@@ -34,7 +37,7 @@ export interface HandoffFormHandlers {
 }
 
 export interface ChatView {
-  /** busy면 전송만 막고(다음 질문은 미리 쓸 수 있다), locked면 입력란까지 막는다. */
+  /** busy면 전송만 막고(다음 질문은 미리 쓸 수 있다), locked면 입력란까지 막는다. 안내의 "다시 보내기"도 전송 버튼과 함께 막는다. */
   setComposer(state: ComposerState): void;
   addUser(text: string): void;
   /** 서버가 배정한 인사말을 대화 맨 위에 붙인다. 답변(.msg.bot)이 아니다 — 출처·스트리밍이 없고 답변 수에 들지 않는다. */
@@ -69,7 +72,7 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
   const head = el('header', 'head');
   const title = el('h1', 'title', '무엇을 도와드릴까요?');
   const actions = el('div', 'head-actions');
-  // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보여야 한다. 실제 연결은 W3.
+  // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보여야 한다.
   const handoff = el('button', 'handoff', '상담원 연결');
   handoff.type = 'button';
   const close = el('button', 'close', '✕');
@@ -108,6 +111,8 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
   });
 
   let activeHandoffForm: HTMLFormElement | null = null;
+  let canSend = true;
+  const sendActions = new Set<HTMLButtonElement>();
   const nearBottom = (): boolean => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight <= STICK_TO_BOTTOM_PX;
   const append = (node: HTMLElement): void => {
     const stick = nearBottom();
@@ -123,9 +128,11 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
 
   return {
     setComposer(state) {
+      canSend = state === 'ready';
       input.disabled = state === 'locked';
       input.placeholder = PLACEHOLDER[state];
-      send.disabled = state !== 'ready';
+      send.disabled = !canSend;
+      for (const button of sendActions) button.disabled = !canSend;
     },
 
     addUser(text) {
@@ -199,13 +206,12 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
       if (action) {
         const button = el('button', 'notice-action', action.label);
         button.type = 'button';
-        if (action.disabledForMs) {
-          button.disabled = true;
-          setTimeout(() => {
-            button.disabled = false;
-          }, action.disabledForMs);
+        if (action.sends) {
+          button.disabled = !canSend;
+          sendActions.add(button);
         }
         button.addEventListener('click', () => {
+          sendActions.delete(button);
           button.remove();
           action.run();
         });

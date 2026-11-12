@@ -1,6 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import type { AppConfig } from '../src/config.js';
 import { ClaudeEngine } from '../src/engine/claude.js';
 import { ToolMarkupFilter, handoffFromMarkup } from '../src/engine/tool-markup.js';
 import type { EngineEvent } from '../src/engine/types.js';
@@ -67,7 +66,7 @@ describe('handoffFromMarkup — 글자로 쓴 호출에서 신호 살리기', ()
 });
 
 describe('ClaudeEngine — 본문에 쓴 넘김 호출', () => {
-  const config = { model: 'claude-sonnet-5-5', thinking: 'off', fallback: false, maxTokens: 1024, apiKey: 'test' } as unknown as AppConfig;
+  const config = { model: 'claude-sonnet-5-5', thinking: 'off', fallback: false, maxTokens: 1024, apiKey: 'test' } as const;
 
   function fakeClient(texts: string[]): Anthropic {
     const stream = {

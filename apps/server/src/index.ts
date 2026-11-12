@@ -43,6 +43,10 @@ function describePayments(payments: PaymentConfig): string {
 
 const config = loadConfig();
 const engine = createEngine(config);
+// 막지는 않는다 — compose는 키 없이 목업으로 뜨는 것을 전제한다(docker-compose.yml). 운영 메모리 저장소(repo/create.ts)와 같은 정책.
+if (engine.name === 'mock' && process.env.NODE_ENV === 'production') {
+  console.warn('[server] WARNING: mock engine in production — 방문자가 모델 대신 목업 답을 받는다(ANTHROPIC_API_KEY 없음 또는 QRATE_ENGINE=mock)');
+}
 // 저장소(repo/create.ts): DATABASE_URL이 있으면 Postgres, 없으면 시드 파일을 올린 메모리.
 const storage = await createRepositories(config);
 // 대화창 앱(app.js·app.css)과 운영 콘솔 앱(index.html·assets/)은 각 패키지의 빌드 산출물이다. 워크스페이스 의존성으로 받아 서빙한다.
