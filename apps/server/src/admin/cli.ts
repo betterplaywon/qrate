@@ -1,6 +1,7 @@
 // 플랫폼 운영자의 서버 명령. DB(DATABASE_URL)를 쓰는 서버에서만 쓴다. 메모리 저장소는 서버 프로세스 안에만 있어 바깥 명령이 바꿀 수 없다.
 //   pnpm --filter @qrate/server admin <명령>        (운영 이미지: node dist/admin/cli.js <명령>)
-//   tenant:add <회사 파일.json> [--update]          회사 등록. 파일은 데모 시드와 같은 형식(회사·허용 사이트·FAQ·초기 크레딧)
+//   tenant:add <회사 파일.json> [--update]          회사 등록. 파일은 데모 시드와 같은 형식(회사·허용 사이트·FAQ·초기 크레딧).
+//                                                   --update는 이미 있는 회사의 이름·허용 사이트만 바꾼다(FAQ는 회사 담당자가 콘솔에서 고친다)
 //   tenant:list                                     회사 목록
 //   console-key:issue <회사 키>                     콘솔 키 발급. 키는 이때 한 번만 보인다. 이전 키와 그 키로 들어온 세션은 바로 끝난다
 //   console-key:revoke <회사 키>                    콘솔 키 회수. 그 회사는 콘솔에 로그인할 수 없다
@@ -61,8 +62,11 @@ async function runWith(
     case 'tenant:add': {
       const added = await addTenant(prisma, readCompanyFile(required(arg, '회사 파일 경로가')), { update });
       const { tenant } = added;
+      const who = `${tenant.name}(id ${tenant.id}, 회사 키 ${tenant.apiKey})`;
       console.log(
-        `[admin] ${added.created ? '회사를 등록했다' : '회사 정보와 FAQ를 파일대로 바꿨다'}: ${tenant.name}(id ${tenant.id}, 회사 키 ${tenant.apiKey}), FAQ ${added.knowledge}개, 초기 크레딧 ${added.initialCredits}`,
+        added.created
+          ? `[admin] 회사를 등록했다: ${who}, FAQ ${added.knowledge}개, 초기 크레딧 ${added.initialCredits}`
+          : `[admin] 이름과 허용 사이트를 파일대로 바꿨다: ${who}. FAQ ${added.knowledge}개는 그대로 뒀다(FAQ는 회사 담당자가 콘솔에서 고친다)`,
       );
       console.log(`[admin] 허용 사이트: ${tenant.allowedOrigins.join(', ') || '(없음. 대화창이 어느 사이트에서도 열리지 않는다)'}`);
       console.log('[admin] 회사 사이트에 넣을 설치 스니펫(스크립트 주소는 배포한 위젯 스크립트로 바꾼다):');
