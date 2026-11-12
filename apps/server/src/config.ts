@@ -41,8 +41,8 @@ export interface AppConfig {
   repo: RepoKind;
   /** Postgres 연결 문자열. 비밀번호가 들어 있으니 어디에도 로그로 남기지 않는다. */
   databaseUrl: string | undefined;
-  /** 메모리 저장소일 때 데모 테넌트의 콘솔 로그인 키(시작 때 해시). Postgres에서는 시드가 넣은 해시를 쓴다. 값은 로그에 남기지 않는다. */
-  demoConsoleKey: string | undefined;
+  /** 메모리 저장소일 때 데모 회사별 콘솔 로그인 키(회사 id → 키, 값이 있는 회사만, 시작 때 해시). Postgres에서는 시드가 넣은 해시를 쓴다. 값은 로그에 남기지 않는다. */
+  demoConsoleKeys: Readonly<Record<string, string>>;
   /** 콘솔 세션 토큰의 서명 비밀(16자 이상). 없으면 index.ts가 프로세스마다 무작위로 만든다 — 재시작하면 세션이 끊긴다. */
   consoleSecret: string | undefined;
   /** 비밀값은 어디에도 로그로 남기지 않는다. 시작 로그는 출처('env'·'random')만. */
@@ -56,6 +56,22 @@ const PAYMENT_PROVIDER_SETTINGS = ['auto', 'mock', 'toss', 'none'] as const sati
 
 // D5 결정(2026-11-02): 기본 Sonnet 5.5 + 사고 끔. 환경변수 한 줄로 교체한다.
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
+
+/**
+ * 데모 회사의 콘솔 로그인 키를 담는 환경변수(회사 id → 이름). 시드 파일에는 비밀을 두지 않는다.
+ * 메모리 저장소는 서버 시작 때, Postgres는 db:seed 때 해시해 넣는다. 데모가 아닌 회사는 운영자 명령(console-key:issue)으로 받는다.
+ */
+export const DEMO_CONSOLE_KEY_ENV = { demo: 'QRATE_DEMO_CONSOLE_KEY', reception: 'QRATE_RECEPTION_CONSOLE_KEY' } as const;
+
+/** 값이 있는 데모 회사만 담는다. 서버(loadConfig)와 db:seed(prisma/seed.ts)가 같이 쓴다. */
+export function readDemoConsoleKeys(env: NodeJS.ProcessEnv): Record<string, string> {
+  const keys: Record<string, string> = {};
+  for (const [tenantId, name] of Object.entries(DEMO_CONSOLE_KEY_ENV)) {
+    const value = env[name];
+    if (value) keys[tenantId] = value;
+  }
+  return keys;
+}
 
 /**
  * 결제 없이 크레딧을 채우는 모의 결제는 개발·테스트임이 확실할 때만 기본으로 연다(2026-11-05 결정).
@@ -113,7 +129,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxTokens: parsePositiveInt(env.QRATE_MAX_TOKENS, defaultMaxTokens),
     repo: parseEnum(env.QRATE_REPO, REPO_KINDS, 'auto'),
     databaseUrl: env.DATABASE_URL ? env.DATABASE_URL : undefined,
-    demoConsoleKey: env.QRATE_DEMO_CONSOLE_KEY ? env.QRATE_DEMO_CONSOLE_KEY : undefined,
+    demoConsoleKeys: readDemoConsoleKeys(env),
     consoleSecret: parseSecret('QRATE_CONSOLE_SECRET', env.QRATE_CONSOLE_SECRET),
     payments: parsePayments(env),
   };
