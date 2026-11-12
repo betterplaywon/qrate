@@ -278,22 +278,30 @@ describe('FAQ 상한', () => {
   });
 
   it(`제목·문단 글자 합이 ${KNOWLEDGE_LIMITS.totalChars.toLocaleString('ko-KR')}자를 넘는 저장은 409 knowledge_too_large, 이미 넘었으면 줄이는 수정만 받는다`, async () => {
-    const full = (n: number) => Array<string>(KNOWLEDGE_LIMITS.blocks).fill('가'.repeat(n));
-    // 항목당 10,000자(문단 10개 × 1,000자) + 제목. 시드 약 3천 자에 둘을 더하면 2만 3천 자 남짓
-    expect((await save('faq:big-1', input(full(KNOWLEDGE_LIMITS.blockChars)))).status).toBe(201);
-    expect((await save('faq:big-2', input(full(KNOWLEDGE_LIMITS.blockChars)))).status).toBe(201);
-    const third = await save('faq:big-3', input(full(KNOWLEDGE_LIMITS.blockChars)));
-    expect(third.status).toBe(409);
-    expect(await errorOf(third)).toBe('knowledge_too_large');
-    expect(await totalChars()).toBeLessThanOrEqual(KNOWLEDGE_LIMITS.totalChars);
-
-    // 상한이 생기기 전의 자료처럼 저장소에 바로 넣어 상한을 넘긴 상태(약 4만 3천 자)를 만든다
-    for (const id of ['faq:big-3', 'faq:big-4']) {
-      await local.knowledge.put({ tenantId: 'reception', id, ...input(full(KNOWLEDGE_LIMITS.blockChars)) });
+    const { blocks: maxBlocks, blockChars } = KNOWLEDGE_LIMITS;
+    // 제목 'T' 1자 + 문단으로 정확히 chars자인 항목(문단 하나는 blockChars자까지, 항목은 1 + maxBlocks × blockChars자까지)
+    const sized = (chars: number) => {
+      const body = chars - 1;
+      const blocks = Array.from({ length: Math.ceil(body / blockChars) }, (_, i) => '가'.repeat(Math.min(blockChars, body - i * blockChars)));
+      return input(blocks, 'T');
+    };
+    // 상한에 정확히 닿을 때까지 채운다. 상한과 같으면 받는다
+    let room = KNOWLEDGE_LIMITS.totalChars - (await totalChars());
+    for (let i = 0; room > 0; i++) {
+      const size = Math.min(room, 1 + maxBlocks * blockChars);
+      expect((await save(`faq:big-${i}`, sized(size))).status).toBe(201);
+      room -= size;
     }
-    expect((await save('faq:big-3', input(full(500)))).status).toBe(200);
+    expect(await totalChars()).toBe(KNOWLEDGE_LIMITS.totalChars);
+    const over = await save('faq:one-more', sized(2));
+    expect(over.status).toBe(409);
+    expect(await errorOf(over)).toBe('knowledge_too_large');
+
+    // 상한이 생기기 전의 자료처럼 저장소에 바로 넣어 상한을 넘긴 상태를 만든다
+    await local.knowledge.put({ tenantId: 'reception', id: 'faq:legacy', ...sized(5_000) });
+    expect((await save('faq:legacy', sized(4_000))).status).toBe(200);
     expect(await totalChars()).toBeGreaterThan(KNOWLEDGE_LIMITS.totalChars);
-    const grow = await save('faq:big-3', input(full(600)));
+    const grow = await save('faq:legacy', sized(4_001));
     expect(grow.status).toBe(409);
     expect(await errorOf(grow)).toBe('knowledge_too_large');
   });

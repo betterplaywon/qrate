@@ -1,3 +1,4 @@
+import { KNOWLEDGE_LIMITS } from '@qrate/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SEED_PATH,
@@ -65,9 +66,10 @@ describe('시드 로더', () => {
     const many = Array.from({ length: 51 }, (_, i) => item(`faq:q${i}`));
     expect(() => parseSeed({ tenant, knowledge: many })).toThrow(/51개, 상한은 50개/);
     expect(() => parseSeed({ tenant, knowledge: many.slice(0, 50) })).not.toThrow();
-    // 제목 1자 + 문단 999자 = 항목당 1,000자, 31개면 31,000자
-    const long = Array.from({ length: 31 }, (_, i) => item(`faq:q${i}`, ['가'.repeat(999)]));
-    expect(() => parseSeed({ tenant, knowledge: long })).toThrow(/31000자, 상한은 30000자/);
+    // 제목 1자 + 문단 999자 = 항목당 1,000자. 상한을 1,000자 넘기는 개수
+    const count = KNOWLEDGE_LIMITS.totalChars / 1000 + 1;
+    const long = Array.from({ length: count }, (_, i) => item(`faq:q${i}`, ['가'.repeat(999)]));
+    expect(() => parseSeed({ tenant, knowledge: long })).toThrow(`${count * 1000}자, 상한은 ${KNOWLEDGE_LIMITS.totalChars}자`);
   });
 
   it('allowedOrigins는 정규형 오리진만 — CSP 헤더에 그대로 들어가므로', () => {
