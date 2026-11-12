@@ -7,7 +7,7 @@ import type { HandoffReason } from '../src/engine/types.js';
 import { computeMetrics } from '../src/events/metrics.js';
 import type { PaymentResult } from '../src/repo/types.js';
 import { applySeed, createPrismaClient, createPrismaRepositories } from '../src/repo/prisma.js';
-import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
+import { DEFAULT_SEED_PATH, loadSeedFile, loadSeedFiles } from '../src/repo/seed.js';
 import { createFakeToss } from './helpers/fake-toss.js';
 import { deliver, describeRepositoryContract, order, turn } from './repo-contract.js';
 
@@ -56,6 +56,16 @@ describe.skipIf(!url)('Postgres 저장소', () => {
   }));
 
   describe('DB에서만 뜻이 있는 것', () => {
+    it('데모 시드 둘을 차례로 넣으면(prisma db seed와 같은 순서) 테넌트마다 자기 키와 지식만 갖는다', async () => {
+      const seeds = loadSeedFiles();
+      for (const s of seeds) await applySeed(prisma, s);
+      const repos = createPrismaRepositories(prisma);
+      for (const s of seeds) {
+        expect((await repos.tenants.findByKey(s.tenant.apiKey))?.id).toBe(s.tenant.id);
+        expect((await repos.knowledge.listByTenant(s.tenant.id)).map((k) => k.id).sort()).toEqual(s.knowledge.map((k) => k.id).sort());
+      }
+    });
+
     it('없는 테넌트로는 대화를 만들 수 없다 (FK) — 메모리 구현은 이걸 잡지 못한다', async () => {
       const repos = createPrismaRepositories(prisma);
       const id = randomUUID();
