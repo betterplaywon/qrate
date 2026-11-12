@@ -399,6 +399,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
             throw new Error('db down');
           },
           findById: async () => null,
+          setConsoleKeyHash: async () => false,
         },
       },
       publicOrigin: OWN_ORIGIN,
@@ -436,6 +437,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
             throw Object.assign(new Error('upstream rejected the request'), { status: 400 });
           },
           findById: async () => null,
+          setConsoleKeyHash: async () => false,
         },
       },
       publicOrigin: OWN_ORIGIN,

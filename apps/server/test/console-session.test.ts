@@ -1,16 +1,18 @@
+import { SignJWT } from 'jose';
 import { describe, expect, it } from 'vitest';
 import { MIN_SECRET_LENGTH, SESSION_TTL_MS, createSessionCodec } from '../src/console/session.js';
 
 const SECRET = 'test-secret-0123456789abcdef';
 
 describe('콘솔 세션 토큰(JWT, HS256)', () => {
-  it('발급한 토큰은 같은 비밀로만 검증되고, 내용은 테넌트 id·발급·만료 시각이다', async () => {
+  it('발급한 토큰은 같은 비밀로만 검증되고, 내용은 테넌트 id·콘솔 키 지문·발급·만료 시각이다', async () => {
     const codec = createSessionCodec(SECRET);
     const now = new Date('2026-11-04T12:00:00Z');
-    const token = await codec.issue('demo', now);
+    const token = await codec.issue('demo', 'kfp-1', now);
     expect(token.split('.')).toHaveLength(3);
     expect(await codec.verify(token, new Date(now.getTime() + 1000))).toEqual({
       tenantId: 'demo',
+      keyFingerprint: 'kfp-1',
       issuedAt: now.getTime(),
       expiresAt: now.getTime() + SESSION_TTL_MS,
     });
@@ -20,14 +22,14 @@ describe('콘솔 세션 토큰(JWT, HS256)', () => {
   it('만료되면 null — 만료 시각 그 자체도 지난 것으로 본다', async () => {
     const codec = createSessionCodec(SECRET, 1000);
     const issued = new Date('2026-11-04T12:00:00Z');
-    const token = await codec.issue('demo', issued);
+    const token = await codec.issue('demo', 'kfp-1', issued);
     expect(await codec.verify(token, new Date(issued.getTime() + 999))).not.toBeNull();
     expect(await codec.verify(token, new Date(issued.getTime() + 1000))).toBeNull();
   });
 
   it('한 글자만 바꿔도, 서명 없이 내용만 바꿔도, 알고리즘을 none으로 바꿔도, 모양이 다르면 모두 null', async () => {
     const codec = createSessionCodec(SECRET);
-    const token = await codec.issue('demo');
+    const token = await codec.issue('demo', 'kfp-1');
     const [header, payload, sig] = token.split('.') as [string, string, string];
     // 첫 글자를 바꾼다. 마지막 글자는 base64url의 남는 비트(패딩)만 바꿀 수 있어 디코드 결과가 같을 때가 있다 — iat·exp에 따라 간헐적으로 실패했다.
     const flipped = (s: string) => (s.startsWith('A') ? 'B' : 'A') + s.slice(1);
@@ -42,6 +44,17 @@ describe('콘솔 세션 토큰(JWT, HS256)', () => {
     expect(await codec.verify('')).toBeNull();
     expect(await codec.verify('no-dot')).toBeNull();
     expect(await codec.verify(`${header}.${payload}`)).toBeNull();
+  });
+
+  it('콘솔 키 지문(kfp)이 없는 토큰은 같은 비밀로 서명됐어도 null — 지문이 생기기 전에 받은 세션은 다시 로그인한다', async () => {
+    const codec = createSessionCodec(SECRET);
+    const old = await new SignJWT({})
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('demo')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode(SECRET));
+    expect(await codec.verify(old)).toBeNull();
   });
 
   it('짧은 비밀은 거부한다', () => {

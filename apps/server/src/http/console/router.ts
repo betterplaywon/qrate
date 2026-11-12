@@ -10,6 +10,7 @@ import { updateHandoffSchema } from '@qrate/contracts/schemas';
 import express, { Router } from 'express';
 import type { PaymentProvider } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
+import { consoleKeyFingerprint } from '../../console/key.js';
 import type { SessionCodec } from '../../console/session.js';
 import { computeMetrics } from '../../events/metrics.js';
 import type { GreetingExperiment } from '../../greeting/experiment.js';
@@ -20,7 +21,7 @@ import { authenticate } from './auth.js';
 import { sessionCookie } from './cookie.js';
 import { toCreditDto, toDetailDto, toMetricsDto, toQueueDto, toSummaryDto } from './dto.js';
 import { parseListQuery, withCursorErrors } from './query.js';
-import { requireSession, tenantIdOf } from './session.js';
+import { requireSession, tenantIdOf, tenantOf } from './session.js';
 import { createTopUpRoutes } from './top-ups.js';
 
 // 운영 콘솔 API(/api/console/*)의 라우터 — 조립만 한다. 계약은 @qrate/contracts/console.ts.
@@ -63,7 +64,7 @@ export function createConsoleRouter({
 }: ConsoleRouterOptions): Router {
   const router = Router();
   const ownOrigin = requireOwnOrigin(publicOrigin);
-  const session = requireSession(sessions);
+  const session = requireSession(sessions, repos.tenants);
   const json = express.json({ limit: '4kb' });
   const cookieOptions = { secure: publicOrigin.startsWith('https:') };
   // 무차별 대입을 늦춘다. 키 검증(scrypt)이 한 번에 수십 ms라 이미 느리지만, 병렬로 밀어붙이는 것은 창으로 막는다.
@@ -75,7 +76,7 @@ export function createConsoleRouter({
       res.status(401).json({ error: 'invalid_credentials' } satisfies ApiErrorBody);
       return;
     }
-    const token = await sessions.issue(tenant.id);
+    const token = await sessions.issue(tenant.id, consoleKeyFingerprint(tenant.consoleKeyHash));
     res.setHeader('Set-Cookie', sessionCookie(token, { ...cookieOptions, maxAgeSec: Math.floor(sessions.ttlMs / 1000) }));
     res.setHeader('Cache-Control', 'no-store');
     res.json({ tenant: { id: tenant.id, name: tenant.name } } satisfies ConsoleSessionResponse);
@@ -86,13 +87,8 @@ export function createConsoleRouter({
     res.status(204).end();
   });
 
-  router.get('/me', session, async (_req, res) => {
-    const tenant = await repos.tenants.findById(tenantIdOf(res));
-    if (!tenant) {
-      // 세션은 유효한데 테넌트가 사라졌다(삭제). 다시 로그인하게 한다.
-      res.status(401).json({ error: 'unauthorized' } satisfies ApiErrorBody);
-      return;
-    }
+  router.get('/me', session, (_req, res) => {
+    const tenant = tenantOf(res);
     res.setHeader('Cache-Control', 'no-store');
     res.json({ tenant: { id: tenant.id, name: tenant.name } } satisfies ConsoleSessionResponse);
   });
