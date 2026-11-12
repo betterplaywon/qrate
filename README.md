@@ -102,7 +102,7 @@ pnpm --filter @qrate/widget build     # 런처 widget.js + 대화창 앱 dist/fr
 pnpm --filter @qrate/widget demo      # 데모 http://localhost:5173/demo.html — 허용 사이트 오리진에서 서빙 (file://는 막힌다)
                                       # 두 번째 데모 고객사(하람바이오)는 http://localhost:5173/reception.html
 pnpm --filter @qrate/console dev      # 운영 콘솔 개발 서버 http://localhost:5175/console/ (API는 8787로 프록시)
-                                      # 빌드된 콘솔은 서버가 http://localhost:8787/console/ 로 서빙. 로그인 = 테넌트 키 demo + .env의 QRATE_DEMO_CONSOLE_KEY
+                                      # 빌드된 콘솔은 서버가 http://localhost:8787/console/ 로 서빙. 로그인 = 테넌트 키 demo + QRATE_DEMO_CONSOLE_KEY, reception + QRATE_RECEPTION_CONSOLE_KEY
 
 pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일 (아래 e2e까지). 저장소 계약 테스트는 메모리 구현에 돌고,
                                       # .env에 QRATE_TEST_DATABASE_URL(전용 DB qrate_test, 마이그레이션 적용 후)을 두면 Postgres 구현에도 돈다
@@ -143,7 +143,7 @@ pnpm --filter @qrate/server admin console-key:revoke <회사 키>  # 회수. 그
 - 이미 있는 회사는 `tenant:add <파일> --update`일 때만 이름과 허용 사이트를 파일대로 바꾼다. FAQ와 크레딧은 그대로 둔다(콘솔에서 고친 FAQ를 덮어쓰지 않게). 다른 회사가 쓰는 회사 키는 받지 않는다.
 - 콘솔 세션에는 로그인할 때의 콘솔 키 지문이 들어 있고, 콘솔 요청마다 그 회사의 지금 키와 맞춰 본다. 그래서 키를 다시 발급하거나 회수하면 이전 키로 열어 둔 세션이 다음 요청부터 401이 된다. 다른 회사의 세션은 그대로다.
 - 운영 이미지에서는 `node dist/admin/cli.js <명령>`으로 쓴다.
-- `QRATE_DEMO_CONSOLE_KEY`는 첫 데모 회사(`demo`)의 콘솔 키다. 값이 있으면 서버 시작(메모리 저장소)과 `db:seed`가 그 키의 해시를 새로 넣으므로, 그때 `demo`의 열린 세션도 끝난다.
+- `QRATE_DEMO_CONSOLE_KEY`는 첫 데모 회사(`demo`, 마루인보이스), `QRATE_RECEPTION_CONSOLE_KEY`는 두 번째 데모 회사(`reception`, 하람바이오)의 콘솔 키다. 값이 있으면 서버 시작(메모리 저장소)과 `db:seed`가 그 회사의 키 해시를 새로 넣으므로, 그때 그 회사의 열린 세션도 끝난다. 값이 없는 회사는 메모리 저장소에서 콘솔에 로그인할 수 없고, `db:seed`는 그 회사의 기존 키를 그대로 둔다.
 
 ### 배포 전 할 일
 

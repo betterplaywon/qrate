@@ -20,7 +20,7 @@ import type { KnowledgeItem, Repositories, Tenant } from './types.js';
 // Postgres에서는 같은 파일을 prisma seed의 입력으로 쓴다.
 
 export type SeedKnowledge = Omit<KnowledgeItem, 'tenantId'>;
-/** 시드 파일의 테넌트에는 비밀이 없다. 콘솔 키 해시는 환경변수(QRATE_DEMO_CONSOLE_KEY)에서 따로 붙인다. */
+/** 시드 파일의 테넌트에는 비밀이 없다. 콘솔 키 해시는 데모 회사마다의 환경변수(config.ts DEMO_CONSOLE_KEY_ENV)에서 따로 붙인다. */
 export type SeedTenant = Omit<Tenant, 'consoleKeyHash'>;
 
 export interface SeedFile {
@@ -37,7 +37,7 @@ export const INITIAL_CREDIT_KEY = 'seed:initial';
 // 컨테이너에는 pnpm deploy가 패키지 디렉터리의 seed/ 를 함께 담는다.
 const seedPath = (file: string): string => fileURLToPath(new URL(`../../seed/${file}`, import.meta.url));
 
-/** 첫 번째 데모 테넌트(마루인보이스). 평가·부하 측정·시험이 쓰고, 콘솔 키 환경변수(QRATE_DEMO_CONSOLE_KEY)도 이 테넌트의 것이다. */
+/** 첫 번째 데모 테넌트(마루인보이스). 평가·부하 측정·시험이 쓴다. */
 export const DEFAULT_SEED_PATH = seedPath('demo-tenant.json');
 
 /** 서버(메모리 저장소)와 prisma seed가 올리는 데모 테넌트 전부. 첫 번째가 DEFAULT_SEED_PATH다. */

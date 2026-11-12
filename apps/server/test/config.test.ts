@@ -52,3 +52,16 @@ describe('QRATE_PAYMENT_PROVIDER', () => {
     expect(loadConfig({ NODE_ENV: 'development', ...keys }).payments.provider).toBe('mock');
   });
 });
+
+describe('데모 회사 콘솔 키', () => {
+  it('데모 회사마다 환경변수 하나(demo는 QRATE_DEMO_CONSOLE_KEY, reception은 QRATE_RECEPTION_CONSOLE_KEY)이고, 값이 있는 회사만 담는다', () => {
+    expect(loadConfig({}).demoConsoleKeys).toEqual({});
+    expect(loadConfig({ QRATE_DEMO_CONSOLE_KEY: 'k-demo' }).demoConsoleKeys).toEqual({ demo: 'k-demo' });
+    expect(loadConfig({ QRATE_RECEPTION_CONSOLE_KEY: 'k-reception', QRATE_DEMO_CONSOLE_KEY: '' }).demoConsoleKeys).toEqual({ reception: 'k-reception' });
+    expect(loadConfig({ QRATE_DEMO_CONSOLE_KEY: 'k-demo', QRATE_RECEPTION_CONSOLE_KEY: 'k-reception' }).demoConsoleKeys).toEqual({
+      demo: 'k-demo',
+      reception: 'k-reception',
+    });
+  });
+});
+
