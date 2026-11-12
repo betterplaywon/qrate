@@ -5,11 +5,14 @@
 // Node 런타임(빌드된 서버)만 dist를 읽는다. 그래서 `pnpm -r build`가 contracts를 먼저 빌드한다.
 
 export { drainSSEBuffer, type SSEEvent } from './sse.js';
+export { isOneOf } from './one-of.js';
 export {
   CHAT_PATH,
   CONVERSATION_ID_HEADER,
   FRAME_PATH,
+  HANDOFF_REASONS,
   MAX_MESSAGE_CHARS,
+  STOP_REASONS,
   encodeChatEvent,
   parseApiErrorBody,
   parseChatEvent,
@@ -39,7 +42,6 @@ export {
   TOP_UP_PACKAGE_IDS,
   TOSS_SDK_URL,
   WIDGET_SCRIPT_PATH,
-  isHandoffStatus,
   knowledgeChars,
   widgetSnippet,
   type ConfirmTopUpBody,
