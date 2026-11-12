@@ -1,16 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { createMockProvider } from '../src/billing/mock.js';
 import type { PaymentProvider } from '../src/billing/provider.js';
 import { createTossProvider, parseTossKeys } from '../src/billing/toss.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { consoleCsp } from '../src/http/console/static.js';
-import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
+import { startApp } from './helpers/app.js';
 
 const BASE = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'";
 const TOSS =
@@ -19,33 +15,21 @@ const TOSS =
   "frame-src 'self' https://payment-widget.tosspayments.com https://payment-gateway-sandbox.tosspayments.com https://toss.im; " +
   "frame-ancestors 'none'; base-uri 'none'";
 
-const seed = loadSeedFile(DEFAULT_SEED_PATH);
-const scratch = mkdtempSync(path.join(tmpdir(), 'qrate-console-csp-'));
-const consoleAssetsDir = path.join(scratch, 'console');
-mkdirSync(path.join(consoleAssetsDir, 'assets'), { recursive: true });
+const consoleAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-console-csp-'));
+mkdirSync(path.join(consoleAssetsDir, 'assets'));
 writeFileSync(path.join(consoleAssetsDir, 'index.html'), '<!doctype html><div id="root"></div>');
 writeFileSync(path.join(consoleAssetsDir, 'assets', 'app.js'), 'export {};');
-const servers: Server[] = [];
+const closers: (() => Promise<void>)[] = [];
 
 afterAll(async () => {
-  await Promise.all(servers.map((s) => new Promise<void>((resolve) => s.close(() => resolve()))));
-  rmSync(scratch, { recursive: true, force: true });
+  await Promise.all(closers.map((close) => close()));
+  rmSync(consoleAssetsDir, { recursive: true, force: true });
 });
 
 async function serve(payments: PaymentProvider | null): Promise<string> {
-  const app = createApp({
-    engine: new MockEngine(0),
-    repos: createRepositoriesFromSeed(seed),
-    publicOrigin: 'http://console.test',
-    frameAssetsDir: scratch,
-    consoleAssetsDir,
-    payments,
-  });
-  const server: Server = await new Promise((resolve) => {
-    const s = app.listen(0, () => resolve(s));
-  });
-  servers.push(server);
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const { url, close } = await startApp({ publicOrigin: 'http://console.test', consoleAssetsDir, payments });
+  closers.push(close);
+  return url;
 }
 
 describe('콘솔 문서 CSP — 켜진 결제 방법이 여는 출처만 더한다', () => {

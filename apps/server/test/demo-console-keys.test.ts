@@ -1,37 +1,23 @@
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { createRepositories } from '../src/repo/create.js';
+import { startApp } from './helpers/app.js';
 
 // 메모리 저장소(서버 시작)가 데모 회사마다의 콘솔 키 환경변수를 그 회사에만 붙이는지, 실제 로그인으로 본다.
 // Postgres의 db:seed(prisma/seed.ts)도 같은 readDemoConsoleKeys를 쓴다.
 
 const OWN_ORIGIN = 'http://console.test';
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-demo-keys-'));
-const servers: Server[] = [];
+const closers: (() => Promise<void>)[] = [];
 
-afterAll(async () => {
-  await Promise.all(servers.map((s) => new Promise<void>((resolve) => s.close(() => resolve()))));
-  rmSync(frameAssetsDir, { recursive: true, force: true });
-});
+afterAll(() => Promise.all(closers.map((close) => close())));
 
 async function serve(env: NodeJS.ProcessEnv): Promise<{ login: (tenant: string, key: string) => Promise<number>; description: string }> {
   const storage = await createRepositories(loadConfig({ QRATE_REPO: 'memory', ...env }));
-  const app = createApp({ engine: new MockEngine(0), repos: storage.repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, console: { secret: 'test-secret-0123456789abcdef' } });
-  const server: Server = await new Promise((resolve) => {
-    const s = app.listen(0, () => resolve(s));
-  });
-  servers.push(server);
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const { url, close } = await startApp({ repos: storage.repos, publicOrigin: OWN_ORIGIN, console: { secret: 'test-secret-0123456789abcdef' } });
+  closers.push(close);
   const login = async (tenant: string, key: string) =>
     (
-      await fetch(`${base}/api/console/login`, {
+      await fetch(`${url}/api/console/login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', origin: OWN_ORIGIN },
         body: JSON.stringify({ tenant, key }),

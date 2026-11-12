@@ -9,19 +9,12 @@ import {
   type TopUpListResponse,
 } from '@qrate/contracts';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { createMockProvider, signMockPayload } from '../src/billing/mock.js';
 import type { PaymentProvider } from '../src/billing/provider.js';
 import { hashConsoleKey } from '../src/console/key.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
-import type { Repositories } from '../src/repo/types.js';
+import { startApp, type RunningApp } from './helpers/app.js';
 
 const OWN_ORIGIN = 'http://console.test';
 const CONSOLE_KEY = 'demo-console-key';
@@ -29,40 +22,29 @@ const SECRET = 'test-secret-0123456789abcdef';
 const MOCK_SECRET = 'mock-webhook-secret-0123456789';
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const TENANT = seed.tenant.id;
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-billing-'));
 const mock = createMockProvider(MOCK_SECRET);
 
-interface Running {
-  url: string;
+interface Running extends RunningApp {
   cookie: string;
-  repos: Repositories;
   reports: { err: unknown; context?: Record<string, unknown> }[];
-  close: () => Promise<void>;
 }
 
 async function start(payments: PaymentProvider | null): Promise<Running> {
-  const repos = createRepositoriesFromSeed(seed, { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) });
   const reports: Running['reports'] = [];
-  const app = createApp({
-    engine: new MockEngine(0),
-    repos,
+  const app = await startApp({
+    repos: createRepositoriesFromSeed(seed, { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) }),
     publicOrigin: OWN_ORIGIN,
-    frameAssetsDir,
     reportError: (err, context) => void reports.push({ err, context }),
     console: { secret: SECRET },
     payments,
   });
-  const server: Server = await new Promise((resolve) => {
-    const s = app.listen(0, () => resolve(s));
-  });
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const res = await fetch(`${url}/api/console/login`, {
+  const res = await fetch(`${app.url}/api/console/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: OWN_ORIGIN },
     body: JSON.stringify({ tenant: 'demo', key: CONSOLE_KEY }),
   });
   const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-  return { url, cookie, repos, reports, close: () => new Promise((resolve) => server.close(() => resolve())) };
+  return { ...app, cookie, reports };
 }
 
 let withMock: Running;
@@ -72,10 +54,7 @@ beforeAll(async () => {
   [withMock, withoutPayments] = await Promise.all([start(mock), start(null)]);
 });
 
-afterAll(async () => {
-  await Promise.all([withMock.close(), withoutPayments.close()]);
-  rmSync(frameAssetsDir, { recursive: true, force: true });
-});
+afterAll(() => Promise.all([withMock.close(), withoutPayments.close()]));
 
 function consolePost(run: Running, p: string, cookie: string, body: unknown, headers: Record<string, string> = {}) {
   return fetch(`${run.url}/api/console${p}`, {

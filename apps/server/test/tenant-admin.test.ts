@@ -1,17 +1,12 @@
 import type { ConsoleSessionResponse } from '@qrate/contracts';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AdminError, issueConsoleKey, revokeConsoleKey } from '../src/admin/tenants.js';
-import { createApp } from '../src/app.js';
 import { CONSOLE_KEY_PREFIX, consoleKeyFingerprint, generateConsoleKey, hashConsoleKey, verifyConsoleKey } from '../src/console/key.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { createRepositoriesFromSeeds, loadSeedFiles } from '../src/repo/seed.js';
 import type { Repositories, TenantRepository } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 
 // 플랫폼 운영자의 회사·콘솔 키 관리(admin/tenants.ts)와, 키를 바꾸거나 회수했을 때 콘솔 세션이 바로 끝나는지를 실제 HTTP로 본다.
 // 저장소는 데모 시드 둘(demo, reception)을 올린 메모리. Postgres에서의 회사 등록은 tenant-admin-postgres.test.ts가 본다.
@@ -19,30 +14,17 @@ import type { Repositories, TenantRepository } from '../src/repo/types.js';
 const OWN_ORIGIN = 'http://console.test';
 const SECRET = 'test-secret-0123456789abcdef';
 const DEMO_KEY = 'demo-console-key';
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-admin-'));
 
-let server: Server;
 let baseUrl: string;
 let repos: Repositories;
+let closeApp: () => Promise<void>;
 
 beforeAll(async () => {
   repos = createRepositoriesFromSeeds(loadSeedFiles(), { consoleKeyHashes: { demo: hashConsoleKey(DEMO_KEY) } });
-  const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, console: { secret: SECRET } });
-  await new Promise<void>((resolve) => {
-    server = app.listen(0, () => {
-      baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      resolve();
-    });
-  });
+  ({ url: baseUrl, close: closeApp } = await startApp({ repos, publicOrigin: OWN_ORIGIN, console: { secret: SECRET } }));
 });
 
-afterAll(
-  () =>
-    new Promise<void>((resolve) => {
-      rmSync(frameAssetsDir, { recursive: true, force: true });
-      server.close(() => resolve());
-    }),
-);
+afterAll(() => closeApp());
 
 const api = (p: string) => `${baseUrl}/api/console${p}`;
 
