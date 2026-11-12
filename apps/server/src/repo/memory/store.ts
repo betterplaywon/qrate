@@ -14,15 +14,25 @@ export class MemoryStore {
   readonly credits = new Map<string, CreditEntry[]>();
   readonly topUps = new Map<string, TopUp>();
   readonly paymentEvents = new Map<string, PaymentEventRecord>();
-  private creditCounter = 0;
-  private topUpCounter = 0;
+  private idCounter = 0;
 
-  /** 원장 id — 같은 밀리초에도 뒤의 것이 더 큰 문자열(목록 tie-break가 id 내림차순). 핸드오프 id와 같은 이유. */
   nextCreditId(): string {
-    return `c${Date.now().toString(36).padStart(9, '0')}${(this.creditCounter++).toString(36).padStart(6, '0')}`;
+    return this.nextId('c');
   }
 
   nextTopUpId(): string {
-    return `t${Date.now().toString(36).padStart(9, '0')}${(this.topUpCounter++).toString(36).padStart(6, '0')}`;
+    return this.nextId('t');
+  }
+
+  nextHandoffId(): string {
+    return this.nextId('m');
+  }
+
+  /**
+   * 같은 밀리초에 두 건이 생겨도 뒤의 것이 더 큰 문자열이 되게(시각 base36 + 카운터).
+   * 목록 정렬의 tie-break가 id 내림차순이라, Postgres의 cuid(시각 + 카운터)처럼 저장 순서를 그대로 보존해야 두 구현의 결과가 같다.
+   */
+  private nextId(prefix: 'c' | 't' | 'm'): string {
+    return `${prefix}${Date.now().toString(36).padStart(9, '0')}${(this.idCounter++).toString(36).padStart(6, '0')}`;
   }
 }

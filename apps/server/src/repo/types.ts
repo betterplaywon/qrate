@@ -88,7 +88,7 @@ export interface KnowledgeRepository {
   /** (tenantId, id)가 있으면 바꾸고 없으면 만든다. 상한(KNOWLEDGE_LIMITS)은 보지 않는다 — console/knowledge.ts가 본다. */
   put(item: KnowledgeItem): Promise<void>;
   /** 지운 항목이 있으면 true. */
-  remove(tenantId: string, id: string): Promise<boolean>;
+  remove(id: string, tenantId: string): Promise<boolean>;
 }
 
 /** 저장할 메시지. createdAt이 없으면 저장 시각으로 기록한다. */

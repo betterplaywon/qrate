@@ -19,7 +19,7 @@ export class MemoryKnowledgeRepository implements KnowledgeRepository {
     this.items = sortKnowledgeById([...this.items.filter((k) => !same(k, item.tenantId, item.id)), copy(item)]);
   }
 
-  async remove(tenantId: string, id: string): Promise<boolean> {
+  async remove(id: string, tenantId: string): Promise<boolean> {
     const before = this.items.length;
     this.items = this.items.filter((k) => !same(k, tenantId, id));
     return this.items.length < before;
