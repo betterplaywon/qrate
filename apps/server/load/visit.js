@@ -53,6 +53,12 @@ const stepOk = new Rate('step_ok');
 
 let asked = 0;
 
+// 서버 기록과 표본을 셀 구간의 기준 시각. 실행기는 k6를 띄운 시각이 아니라 이 값을 쓴다(VU 준비 시간만큼 어긋나지 않게).
+// --summary-export가 setup_data로 함께 내보낸다.
+export function setup() {
+  return { startedAt: Date.now() };
+}
+
 function inHold() {
   const elapsedS = exec.instance.currentTestRunDuration / 1000;
   return elapsedS >= RAMP_S && elapsedS < RAMP_S + HOLD_S;
