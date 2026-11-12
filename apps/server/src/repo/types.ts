@@ -83,6 +83,10 @@ export interface TenantRepository {
 export interface KnowledgeRepository {
   /** id 오름차순으로 고정. 순서가 요청마다 같아야 프롬프트 캐시 접두사가 유지된다. */
   listByTenant(tenantId: string): Promise<KnowledgeItem[]>;
+  /** (tenantId, id)가 있으면 바꾸고 없으면 만든다. 상한(KNOWLEDGE_LIMITS)은 보지 않는다 — console/knowledge.ts가 본다. */
+  put(item: KnowledgeItem): Promise<void>;
+  /** 지운 항목이 있으면 true. */
+  remove(tenantId: string, id: string): Promise<boolean>;
 }
 
 /** 저장할 메시지. createdAt이 없으면 저장 시각으로 기록한다. */

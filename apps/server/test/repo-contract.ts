@@ -87,6 +87,39 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect(await ctx.repos.knowledge.listByTenant(ctx.otherTenantId)).toEqual([]);
     });
 
+    it('지식: put은 없으면 만들고 있으면 바꾸며 id 순서를 지킨다. remove는 지운 것이 있을 때만 true. 같은 id라도 테넌트가 다르면 따로다', async () => {
+      const { knowledge } = ctx.repos;
+      const t = ctx.otherTenantId;
+      try {
+        const first = { tenantId: t, id: 'faq:zz-contract', title: '나중', category: '시험', blocks: ['첫 문단'] };
+        await knowledge.put(first);
+        first.blocks.push('넘긴 객체를 바꿔도 저장소는 그대로');
+        await knowledge.put({ tenantId: t, id: 'faq:aa-contract', title: '먼저', category: '시험', blocks: ['A'] });
+        expect((await knowledge.listByTenant(t)).map((k) => [k.id, k.blocks])).toEqual([
+          ['faq:aa-contract', ['A']],
+          ['faq:zz-contract', ['첫 문단']],
+        ]);
+
+        await knowledge.put({ tenantId: t, id: 'faq:zz-contract', title: '나중(고침)', category: '시험2', blocks: ['고친 문단', '둘째 문단'] });
+        expect(await knowledge.listByTenant(t)).toEqual([
+          { tenantId: t, id: 'faq:aa-contract', title: '먼저', category: '시험', blocks: ['A'] },
+          { tenantId: t, id: 'faq:zz-contract', title: '나중(고침)', category: '시험2', blocks: ['고친 문단', '둘째 문단'] },
+        ]);
+
+        await knowledge.put({ tenantId: ctx.tenantId, id: 'faq:zz-contract', title: '다른 테넌트', category: '시험', blocks: ['B'] });
+        expect(await knowledge.remove(ctx.tenantId, 'faq:zz-contract')).toBe(true);
+        expect((await knowledge.listByTenant(t)).map((k) => k.title)).toEqual(['먼저', '나중(고침)']);
+
+        expect(await knowledge.remove(t, 'faq:zz-contract')).toBe(true);
+        expect(await knowledge.remove(t, 'faq:zz-contract')).toBe(false);
+        expect((await knowledge.listByTenant(t)).map((k) => k.id)).toEqual(['faq:aa-contract']);
+      } finally {
+        await knowledge.remove(t, 'faq:zz-contract');
+        await knowledge.remove(t, 'faq:aa-contract');
+        await knowledge.remove(ctx.tenantId, 'faq:zz-contract');
+      }
+    });
+
     it('대화: 첫 턴 저장으로 생긴다 → 질문 시각은 넘긴 값, 답변은 저장 시각 → 같은 테넌트로만 찾는다', async () => {
       const id = randomUUID();
       expect(await ctx.repos.conversations.find(id, ctx.tenantId)).toBeNull(); // 아직 없다 — 대화는 첫 턴과 함께 생긴다

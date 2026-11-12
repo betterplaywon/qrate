@@ -28,16 +28,16 @@ describe('시드 로더', () => {
       parseSeed({
         tenant,
         knowledge: [
-          { id: 'a', title: 'A', category: 'c', blocks: ['x'] },
-          { id: 'a', title: 'B', category: 'c', blocks: ['y'] },
+          { id: 'faq:a', title: 'A', category: 'c', blocks: ['x'] },
+          { id: 'faq:a', title: 'B', category: 'c', blocks: ['y'] },
         ],
       }),
     ).toThrow(/중복/);
-    expect(() => parseSeed({ tenant, knowledge: [{ id: 'a', title: 'A', category: 'c', blocks: [''] }] })).toThrow(
+    expect(() => parseSeed({ tenant, knowledge: [{ id: 'faq:a', title: 'A', category: 'c', blocks: [''] }] })).toThrow(
       /blocks\[0\]/,
     );
     expect(() => parseSeed({ tenant: { ...tenant, apiKey: '' }, knowledge: [] })).toThrow(/apiKey/);
-    const knowledge = [{ id: 'a', title: 'A', category: 'c', blocks: ['x'] }];
+    const knowledge = [{ id: 'faq:a', title: 'A', category: 'c', blocks: ['x'] }];
     expect(() => parseSeed({ tenant, knowledge, initialCredits: -1 })).toThrow(/initialCredits/);
     expect(() => parseSeed({ tenant, knowledge, initialCredits: 1.5 })).toThrow(/initialCredits/);
     expect(parseSeed({ tenant, knowledge }).initialCredits).toBe(0); // 없으면 지급 없음
@@ -52,8 +52,25 @@ describe('시드 로더', () => {
     expect((await repos.credits.list(seed.tenant.id, { limit: 10 })).items.map((e) => e.reason)).toEqual(['seed']);
   });
 
+  it('FAQ는 콘솔과 같은 상한을 지킨다 — id 모양, 문단 길이·개수, 회사 전체 개수·글자', () => {
+    const tenant = { id: 't', apiKey: 'k', name: '테스트', allowedOrigins: [] };
+    const item = (id: string, blocks = ['x']) => ({ id, title: 'A', category: 'c', blocks });
+    expect(() => parseSeed({ tenant, knowledge: [item('plans')] })).toThrow(/knowledge\[0\]\.id/);
+    expect(() => parseSeed({ tenant, knowledge: [item('faq:Plans')] })).toThrow(/knowledge\[0\]\.id/);
+    expect(() => parseSeed({ tenant, knowledge: [item('faq:a', ['가'.repeat(1001)])] })).toThrow(
+      /knowledge\[0\]\.blocks\[0\]: 문단 하나는 1,000자/,
+    );
+    expect(() => parseSeed({ tenant, knowledge: [item('faq:a', Array<string>(11).fill('x'))] })).toThrow(/knowledge\[0\]\.blocks: 문단은 10개/);
+    const many = Array.from({ length: 51 }, (_, i) => item(`faq:q${i}`));
+    expect(() => parseSeed({ tenant, knowledge: many })).toThrow(/51개, 상한은 50개/);
+    expect(() => parseSeed({ tenant, knowledge: many.slice(0, 50) })).not.toThrow();
+    // 제목 1자 + 문단 999자 = 항목당 1,000자, 31개면 31,000자
+    const long = Array.from({ length: 31 }, (_, i) => item(`faq:q${i}`, ['가'.repeat(999)]));
+    expect(() => parseSeed({ tenant, knowledge: long })).toThrow(/31000자, 상한은 30000자/);
+  });
+
   it('allowedOrigins는 정규형 오리진만 — CSP 헤더에 그대로 들어가므로', () => {
-    const knowledge = [{ id: 'a', title: 'A', category: 'c', blocks: ['x'] }];
+    const knowledge = [{ id: 'faq:a', title: 'A', category: 'c', blocks: ['x'] }];
     const tenant = { id: 't', apiKey: 'k', name: '테스트', allowedOrigins: ['https://shop.example.com/'] };
     expect(() => parseSeed({ tenant, knowledge })).toThrow(/allowedOrigins\[0\]/);
     expect(() => parseSeed({ tenant: { ...tenant, allowedOrigins: ['https://shop.example.com'] }, knowledge })).not.toThrow();

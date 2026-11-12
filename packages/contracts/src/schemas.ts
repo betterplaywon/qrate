@@ -5,7 +5,14 @@
 
 import { z } from 'zod';
 import { MAX_MESSAGE_CHARS } from './chat.js';
-import { CONSOLE_LIST_LIMIT, HANDOFF_STATUSES, PAYMENT_RESULTS, TOP_UP_PACKAGE_IDS } from './console.js';
+import {
+  CONSOLE_LIST_LIMIT,
+  HANDOFF_STATUSES,
+  KNOWLEDGE_ID_PATTERN,
+  KNOWLEDGE_LIMITS,
+  PAYMENT_RESULTS,
+  TOP_UP_PACKAGE_IDS,
+} from './console.js';
 import { WIDGET_EVENT_TYPES } from './events.js';
 import { MAX_HANDOFF_CONTACT_CHARS, MAX_HANDOFF_MESSAGE_CHARS } from './handoff.js';
 
@@ -88,3 +95,27 @@ export const confirmTopUpSchema = z.object({
   paymentKey: paymentKeySchema,
   amount: z.number().int().nonnegative(),
 });
+
+const { titleChars, categoryChars, blocks: maxBlocks, blockChars } = KNOWLEDGE_LIMITS;
+
+/** FAQ 문단 하나. 콘솔 폼은 문단마다 칸이 따로라 이 스키마를 칸 단위로도 쓴다. */
+export const knowledgeBlockSchema = z
+  .string()
+  .trim()
+  .min(1, '빈 문단이에요. 내용을 쓰거나 문단을 지워 주세요.')
+  .max(blockChars, `문단 하나는 ${blockChars.toLocaleString('ko-KR')}자까지 쓸 수 있어요.`);
+
+/** 문단 개수 규칙. 콘솔 폼은 문단을 {text} 객체로 들고 있어서(useFieldArray) 같은 규칙을 다른 원소에 씌운다. */
+export function knowledgeBlocks<T extends z.ZodType>(block: T) {
+  return z.array(block).min(1, '답을 한 문단 이상 써 주세요.').max(maxBlocks, `문단은 ${maxBlocks}개까지 쓸 수 있어요.`);
+}
+
+/** PUT /api/console/knowledge/:id 본문. 앞뒤 공백은 떼고 저장한다. */
+export const knowledgeInputSchema = z.object({
+  title: z.string().trim().min(1, '방문객이 묻는 질문을 써 주세요.').max(titleChars, `질문은 ${titleChars}자까지 쓸 수 있어요.`),
+  category: z.string().trim().min(1, '분류를 고르거나 새로 써 주세요.').max(categoryChars, `분류는 ${categoryChars}자까지 쓸 수 있어요.`),
+  blocks: knowledgeBlocks(knowledgeBlockSchema),
+});
+export type KnowledgeInputValues = z.infer<typeof knowledgeInputSchema>;
+
+export const knowledgeIdSchema = z.string().regex(KNOWLEDGE_ID_PATTERN);
