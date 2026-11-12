@@ -1,5 +1,6 @@
+import { HANDOFF_REASONS, STOP_REASONS } from '@qrate/contracts';
 import { z } from 'zod';
-import type { HandoffReason, StopReason, Usage } from '../src/engine/types.js';
+import type { Usage } from '../src/engine/types.js';
 import { VARIANTS } from './models.js';
 import type { AnswerStatus } from './rules.js';
 
@@ -19,8 +20,6 @@ export const usageSchema = z.object({
 
 export const ZERO_USAGE: Usage = { inputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, outputTokens: 0 };
 
-const HANDOFF_REASONS = ['not_in_knowledge', 'needs_human', 'out_of_scope', 'other'] as const satisfies readonly HandoffReason[];
-const STOP_REASONS = ['end_turn', 'max_tokens', 'refusal', 'other'] as const satisfies readonly StopReason[];
 const ANSWER_STATUSES = ['ok', 'truncated', 'refusal', 'blocked'] as const satisfies readonly AnswerStatus[];
 
 /** 변형/사례/회차. 심판 판정과 사람 라벨이 이 키로 답을 가리킨다. */

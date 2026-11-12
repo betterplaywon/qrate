@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { HANDOFF_REASONS, isOneOf } from '@qrate/contracts';
 import type { EngineEvent, HandoffReason } from './types.js';
 
 // 핸드오프 신호용 도구 (2026-11-03 결정, ADR-0005).
@@ -11,14 +12,11 @@ import type { EngineEvent, HandoffReason } from './types.js';
 
 export const HANDOFF_TOOL_NAME = 'request_handoff';
 
-/** 도구 스키마의 enum. 계약(HandoffReason)의 other는 수신 쪽 안전값이라 모델에게는 주지 않는다. */
-const REASONS = ['not_in_knowledge', 'needs_human'] as const satisfies readonly HandoffReason[];
-
 /**
- * 신호에서 읽어 줄 사유. 모델에게 주는 enum(REASONS)보다 넓다 — out_of_scope는 계약의 값이지만 무관한 질문은 넘기지 않기로 해서
- * (2026-11-11 답 기준) 모델에게는 주지 않는다. 그래도 들어오면 버리지 않고 그대로 옮긴다.
+ * 도구 스키마의 enum. 계약의 사유(HANDOFF_REASONS) 중 모델에게 줄 것만 둔다 — other는 수신 쪽 안전값이고, out_of_scope는 무관한
+ * 질문은 넘기지 않기로 해서(2026-11-11 답 기준) 주지 않는다. 신호를 읽을 때는 계약의 사유를 모두 받는다(readHandoff).
  */
-const KNOWN_REASONS = [...REASONS, 'out_of_scope'] as const satisfies readonly HandoffReason[];
+const REASONS = ['not_in_knowledge', 'needs_human'] as const satisfies readonly HandoffReason[];
 
 /** 상담원이 볼 한 줄 요약의 길이 상한. 큐·로그에 들어가는 값이라 모델이 길게 써도 자른다. */
 const SUMMARY_MAX = 200;
@@ -63,10 +61,7 @@ export function readHandoff(content: readonly ContentBlockLike[]): Extract<Engin
   const block = content.find((b) => b.type === 'tool_use' && b.name === HANDOFF_TOOL_NAME);
   if (!block) return null;
   const input = isRecord(block.input) ? block.input : {};
-  const reason: HandoffReason =
-    typeof input.reason === 'string' && (KNOWN_REASONS as readonly string[]).includes(input.reason)
-      ? (input.reason as HandoffReason)
-      : 'other';
+  const reason: HandoffReason = isOneOf(HANDOFF_REASONS, input.reason) ? input.reason : 'other';
   const summary = typeof input.summary === 'string' && input.summary.trim() ? input.summary.trim().slice(0, SUMMARY_MAX) : null;
   return { type: 'handoff', reason, summary };
 }
