@@ -18,7 +18,7 @@ export function Queue({ status }: { status: HandoffStatus }) {
         <h2>미응답 큐</h2>
         <nav className="tabs" aria-label="상태">
           {HANDOFF_STATUSES.map((s) => (
-            <a key={s} href={href.queue(s)} className={s === status ? 'active' : ''} data-testid={`tab-${s}`}>
+            <a key={s} href={href.queue(s)} aria-current={s === status ? 'page' : undefined} data-testid={`tab-${s}`}>
               {STATUS_LABEL[s]}
             </a>
           ))}

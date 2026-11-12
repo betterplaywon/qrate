@@ -12,7 +12,7 @@ import { queryOptions, useInfiniteQuery, useMutation, useQuery, useQueryClient, 
 import { ApiError, api } from './api';
 import { setupProgress } from './install';
 import { ME_KEY, signOut } from './queryClient';
-import type { Route } from './route';
+import type { ScreenRoute } from './route';
 import { clearTossReturn, openTossPaymentWindow, type TossSuccess } from './toss';
 
 // 서버 상태는 전부 react-query가 든다 — 화면 컴포넌트에는 useEffect로 데이터를 끌어오는 코드가 없다.
@@ -99,8 +99,8 @@ export function useMetrics() {
 }
 
 /** 회사 FAQ 전부(상한 50개라 페이지를 나누지 않는다). 목록과 고치기 화면이 같은 쿼리를 본다. */
-export function useKnowledge() {
-  return useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge });
+export function useKnowledge({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge, enabled });
 }
 
 /** 만들기와 고치기가 같은 PUT이다. 목록을 다시 읽은 뒤에 끝나므로, 끝나고 목록으로 가면 바뀐 내용이 보인다. */
@@ -137,9 +137,9 @@ export function useSaveOrigins() {
  * 해시가 빈 첫 화면. 시작하기 네 단계가 끝나지 않았으면 시작하기, 끝났으면 미응답 큐. 고르는 동안은 null.
  * 둘 중 하나를 불러오지 못하면 전의 첫 화면(미응답 큐)으로 간다. 해시가 빌 때만 묻는다.
  */
-export function useLanding(enabled: boolean): Route | null {
+export function useLanding(enabled: boolean): ScreenRoute | null {
   const install = useInstall({ enabled });
-  const knowledge = useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge, enabled });
+  const knowledge = useKnowledge({ enabled });
   if (install.isError || knowledge.isError) return { name: 'queue', status: 'open' };
   if (!install.data || !knowledge.data) return null;
   return setupProgress(install.data, knowledge.data.items.length).done ? { name: 'queue', status: 'open' } : { name: 'start' };

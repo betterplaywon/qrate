@@ -124,16 +124,16 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
         ]);
 
         await knowledge.put({ tenantId: ctx.tenantId, id: 'faq:zz-contract', title: '다른 테넌트', category: '시험', blocks: ['B'] });
-        expect(await knowledge.remove(ctx.tenantId, 'faq:zz-contract')).toBe(true);
+        expect(await knowledge.remove('faq:zz-contract', ctx.tenantId)).toBe(true);
         expect((await knowledge.listByTenant(t)).map((k) => k.title)).toEqual(['먼저', '나중(고침)']);
 
-        expect(await knowledge.remove(t, 'faq:zz-contract')).toBe(true);
-        expect(await knowledge.remove(t, 'faq:zz-contract')).toBe(false);
+        expect(await knowledge.remove('faq:zz-contract', t)).toBe(true);
+        expect(await knowledge.remove('faq:zz-contract', t)).toBe(false);
         expect((await knowledge.listByTenant(t)).map((k) => k.id)).toEqual(['faq:aa-contract']);
       } finally {
-        await knowledge.remove(t, 'faq:zz-contract');
-        await knowledge.remove(t, 'faq:aa-contract');
-        await knowledge.remove(ctx.tenantId, 'faq:zz-contract');
+        await knowledge.remove('faq:zz-contract', t);
+        await knowledge.remove('faq:aa-contract', t);
+        await knowledge.remove('faq:zz-contract', ctx.tenantId);
       }
     });
 

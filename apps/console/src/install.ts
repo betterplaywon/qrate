@@ -33,9 +33,11 @@ export function toSiteOrigin(input: string): string | null {
 export interface SetupProgress {
   origins: boolean;
   faq: boolean;
-  /** 설치 신호(대화창 열림)가 왔다. 한 줄 붙이기와 설치 확인 두 단계가 이것 하나로 끝난다. */
-  verified: boolean;
-  /** 네 단계 중 끝난 수. */
+  /**
+   * 시작하기 단계가 끝났는지, 화면 순서대로(주소 등록 → FAQ → 한 줄 붙이기 → 설치 확인). 단계 수도 이 길이다.
+   * 뒤의 두 단계는 설치 신호(대화창 열림) 하나로 함께 끝난다.
+   */
+  steps: readonly boolean[];
   doneCount: number;
   done: boolean;
 }
@@ -44,7 +46,8 @@ export function setupProgress(install: InstallStatusResponse, faqCount: number):
   const origins = install.allowedOrigins.length > 0;
   const faq = faqCount >= MIN_FAQ_FOR_START;
   const verified = install.lastOpenedAt !== null;
-  return { origins, faq, verified, doneCount: [origins, faq, verified, verified].filter(Boolean).length, done: origins && faq && verified };
+  const steps = [origins, faq, verified, verified];
+  return { origins, faq, steps, doneCount: steps.filter(Boolean).length, done: steps.every(Boolean) };
 }
 
 export interface BuilderGuide {
