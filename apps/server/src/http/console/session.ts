@@ -2,7 +2,7 @@ import type { ApiErrorBody } from '@qrate/contracts';
 import type { RequestHandler, Response } from 'express';
 import { consoleKeyFingerprint } from '../../console/key.js';
 import type { SessionCodec } from '../../console/session.js';
-import type { TenantRepository } from '../../repo/types.js';
+import type { Tenant, TenantRepository } from '../../repo/types.js';
 import { readSessionToken } from './cookie.js';
 
 // 세션이 있어야 하는 라우트 앞의 미들웨어. 쿠키의 토큰을 검증하고, 테넌트의 지금 콘솔 키 지문이 세션의 지문과 같을 때만
@@ -19,6 +19,7 @@ export function requireSession(sessions: SessionCodec, tenants: Pick<TenantRepos
       return;
     }
     res.locals.tenantId = session.tenantId;
+    res.locals.tenant = tenant;
     next();
   };
 }
@@ -28,4 +29,11 @@ export function tenantIdOf(res: Response): string {
   const id: unknown = res.locals.tenantId;
   if (typeof id !== 'string' || !id) throw new Error('console session missing — requireSession must run first');
   return id;
+}
+
+/** requireSession이 지문을 맞추려고 읽어 둔 테넌트. 같은 요청에서 다시 읽지 않는다. */
+export function tenantOf(res: Response): Tenant {
+  const tenant = res.locals.tenant as Tenant | undefined;
+  if (!tenant) throw new Error('console session missing — requireSession must run first');
+  return tenant;
 }

@@ -21,7 +21,7 @@ import { authenticate } from './auth.js';
 import { sessionCookie } from './cookie.js';
 import { toCreditDto, toDetailDto, toMetricsDto, toQueueDto, toSummaryDto } from './dto.js';
 import { parseListQuery, withCursorErrors } from './query.js';
-import { requireSession, tenantIdOf } from './session.js';
+import { requireSession, tenantIdOf, tenantOf } from './session.js';
 import { createTopUpRoutes } from './top-ups.js';
 
 // 운영 콘솔 API(/api/console/*)의 라우터 — 조립만 한다. 계약은 @qrate/contracts/console.ts.
@@ -87,13 +87,8 @@ export function createConsoleRouter({
     res.status(204).end();
   });
 
-  router.get('/me', session, async (_req, res) => {
-    const tenant = await repos.tenants.findById(tenantIdOf(res));
-    if (!tenant) {
-      // 세션은 유효한데 테넌트가 사라졌다(삭제). 다시 로그인하게 한다.
-      res.status(401).json({ error: 'unauthorized' } satisfies ApiErrorBody);
-      return;
-    }
+  router.get('/me', session, (_req, res) => {
+    const tenant = tenantOf(res);
     res.setHeader('Cache-Control', 'no-store');
     res.json({ tenant: { id: tenant.id, name: tenant.name } } satisfies ConsoleSessionResponse);
   });

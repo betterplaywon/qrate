@@ -64,6 +64,11 @@ describe.skipIf(!url)('회사 등록과 콘솔 키 발급 — Postgres', () => {
 
     const stealsDemoKey: SeedFile = { ...acme(['x']), tenant: { ...acme(['x']).tenant, id: 'admin-test-other', apiKey: 'demo' } };
     await expect(addTenant(prisma, stealsDemoKey)).rejects.toThrow(/다른 회사\(id demo\)/);
+
+    // 설치한 사이트의 스니펫에 든 회사 키는 --update로도 바꾸지 않는다
+    const renamedKey: SeedFile = { ...acme(['x']), tenant: { ...acme(['x']).tenant, apiKey: 'admin-test-acme-2' } };
+    await expect(addTenant(prisma, renamedKey, { update: true })).rejects.toThrow(/회사 키는 바꿀 수 없다/);
+    expect((await repos.tenants.findById(ACME))?.apiKey).toBe(ACME);
   });
 
   it('발급한 키로 그 회사 담당자가 로그인하고, 다시 발급하면 이전 세션이 끝난다', async () => {

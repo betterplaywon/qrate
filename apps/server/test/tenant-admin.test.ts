@@ -1,4 +1,5 @@
 import type { ConsoleSessionResponse } from '@qrate/contracts';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -10,7 +11,7 @@ import { createApp } from '../src/app.js';
 import { CONSOLE_KEY_PREFIX, consoleKeyFingerprint, generateConsoleKey, hashConsoleKey, verifyConsoleKey } from '../src/console/key.js';
 import { MockEngine } from '../src/engine/mock.js';
 import { createRepositoriesFromSeeds, loadSeedFiles } from '../src/repo/seed.js';
-import type { Repositories } from '../src/repo/types.js';
+import type { Repositories, TenantRepository } from '../src/repo/types.js';
 
 // 플랫폼 운영자의 회사·콘솔 키 관리(admin/tenants.ts)와, 키를 바꾸거나 회수했을 때 콘솔 세션이 바로 끝나는지를 실제 HTTP로 본다.
 // 저장소는 데모 시드 둘(demo, reception)을 올린 메모리. Postgres에서의 회사 등록은 tenant-admin-postgres.test.ts가 본다.
@@ -118,5 +119,42 @@ describe('회사 콘솔 키 발급·회수 — 메모리 저장소와 실제 HTT
   it('모르는 회사 키는 발급·회수 모두 운영자가 읽을 오류로 거절한다', async () => {
     await expect(issueConsoleKey(repos.tenants, 'nope')).rejects.toBeInstanceOf(AdminError);
     await expect(revokeConsoleKey(repos.tenants, 'nope')).rejects.toThrow(/모르는 회사 키: nope/);
+  });
+});
+
+describe('관리 명령의 실수 안내', () => {
+  const cli = path.join(import.meta.dirname, '..', 'src', 'admin', 'cli.ts');
+  const runCli = (args: string[], env: Record<string, string> = {}) =>
+    spawnSync(process.execPath, ['--conditions=source', '--import', 'tsx', cli, ...args], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '', ...env },
+    });
+
+  it('모르는 옵션, DATABASE_URL 없음, 없는 회사 파일은 스택 없이 [admin] 안내와 1로 끝난다', () => {
+    const unknownOption = runCli(['tenant:list', '--nope']);
+    expect(unknownOption.status).toBe(1);
+    expect(unknownOption.stderr).toMatch(/^\[admin\] .*nope/m);
+    expect(unknownOption.stderr).not.toMatch(/\n\s+at /);
+
+    const noDb = runCli(['tenant:list']);
+    expect(noDb.status).toBe(1);
+    expect(noDb.stderr).toContain('DATABASE_URL이 필요하다');
+
+    // 파일을 먼저 읽으므로 DB에 닿기 전에 끝난다(주소는 연결되지 않는 값이어도 된다)
+    const noFile = runCli(['tenant:add', '/no/such/company.json'], { DATABASE_URL: 'postgresql://nobody@127.0.0.1:1/none' });
+    expect(noFile.status).toBe(1);
+    expect(noFile.stderr).toContain('회사 파일을 읽지 못했다: /no/such/company.json');
+    expect(noFile.stderr).not.toMatch(/\n\s+at /);
+  });
+
+  it('찾은 뒤 저장 전에 회사가 사라지면 발급했다고 하지 않는다', async () => {
+    const tenant = { id: 'gone', apiKey: 'gone', name: '사라진 회사', allowedOrigins: [], consoleKeyHash: null };
+    const vanishing: TenantRepository = {
+      findByKey: async () => tenant,
+      findById: async () => tenant,
+      setConsoleKeyHash: async () => false,
+    };
+    await expect(issueConsoleKey(vanishing, 'gone')).rejects.toThrow(/그사이 사라졌다/);
+    await expect(revokeConsoleKey(vanishing, 'gone')).rejects.toThrow(/그사이 사라졌다/);
   });
 });

@@ -22,12 +22,21 @@ export interface AddedTenant {
 export async function addTenant(prisma: PrismaClient, seed: SeedFile, { update = false }: { update?: boolean } = {}): Promise<AddedTenant> {
   const existing = await prisma.tenant.findUnique({ where: { id: seed.tenant.id } });
   if (existing && !update) throw new AdminError(`이미 있는 회사다(id ${seed.tenant.id}). 정보와 FAQ를 파일대로 바꾸려면 --update를 붙인다`);
+  // 회사 키는 고객 사이트에 이미 붙인 설치 스니펫에 들어 있다. 바꾸면 그 사이트의 위젯이 조용히 멈춘다.
+  if (existing && existing.apiKey !== seed.tenant.apiKey) {
+    throw new AdminError(`회사 키는 바꿀 수 없다(지금 ${existing.apiKey}, 파일 ${seed.tenant.apiKey}). 설치한 사이트의 위젯이 멈춘다`);
+  }
   const keyOwner = await prisma.tenant.findUnique({ where: { apiKey: seed.tenant.apiKey } });
   if (keyOwner && keyOwner.id !== seed.tenant.id) {
     throw new AdminError(`회사 키 ${seed.tenant.apiKey}는 다른 회사(id ${keyOwner.id})가 쓰고 있다`);
   }
   await applySeed(prisma, seed);
   return { tenant: seed.tenant, knowledge: seed.knowledge.length, initialCredits: seed.initialCredits, created: !existing };
+}
+
+/** 찾은 뒤 저장하기 전에 회사가 지워졌으면 "발급했다"고 말하지 않는다. */
+async function saveConsoleKeyHash(tenants: TenantRepository, tenant: Tenant, hash: string | null): Promise<void> {
+  if (!(await tenants.setConsoleKeyHash(tenant.id, hash))) throw new AdminError(`회사(id ${tenant.id})가 그사이 사라졌다`);
 }
 
 async function tenantByKey(tenants: TenantRepository, apiKey: string): Promise<Tenant> {
@@ -47,14 +56,14 @@ export async function issueConsoleKey(
 ): Promise<{ tenant: Tenant; key: string }> {
   const tenant = await tenantByKey(tenants, apiKey);
   const key = generate();
-  await tenants.setConsoleKeyHash(tenant.id, hashConsoleKey(key));
+  await saveConsoleKeyHash(tenants, tenant, hashConsoleKey(key));
   return { tenant, key };
 }
 
 /** 콘솔 키를 지운다. 그 회사는 콘솔에 로그인할 수 없고, 열려 있던 세션도 바로 끝난다. */
 export async function revokeConsoleKey(tenants: TenantRepository, apiKey: string): Promise<Tenant> {
   const tenant = await tenantByKey(tenants, apiKey);
-  await tenants.setConsoleKeyHash(tenant.id, null);
+  await saveConsoleKeyHash(tenants, tenant, null);
   return tenant;
 }
 

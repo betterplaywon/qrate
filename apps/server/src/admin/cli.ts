@@ -6,7 +6,7 @@
 //   console-key:revoke <회사 키>                    콘솔 키 회수. 그 회사는 콘솔에 로그인할 수 없다
 import { parseArgs } from 'node:util';
 import { createPrismaClient, createPrismaRepositories } from '../repo/prisma.js';
-import { loadSeedFile } from '../repo/seed.js';
+import { loadSeedFile, type SeedFile } from '../repo/seed.js';
 import { AdminError, addTenant, issueConsoleKey, listTenants, revokeConsoleKey } from './tenants.js';
 
 const USAGE = [
@@ -22,6 +22,25 @@ function required(value: string | undefined, what: string): string {
   return value;
 }
 
+/** 모르는 옵션 같은 명령줄 실수를 운영자가 읽을 오류로 바꾼다. */
+function parseCommandLine(): { command: string | undefined; arg: string | undefined; update: boolean } {
+  try {
+    const { positionals, values } = parseArgs({ allowPositionals: true, options: { update: { type: 'boolean', default: false } } });
+    return { command: positionals[0], arg: positionals[1], update: values.update };
+  } catch (err) {
+    throw new AdminError(`${err instanceof Error ? err.message : String(err)}\n${USAGE}`);
+  }
+}
+
+/** 회사 파일이 없거나 JSON·형식이 틀리면 스택 대신 어느 파일의 무엇이 틀렸는지만 보여 준다. */
+function readCompanyFile(path: string): SeedFile {
+  try {
+    return loadSeedFile(path);
+  } catch (err) {
+    throw new AdminError(`회사 파일을 읽지 못했다: ${path}\n${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 /** 표를 공백으로 맞춘다(한글 폭은 두 칸으로 센다). */
 function table(rows: readonly string[][]): string {
   const width = (s: string): number => [...s].reduce((w, ch) => w + (/[ᄀ-ᇿ㄰-㆏가-힯]/.test(ch) ? 2 : 1), 0);
@@ -30,21 +49,16 @@ function table(rows: readonly string[][]): string {
   return rows.map((r) => r.map((cell, i) => cell + ' '.repeat((widths[i] ?? 0) - width(cell))).join('  ').trimEnd()).join('\n');
 }
 
-const { positionals, values } = parseArgs({ allowPositionals: true, options: { update: { type: 'boolean', default: false } } });
-const [command, arg] = positionals;
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!command || !databaseUrl) {
-  console.error(databaseUrl ? USAGE : `DATABASE_URL이 필요하다. 이 명령은 DB를 쓰는 서버에서만 쓴다\n${USAGE}`);
-  process.exit(1);
-}
-
-const prisma = createPrismaClient(databaseUrl);
-const repos = createPrismaRepositories(prisma);
-try {
+async function runWith(
+  prisma: ReturnType<typeof createPrismaClient>,
+  repos: ReturnType<typeof createPrismaRepositories>,
+  command: string,
+  arg: string | undefined,
+  update: boolean,
+): Promise<void> {
   switch (command) {
     case 'tenant:add': {
-      const added = await addTenant(prisma, loadSeedFile(required(arg, '회사 파일 경로')), { update: values.update });
+      const added = await addTenant(prisma, readCompanyFile(required(arg, '회사 파일 경로')), { update });
       const { tenant } = added;
       console.log(
         `[admin] ${added.created ? '회사를 등록했다' : '회사 정보와 FAQ를 파일대로 바꿨다'}: ${tenant.name}(id ${tenant.id}, 회사 키 ${tenant.apiKey}), FAQ ${added.knowledge}개, 초기 크레딧 ${added.initialCredits}`,
@@ -81,10 +95,25 @@ try {
     default:
       throw new AdminError(`모르는 명령: ${command}\n${USAGE}`);
   }
+}
+
+async function run(command: string, arg: string | undefined, update: boolean, databaseUrl: string): Promise<void> {
+  const prisma = createPrismaClient(databaseUrl);
+  const repos = createPrismaRepositories(prisma);
+  try {
+    await runWith(prisma, repos, command, arg, update);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+try {
+  const { command, arg, update } = parseCommandLine();
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new AdminError(`DATABASE_URL이 필요하다. 이 명령은 DB를 쓰는 서버에서만 쓴다\n${USAGE}`);
+  await run(required(command, '명령'), arg, update, databaseUrl);
 } catch (err) {
   if (!(err instanceof AdminError)) throw err;
   console.error(`[admin] ${err.message}`);
   process.exitCode = 1;
-} finally {
-  await prisma.$disconnect();
 }
