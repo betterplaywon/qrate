@@ -10,6 +10,7 @@ import {
   WIDGET_SCRIPT_PATH,
 } from '@qrate/contracts';
 import express from 'express';
+import path from 'node:path';
 import type { PaymentProvider } from './billing/provider.js';
 import { createBillingService } from './billing/service.js';
 import { createChatService } from './chat/service.js';
@@ -128,7 +129,8 @@ export function createApp({
     // 캐시는 5분. 새로 배포한 런처가 그 안에 퍼지고, 방문마다 서버에 다시 묻지는 않는다.
     app.get(WIDGET_SCRIPT_PATH, (_req, res, next) => {
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      res.sendFile(widgetScript, { maxAge: 5 * 60_000 }, (err) => {
+      // root로 나눠 넘긴다. 절대 경로 하나로 넘기면 sendFile이 경로 전체에서 점 파일을 찾아, 배포 경로에 .local 같은 폴더가 있으면 404가 된다.
+      res.sendFile(path.basename(widgetScript), { root: path.dirname(widgetScript), maxAge: 5 * 60_000 }, (err) => {
         if (err && !res.headersSent) next();
       });
     });

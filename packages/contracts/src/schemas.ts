@@ -70,7 +70,6 @@ export const consoleListQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   status: handoffStatusSchema.optional(),
 });
-export type ConsoleListQuery = z.infer<typeof consoleListQuerySchema>;
 
 /** 충전 요청의 Idempotency-Key 헤더. 콘솔은 UUID를 쓴다. */
 export const idempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
@@ -143,7 +142,6 @@ export const knowledgeInputSchema = z.object({
     .refine(isPlainText, PLAIN_TEXT_MESSAGE),
   blocks: knowledgeBlocks(knowledgeBlockSchema),
 });
-export type KnowledgeInputValues = z.infer<typeof knowledgeInputSchema>;
 
 export const knowledgeIdSchema = z.string().regex(KNOWLEDGE_ID_PATTERN);
 

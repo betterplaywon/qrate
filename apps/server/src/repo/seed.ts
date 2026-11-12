@@ -2,6 +2,7 @@ import { KNOWLEDGE_ID_PATTERN, KNOWLEDGE_LIMITS, knowledgeChars } from '@qrate/c
 import { knowledgeInputSchema } from '@qrate/contracts/schemas';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
 import { isOriginString } from '../origin.js';
 import {
   MemoryConversationRepository,
@@ -43,69 +44,51 @@ export const DEFAULT_SEED_PATH = seedPath('demo-tenant.json');
 /** 서버(메모리 저장소)와 prisma seed가 올리는 데모 테넌트 전부. 첫 번째가 DEFAULT_SEED_PATH다. */
 export const DEMO_SEED_PATHS: readonly string[] = [DEFAULT_SEED_PATH, seedPath('reception-tenant.json')];
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
+const nonBlank = z.string().refine((v) => v.trim().length > 0, '비어 있음');
 
-function nonEmptyString(v: unknown): string | null {
-  return typeof v === 'string' && v.trim().length > 0 ? v : null;
-}
+const seedTenantSchema = z.object({
+  id: nonBlank,
+  apiKey: nonBlank,
+  name: nonBlank,
+  // CSP frame-ancestors 헤더에 글자 그대로 들어간다. 정규형(scheme://host[:port]) 외의 값은 헤더를 깨뜨리거나
+  // 다른 지시어를 끼워 넣을 수 있어 시드 단계에서 거부한다. W3 콘솔의 입력 검증도 같은 isOriginString을 쓴다.
+  allowedOrigins: z.array(z.string().refine(isOriginString, { error: (issue) => `정규형 오리진 아님: ${String(issue.input)}` })),
+});
 
-/** zod 오류 경로를 시드 메시지의 모양(.blocks[0])으로. */
-const issuePath = (path: readonly PropertyKey[]): string =>
-  path.map((key) => (typeof key === 'number' ? `[${key}]` : `.${String(key)}`)).join('');
+// 콘솔이 FAQ를 저장할 때(PUT)와 같은 스키마다. 앞뒤 공백도 콘솔처럼 떼고 올린다.
+const seedKnowledgeSchema = knowledgeInputSchema.extend({
+  // 콘솔은 이 모양의 id만 고치고 지운다(PUT·DELETE /api/console/knowledge/:id). 회사 파일로 넣은 FAQ도 콘솔에서 다룰 수 있어야 한다.
+  id: z.string().regex(KNOWLEDGE_ID_PATTERN, { error: (issue) => `faq:와 소문자·숫자·하이픈이어야 한다: ${String(issue.input)}` }),
+});
+
+const { items: maxItems, totalChars: maxChars } = KNOWLEDGE_LIMITS;
+const CREDITS_MESSAGE = '0 이상의 정수여야 한다';
+
+const seedFileSchema = z.object({
+  tenant: seedTenantSchema,
+  knowledge: z
+    .array(seedKnowledgeSchema)
+    .min(1, '비어 있음')
+    .superRefine((items, ctx) => {
+      const seen = new Set<string>();
+      items.forEach(({ id }, i) => {
+        if (seen.has(id)) ctx.addIssue({ code: 'custom', path: [i, 'id'], message: `앞 항목과 중복: ${id}` });
+        seen.add(id);
+      });
+      if (items.length > maxItems) ctx.addIssue({ code: 'custom', message: `${items.length}개, 상한은 ${maxItems}개` });
+      const chars = items.reduce((sum, item) => sum + knowledgeChars(item), 0);
+      if (chars > maxChars) ctx.addIssue({ code: 'custom', message: `제목·문단 합계 ${chars}자, 상한은 ${maxChars}자` });
+    }),
+  initialCredits: z.int({ error: CREDITS_MESSAGE }).min(0, CREDITS_MESSAGE).default(0),
+});
 
 /** 모양이 틀린 시드는 서버 시작 때 바로 실패시킨다. 런타임에 조용히 깨지는 것보다 낫다. */
 export function parseSeed(raw: unknown, source = 'seed'): SeedFile {
-  const fail = (msg: string): never => {
-    throw new Error(`${source}: ${msg}`);
-  };
-  if (!isRecord(raw)) return fail('최상위가 객체가 아님');
-
-  const t = raw.tenant;
-  if (!isRecord(t)) return fail('tenant 누락');
-  const id = nonEmptyString(t.id) ?? fail('tenant.id');
-  const apiKey = nonEmptyString(t.apiKey) ?? fail('tenant.apiKey');
-  const name = nonEmptyString(t.name) ?? fail('tenant.name');
-  if (!Array.isArray(t.allowedOrigins)) return fail('tenant.allowedOrigins 배열 아님');
-  const allowedOrigins = t.allowedOrigins.map((o, i): string => {
-    if (typeof o !== 'string') return fail(`tenant.allowedOrigins[${i}] 문자열 아님`);
-    // CSP frame-ancestors 헤더에 글자 그대로 들어간다. 정규형(scheme://host[:port]) 외의 값은 헤더를 깨뜨리거나
-    // 다른 지시어를 끼워 넣을 수 있어 시드 단계에서 거부한다. W3 콘솔의 입력 검증도 같은 isOriginString을 쓴다.
-    if (!isOriginString(o)) return fail(`tenant.allowedOrigins[${i}] 정규형 오리진 아님: ${o}`);
-    return o;
-  });
-
-  if (!Array.isArray(raw.knowledge) || raw.knowledge.length === 0) return fail('knowledge 비어 있음');
-  const seen = new Set<string>();
-  const knowledge = raw.knowledge.map((item, i): SeedKnowledge => {
-    const at = `knowledge[${i}]`;
-    if (!isRecord(item)) return fail(`${at} 객체 아님`);
-    const kid = nonEmptyString(item.id) ?? fail(`${at}.id`);
-    // 콘솔은 이 모양의 id만 고치고 지운다(PUT·DELETE /api/console/knowledge/:id). 회사 파일로 넣은 FAQ도 콘솔에서 다룰 수 있어야 한다.
-    if (!KNOWLEDGE_ID_PATTERN.test(kid)) return fail(`${at}.id는 faq:와 소문자·숫자·하이픈이어야 한다: ${kid}`);
-    if (seen.has(kid)) return fail(`${at}.id 중복: ${kid}`);
-    seen.add(kid);
-    const title = nonEmptyString(item.title) ?? fail(`${at}.title`);
-    const category = nonEmptyString(item.category) ?? fail(`${at}.category`);
-    if (!Array.isArray(item.blocks) || item.blocks.length === 0) return fail(`${at}.blocks 비어 있음`);
-    const blocks = item.blocks.map((b, j) => nonEmptyString(b) ?? fail(`${at}.blocks[${j}] 빈 문자열`));
-    // 콘솔이 저장할 때와 같은 상한. 값은 파일 그대로 두고 검사만 한다.
-    const limits = knowledgeInputSchema.safeParse({ title, category, blocks });
-    const issue = limits.success ? undefined : limits.error.issues[0];
-    if (issue) return fail(`${at}${issuePath(issue.path)}: ${issue.message}`);
-    return { id: kid, title, category, blocks };
-  });
-  if (knowledge.length > KNOWLEDGE_LIMITS.items) return fail(`knowledge ${knowledge.length}개, 상한은 ${KNOWLEDGE_LIMITS.items}개`);
-  const chars = knowledge.reduce((sum, k) => sum + knowledgeChars(k), 0);
-  if (chars > KNOWLEDGE_LIMITS.totalChars) return fail(`knowledge 제목·문단 합계 ${chars}자, 상한은 ${KNOWLEDGE_LIMITS.totalChars}자`);
-
-  const initialCredits = raw.initialCredits === undefined ? 0 : raw.initialCredits;
-  if (typeof initialCredits !== 'number' || !Number.isInteger(initialCredits) || initialCredits < 0) {
-    return fail('initialCredits는 0 이상의 정수');
-  }
-
-  return { tenant: { id, apiKey, name, allowedOrigins }, knowledge, initialCredits };
+  const parsed = seedFileSchema.safeParse(raw, { error: z.locales.ko().localeError });
+  if (parsed.success) return parsed.data;
+  const { path, message } = parsed.error.issues[0] ?? { path: [], message: parsed.error.message };
+  const at = path.length > 0 ? `${z.core.toDotPath(path)}: ` : '';
+  throw new Error(`${source}: ${at}${message}`);
 }
 
 export function loadSeedFile(path: string = DEFAULT_SEED_PATH): SeedFile {

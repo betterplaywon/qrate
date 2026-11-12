@@ -1,5 +1,5 @@
 import { MAX_ALLOWED_ORIGINS, type ApiErrorBody, type InstallStatusResponse } from '@qrate/contracts';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -188,6 +188,23 @@ describe('위젯 런처 — GET /widget.js', () => {
     expect(res.headers.get('cache-control')).toBe('public, max-age=300');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(await res.text()).toBe(WIDGET_SOURCE);
+  });
+
+  it('런처 파일이 점으로 시작하는 폴더 아래에 있어도 준다(배포 경로의 .local·.cache 같은 폴더)', async () => {
+    const hidden = path.join(dir, '.deploy', 'widget');
+    mkdirSync(hidden, { recursive: true });
+    writeFileSync(path.join(hidden, 'widget.js'), WIDGET_SOURCE);
+    const repos = createRepositoriesFromSeeds(loadSeedFiles());
+    const other = await serve(
+      createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, widgetScript: path.join(hidden, 'widget.js') }),
+    );
+    try {
+      const res = await fetch(`${other.url}/widget.js`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(WIDGET_SOURCE);
+    } finally {
+      await new Promise<void>((resolve) => other.server.close(() => resolve()));
+    }
   });
 
   it('런처 파일을 넘기지 않았거나 파일이 없으면 404 JSON이다', async () => {

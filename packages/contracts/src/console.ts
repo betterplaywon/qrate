@@ -44,12 +44,8 @@ export const CONSOLE_LIST_LIMIT = { default: 20, max: 100 } as const;
 /** 요청의 입구. model = 엔진의 request_handoff 도구, visitor = 대화창의 "상담원 연결" 버튼. */
 export type HandoffSource = 'model' | 'visitor';
 /** 미응답 큐의 상태. 운영자가 옮긴다. 전이 제한은 없다(되돌리기 포함). */
-export type HandoffStatus = 'open' | 'in_progress' | 'done';
-export const HANDOFF_STATUSES: readonly HandoffStatus[] = ['open', 'in_progress', 'done'];
-
-export function isHandoffStatus(v: unknown): v is HandoffStatus {
-  return typeof v === 'string' && (HANDOFF_STATUSES as readonly string[]).includes(v);
-}
+export const HANDOFF_STATUSES = ['open', 'in_progress', 'done'] as const;
+export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
 
 export interface ConsoleLoginBody {
   /** 위젯 설치 스니펫의 data-tenant 값(공개 식별자). */

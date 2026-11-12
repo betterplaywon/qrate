@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import type { AnswerEngine, EngineEvent, EngineRequest, HandoffReason } from './types.js';
+import { HANDOFF_REASONS, isOneOf } from '@qrate/contracts';
+import type { AnswerEngine, EngineEvent, EngineRequest } from './types.js';
 import { EngineError } from './types.js';
 
 // API 키 없이 파이프라인(SSE 전송·인용·위젯 표시·에러 경로)을 끝까지 돌리기 위한 목업.
@@ -14,7 +15,6 @@ const FAIL_BEFORE_FIRST = /\[\[fail:(\d{3})\]\]/; //  [[fail:429]] → 첫 이�
 const FAIL_MID_STREAM = '[[fail-mid]]'; //          일부 전송 후 끊김
 const REFUSE = '[[refuse]]'; //                    정책 거절(stop_reason: refusal)
 const HANDOFF = /\[\[handoff(?::([a-z_]+))?\]\]/; // [[handoff]] 또는 [[handoff:needs_human]] → 안내 문장 뒤 핸드오프 신호, 인용 없음
-const HANDOFF_REASONS: readonly string[] = ['not_in_knowledge', 'needs_human', 'out_of_scope'] satisfies HandoffReason[];
 
 /** 훅의 숫자는 상류 상태 코드를 흉내 낸 별칭일 뿐이다. 위젯이 받는 HTTP 상태는 코드에서 http/chat.ts가 정한다. */
 function failureFor(status: number): EngineError {
@@ -74,7 +74,7 @@ export class MockEngine implements AnswerEngine {
     }
 
     if (handoff && !refuse) {
-      const reason = handoff[1] && HANDOFF_REASONS.includes(handoff[1]) ? (handoff[1] as HandoffReason) : 'not_in_knowledge';
+      const reason = isOneOf(HANDOFF_REASONS, handoff[1]) ? handoff[1] : 'not_in_knowledge';
       yield { type: 'handoff', reason, summary: '목업: 자료에 없는 질문' };
     }
 
