@@ -20,7 +20,7 @@ describe('FAQ 묶음 만들기', () => {
     expect(set.chars).toBe(base.reduce((sum, k) => sum + knowledgeChars(k), 0));
   });
 
-  it.each([15_000, 30_000])('목표 %i자면 항목을 상한(50개)까지 채워 목표에 거의 닿고, 콘솔 상한을 지킨다', (target) => {
+  it.each([KNOWLEDGE_LIMITS.totalChars, 30_000])('목표 %i자면 항목을 상한(50개)까지 채워 목표에 거의 닿고, 항목·문단은 콘솔 상한을 지킨다', (target) => {
     const set = padFaqSet(`t${target}`, base, pool, target);
     expect(set.items).toHaveLength(KNOWLEDGE_LIMITS.items);
     expect(set.chars).toBeLessThanOrEqual(target);

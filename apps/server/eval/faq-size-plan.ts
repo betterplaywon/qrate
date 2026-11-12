@@ -35,6 +35,7 @@ function toBlocks(text: string, max: number): string[] {
 /**
  * 기본 FAQ(데모 회사 그대로)에 "추가 안내" 항목을 더해 전체 글자가 target에 닿게 한다. 항목 수는 상한(50개)까지 쓰고,
  * 항목마다 문단은 상한(10개 × 1,000자) 안이다. 콘솔이 받는 모양인지 knowledgeInputSchema로 확인한다.
+ * 전체 글자는 비교를 위해 콘솔 상한(KNOWLEDGE_LIMITS.totalChars)보다 크게 만들 수 있다(옛 상한 3만 자).
  */
 export function padFaqSet(label: string, base: readonly KnowledgeSource[], pool: readonly string[], target: number | null): FaqSet {
   const items: KnowledgeSource[] = base.map((k) => ({ id: k.id, title: k.title, blocks: [...k.blocks] }));
@@ -62,9 +63,7 @@ export function padFaqSet(label: string, base: readonly KnowledgeSource[], pool:
     const parsed = knowledgeInputSchema.safeParse({ title: item.title, category: '안내', blocks: item.blocks });
     if (!parsed.success) throw new Error(`${label}: ${item.id}가 콘솔 상한을 넘는다 — ${parsed.error.issues[0]?.message ?? ''}`);
   }
-  if (items.length > KNOWLEDGE_LIMITS.items || chars > KNOWLEDGE_LIMITS.totalChars) {
-    throw new Error(`${label}: ${items.length}개·${chars}자로 콘솔 상한(${KNOWLEDGE_LIMITS.items}개·${KNOWLEDGE_LIMITS.totalChars}자)을 넘는다`);
-  }
+  if (items.length > KNOWLEDGE_LIMITS.items) throw new Error(`${label}: ${items.length}개로 콘솔 상한(${KNOWLEDGE_LIMITS.items}개)을 넘는다`);
   return { label, items, chars };
 }
 
