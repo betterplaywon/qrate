@@ -3,22 +3,40 @@ import { useSyncExternalStore } from 'react';
 
 // 해시 라우팅. 서버가 /console/ 아래를 정적 파일로만 서빙하므로(SPA 폴백 없음) 화면 상태는 해시에 둔다.
 //   #/queue/open · #/queue/in_progress · #/queue/done · #/conversations · #/conversations/<id> · #/metrics · #/billing
+//   #/faq · #/faq/new · #/faq/<id> · 저장·지우기 뒤의 목록은 #/faq?saved=<id> · #/faq?deleted=1
 // location.hash는 React 밖의 상태라 useSyncExternalStore로 구독한다(useEffect + useState 대신).
+
+/** FAQ 목록 위에 한 번 보이는 알림. 저장·지우기 뒤 목록으로 돌아올 때 해시 쿼리로 넘긴다. */
+export type FaqNotice = { kind: 'saved'; id: string } | { kind: 'deleted' };
 
 export type Route =
   | { name: 'queue'; status: HandoffStatus }
   | { name: 'conversations' }
   | { name: 'conversation'; id: string }
+  | { name: 'faq'; notice: FaqNotice | null }
+  /** id가 null이면 새 질문. */
+  | { name: 'faqItem'; id: string | null }
   | { name: 'metrics' }
   | { name: 'billing' };
 
+function parseFaqNotice(query: URLSearchParams): FaqNotice | null {
+  const saved = query.get('saved');
+  if (saved) return { kind: 'saved', id: saved };
+  return query.has('deleted') ? { kind: 'deleted' } : null;
+}
+
 export function parseRoute(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  const [path = '', query = ''] = hash.replace(/^#\/?/, '').split('?');
+  const parts = path.split('/').filter(Boolean);
   if (parts[0] === 'conversations') {
     return parts[1] ? { name: 'conversation', id: decodeURIComponent(parts[1]) } : { name: 'conversations' };
   }
   if (parts[0] === 'queue') {
     return { name: 'queue', status: isHandoffStatus(parts[1]) ? parts[1] : 'open' };
+  }
+  if (parts[0] === 'faq') {
+    if (!parts[1]) return { name: 'faq', notice: parseFaqNotice(new URLSearchParams(query)) };
+    return { name: 'faqItem', id: parts[1] === 'new' ? null : decodeURIComponent(parts[1]) };
   }
   if (parts[0] === 'metrics') return { name: 'metrics' };
   if (parts[0] === 'billing') return { name: 'billing' };
@@ -29,6 +47,12 @@ export const href = {
   queue: (status: HandoffStatus): string => `#/queue/${status}`,
   conversations: (): string => '#/conversations',
   conversation: (id: string): string => `#/conversations/${encodeURIComponent(id)}`,
+  faq: (notice: FaqNotice | null = null): string => {
+    if (notice?.kind === 'saved') return `#/faq?saved=${encodeURIComponent(notice.id)}`;
+    return notice?.kind === 'deleted' ? '#/faq?deleted=1' : '#/faq';
+  },
+  faqNew: (): string => '#/faq/new',
+  faqItem: (id: string): string => `#/faq/${encodeURIComponent(id)}`,
   metrics: (): string => '#/metrics',
   billing: (): string => '#/billing',
 };

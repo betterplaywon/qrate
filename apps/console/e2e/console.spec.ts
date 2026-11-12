@@ -1,6 +1,6 @@
 // 운영 콘솔 E2E — 실제 Chromium에서 로그인(쿠키 세션) → 대화 로그 → 미응답 큐 상태 변경 → 크레딧 잔액·원장 → 로그아웃,
 // 그리고 충전(모의 결제 제공자): 끊긴 요청의 재시도 · 결제 결과 흉내 · 같은 이벤트 재배달 · 늦은 실패 · 웹훅 원문 재전송과 위조,
-// 지표 화면(TTFT·자동 해결률·위젯 열림·인사말 A/B).
+// 지표 화면(TTFT·자동 해결률·위젯 열림·인사말 A/B), FAQ 편집(고친 문단이 다음 대화의 출처가 되는지).
 // 대화는 대화 API(POST /api/chat, 목업 엔진)로 만든다. 목업 훅 [[handoff]]가 모델 신호를 낸다(apps/server/src/engine/mock.ts).
 // 단위 테스트가 못 보는 것만 본다: 브라우저가 HttpOnly 쿠키를 실어 주는지, CSP 아래에서 번들이 도는지, 화면 흐름.
 
@@ -466,5 +466,75 @@ test('지표: 인사말 A/B — 변형 id를 실은 열림·첫 질문은 그 �
     outsideQuestions: before.outsideQuestions + 1,
   });
   await expect(page.getByTestId(`metric-greeting-rate-${target}`)).toHaveText(/^\d+(\.\d)?%$/);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('FAQ: 목록 27개·지원하지 않는 것 5개 → 고친 문단이 다음 대화의 출처가 된다 → 빈 칸은 보내기 전에 막는다 → 추가하면 28개 → 지우면 27개', async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
+  await page.goto('/console/');
+  await login(page, CONSOLE_KEY);
+  await page.getByTestId('nav-faq').click();
+  await expect(page.getByTestId('faq-count')).toHaveText('27개');
+  await expect(page.getByTestId('faq-unsupported').getByRole('listitem')).toHaveCount(5);
+
+  // 목업 엔진은 id가 가장 앞선 항목(faq:annual-billing, 연간 결제 할인)의 첫 문단을 인용한다
+  await page.getByRole('link', { name: '연간 결제 할인 고치기' }).click();
+  await expect(page.getByRole('heading', { name: '질문 고치기' })).toBeVisible();
+  const firstBlock = page.locator('#faq-block-0');
+  const original = await firstBlock.inputValue();
+  const edited = '연간 결제는 콘솔에서 고친 문단입니다.';
+  await firstBlock.fill(edited);
+  await expect(page.locator('.faq-preview-sources')).toContainText(edited);
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect(page.getByTestId('faq-notice')).toContainText('저장했어요');
+  await expect(page).toHaveURL(/#\/faq\?saved=faq%3Aannual-billing$/);
+
+  const chat = await request.post('/api/chat', {
+    headers: { origin: SERVER_ORIGIN, 'content-type': 'application/json' },
+    data: { tenant: 'demo', message: '연간 결제하면 할인돼요?' },
+  });
+  expect(chat.status()).toBe(200);
+  expect(await chat.text()).toContain(`"citedText":"${edited}"`);
+
+  // 새 질문: 빈 칸이면 요청 없이 칸 옆에 안내가 뜬다
+  await page.goto('/console/#/faq');
+  await page.getByRole('link', { name: '질문 추가' }).click();
+  await expect(page.getByRole('heading', { name: '질문 추가' })).toBeVisible();
+  let puts = 0;
+  page.on('request', (r) => {
+    if (r.method() === 'PUT') puts += 1;
+  });
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect(page.getByText('방문객이 묻는 질문을 써 주세요.')).toBeVisible();
+  await expect(page.getByText('빈 문단이에요. 내용을 쓰거나 문단을 지워 주세요.')).toBeVisible();
+  expect(puts).toBe(0);
+
+  await page.locator('#faq-title').fill('콘솔로 추가한 질문');
+  await page.getByRole('button', { name: '요금·결제', exact: true }).click();
+  await expect(page.locator('#faq-category')).toHaveValue('요금·결제');
+  await page.locator('#faq-block-0').fill('첫 문단입니다.');
+  await page.getByRole('button', { name: '문단 추가' }).click();
+  await page.locator('#faq-block-1').fill('둘째 문단입니다.');
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect(page.getByTestId('faq-count')).toHaveText('28개');
+  await expect(page.locator('.faq-item.just-saved')).toContainText('콘솔로 추가한 질문');
+  expect(puts).toBe(1);
+
+  await page.getByRole('link', { name: '콘솔로 추가한 질문 고치기' }).click();
+  await expect(page.locator('#faq-block-1')).toHaveValue('둘째 문단입니다.');
+  await page.getByRole('button', { name: '이 질문 지우기' }).click();
+  await page.getByRole('button', { name: '지우기', exact: true }).click();
+  await expect(page.getByTestId('faq-notice')).toContainText('지웠어요');
+  await expect(page.getByTestId('faq-count')).toHaveText('27개');
+  await expect(page.getByRole('link', { name: '콘솔로 추가한 질문 고치기' })).toHaveCount(0);
+
+  // 되돌린다. 같은 서버를 쓰는 다른 시험이 바뀐 근거 문장을 보지 않게
+  await page.getByRole('link', { name: '연간 결제 할인 고치기' }).click();
+  await page.locator('#faq-block-0').fill(original);
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect(page.getByTestId('faq-notice')).toContainText('저장했어요');
   expect(consoleErrors).toEqual([]);
 });
