@@ -54,13 +54,19 @@ describe.skipIf(!url)('회사 등록과 콘솔 키 발급 — Postgres', () => {
     expect(row).toMatchObject({ apiKey: ACME, name: '시험용 세 번째 회사', knowledge: 1, conversations: 0, consoleKey: false, credits: 50 });
   });
 
-  it('이미 있는 회사는 --update일 때만 바꾸고(FAQ는 파일대로, 크레딧은 한 번만), 다른 회사의 키는 받지 않는다', async () => {
+  it('이미 있는 회사는 --update일 때만 이름·허용 사이트를 바꾸고 FAQ와 크레딧은 그대로 둔다(FAQ는 콘솔에서 고친다). 다른 회사의 키는 받지 않는다', async () => {
     await expect(addTenant(prisma, acme(['바뀐 문장']))).rejects.toBeInstanceOf(AdminError);
-    const updated = await addTenant(prisma, acme(['주말에도 운영합니다.']), { update: true });
-    expect(updated.created).toBe(false);
+    const renamed: SeedFile = {
+      ...acme(['파일에 새로 쓴 문장']),
+      tenant: { ...acme(['x']).tenant, name: '이름을 바꾼 회사', allowedOrigins: ['https://www.acme.example'] },
+      initialCredits: 999,
+    };
+    expect(await addTenant(prisma, renamed, { update: true })).toEqual({ created: false, tenant: renamed.tenant, knowledge: 1 });
     const repos = createPrismaRepositories(prisma);
-    expect((await repos.knowledge.listByTenant(ACME)).map((k) => k.blocks)).toEqual([['주말에도 운영합니다.']]);
+    expect((await repos.knowledge.listByTenant(ACME)).map((k) => k.blocks)).toEqual([['평일 9시부터 6시까지 운영합니다.']]);
+    expect(await repos.tenants.findById(ACME)).toMatchObject({ name: '이름을 바꾼 회사', allowedOrigins: ['https://www.acme.example'] });
     expect(await repos.credits.balance(ACME)).toBe(50);
+    await addTenant(prisma, acme(['x']), { update: true }); // 다음 시험이 보는 이름으로 되돌린다
 
     const stealsDemoKey: SeedFile = { ...acme(['x']), tenant: { ...acme(['x']).tenant, id: 'admin-test-other', apiKey: 'demo' } };
     await expect(addTenant(prisma, stealsDemoKey)).rejects.toThrow(/다른 회사\(id demo\)/);

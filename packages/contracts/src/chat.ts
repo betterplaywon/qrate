@@ -88,6 +88,10 @@ export type ApiErrorCode =
   | 'invalid_payment'
   | 'payment_mismatch'
   | 'provider_unavailable'
+  /** 콘솔 FAQ 편집(console.ts의 knowledge). id·본문 모양(400), 개수 상한(409), 전체 글자 상한(409). */
+  | 'invalid_knowledge'
+  | 'knowledge_limit'
+  | 'knowledge_too_large'
   | StreamErrorCode;
 
 export interface ApiErrorBody {

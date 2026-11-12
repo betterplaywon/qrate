@@ -15,6 +15,9 @@ import {
   type HandoffListResponse,
   type HandoffQueueItemDto,
   type HandoffStatus,
+  type KnowledgeInput,
+  type KnowledgeItemDto,
+  type KnowledgeListResponse,
   type SimulatePaymentBody,
   type SimulatePaymentResponse,
   type TopUpDto,
@@ -75,6 +78,10 @@ export const api = {
         .patch(`handoffs/${encodeURIComponent(id)}`, { json: { status } satisfies UpdateHandoffBody })
         .json<HandoffQueueItemDto>(),
     ),
+  knowledge: () => run(client.get('knowledge').json<KnowledgeListResponse>()),
+  putKnowledge: (id: string, body: KnowledgeInput) =>
+    run(client.put(`knowledge/${encodeURIComponent(id)}`, { json: body }).json<KnowledgeItemDto>()),
+  deleteKnowledge: (id: string) => run(client.delete(`knowledge/${encodeURIComponent(id)}`).then(() => undefined)),
   topUps: (cursor: string | null) => run(client.get('top-ups', { searchParams: search({ cursor }) }).json<TopUpListResponse>()),
   createTopUp: (body: CreateTopUpBody, key: string) =>
     run(client.post('top-ups', { json: body, headers: { [IDEMPOTENCY_KEY_HEADER]: key } }).json<TopUpDto>()),

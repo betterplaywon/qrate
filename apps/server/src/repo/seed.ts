@@ -1,3 +1,5 @@
+import { KNOWLEDGE_ID_PATTERN, KNOWLEDGE_LIMITS, knowledgeChars } from '@qrate/contracts';
+import { knowledgeInputSchema } from '@qrate/contracts/schemas';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isOriginString } from '../origin.js';
@@ -49,6 +51,10 @@ function nonEmptyString(v: unknown): string | null {
   return typeof v === 'string' && v.trim().length > 0 ? v : null;
 }
 
+/** zod 오류 경로를 시드 메시지의 모양(.blocks[0])으로. */
+const issuePath = (path: readonly PropertyKey[]): string =>
+  path.map((key) => (typeof key === 'number' ? `[${key}]` : `.${String(key)}`)).join('');
+
 /** 모양이 틀린 시드는 서버 시작 때 바로 실패시킨다. 런타임에 조용히 깨지는 것보다 낫다. */
 export function parseSeed(raw: unknown, source = 'seed'): SeedFile {
   const fail = (msg: string): never => {
@@ -76,14 +82,23 @@ export function parseSeed(raw: unknown, source = 'seed'): SeedFile {
     const at = `knowledge[${i}]`;
     if (!isRecord(item)) return fail(`${at} 객체 아님`);
     const kid = nonEmptyString(item.id) ?? fail(`${at}.id`);
+    // 콘솔은 이 모양의 id만 고치고 지운다(PUT·DELETE /api/console/knowledge/:id). 회사 파일로 넣은 FAQ도 콘솔에서 다룰 수 있어야 한다.
+    if (!KNOWLEDGE_ID_PATTERN.test(kid)) return fail(`${at}.id는 faq:와 소문자·숫자·하이픈이어야 한다: ${kid}`);
     if (seen.has(kid)) return fail(`${at}.id 중복: ${kid}`);
     seen.add(kid);
     const title = nonEmptyString(item.title) ?? fail(`${at}.title`);
     const category = nonEmptyString(item.category) ?? fail(`${at}.category`);
     if (!Array.isArray(item.blocks) || item.blocks.length === 0) return fail(`${at}.blocks 비어 있음`);
     const blocks = item.blocks.map((b, j) => nonEmptyString(b) ?? fail(`${at}.blocks[${j}] 빈 문자열`));
+    // 콘솔이 저장할 때와 같은 상한. 값은 파일 그대로 두고 검사만 한다.
+    const limits = knowledgeInputSchema.safeParse({ title, category, blocks });
+    const issue = limits.success ? undefined : limits.error.issues[0];
+    if (issue) return fail(`${at}${issuePath(issue.path)}: ${issue.message}`);
     return { id: kid, title, category, blocks };
   });
+  if (knowledge.length > KNOWLEDGE_LIMITS.items) return fail(`knowledge ${knowledge.length}개, 상한은 ${KNOWLEDGE_LIMITS.items}개`);
+  const chars = knowledge.reduce((sum, k) => sum + knowledgeChars(k), 0);
+  if (chars > KNOWLEDGE_LIMITS.totalChars) return fail(`knowledge 제목·문단 합계 ${chars}자, 상한은 ${KNOWLEDGE_LIMITS.totalChars}자`);
 
   const initialCredits = raw.initialCredits === undefined ? 0 : raw.initialCredits;
   if (typeof initialCredits !== 'number' || !Number.isInteger(initialCredits) || initialCredits < 0) {

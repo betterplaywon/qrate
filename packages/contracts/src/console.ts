@@ -12,6 +12,11 @@
 //   PATCH /api/console/handoffs/:id     UpdateHandoffBody → HandoffQueueItemDto. 다른 테넌트의 것은 404
 //   GET   /api/console/credits          ?limit=&cursor= → CreditsResponse (잔액 + 원장 최근순)
 //   GET   /api/console/metrics          → ConsoleMetricsResponse (최근 METRICS_WINDOW_DAYS일, 쿼리 없음)
+//   GET   /api/console/knowledge        → KnowledgeListResponse (그 테넌트의 FAQ 전부, id 오름차순)
+//   PUT   /api/console/knowledge/:id    KnowledgeInput → 201(새로 만듦)·200(바꿈) KnowledgeItemDto. 새 항목의 id는 콘솔이 만든다(KNOWLEDGE_ID_PATTERN).
+//                                       같은 요청을 다시 보내도 항목은 하나다. id·본문 모양 400 invalid_knowledge,
+//                                       새 항목인데 개수가 상한이면 409 knowledge_limit, 전체 글자가 상한을 넘고 전보다 늘면 409 knowledge_too_large
+//   DELETE /api/console/knowledge/:id   → 204. 이미 없어도 204. id 모양 400 invalid_knowledge
 //   GET   /api/console/top-ups          ?limit=&cursor= → TopUpListResponse (충전 주문 최근순 + 콘솔이 결제하는 방법: provider, 토스면 clientKey)
 //   POST  /api/console/top-ups          헤더 Idempotency-Key(8~128자 [A-Za-z0-9_-]) + CreateTopUpBody → 201 TopUpDto.
 //                                       같은 키 재요청도 201 + 같은 본문 + Idempotent-Replayed: true. 같은 키·다른 상품 422 idempotency_key_reused,
@@ -22,7 +27,7 @@
 //                                       결제창 성공 주소로 돌아온 결제를 서버가 토스 승인 API로 확정한다. 같은 결제는 몇 번 보내도 원장 한 줄.
 //                                       본문 모양 400 invalid_payment, 주문 없음·다른 테넌트·토스 주문 아님 404 not_found,
 //                                       돌아온 금액 ≠ 주문 금액(토스를 부르지 않는다)·토스가 알려 준 결제가 이 주문·금액이 아님 422 payment_mismatch
-// 상태를 바꾸는 요청(login·logout·PATCH·POST)은 대화 API와 같은 Origin 검사를 받는다. 날짜는 ISO 8601 문자열이다.
+// 상태를 바꾸는 요청(login·logout·PATCH·POST·PUT·DELETE)은 대화 API와 같은 Origin 검사를 받는다. 날짜는 ISO 8601 문자열이다.
 
 import type { HandoffReason } from './chat.js';
 import type { WebhookOutcome } from './payments.js';
@@ -264,4 +269,47 @@ export interface ConsoleMetricsResponse {
      */
     outside: { opens: number; questions: number };
   } | null;
+}
+
+/**
+ * FAQ 상한. 위젯은 질문마다 그 회사의 FAQ 전체를 읽고 답해서(ADR-0004) 항목과 글자가 늘수록 답이 느려지고 한 번의 답에 드는 비용이 는다.
+ * items·totalChars는 서버가 막는 상한이고 recommendedItems는 콘솔이 알려 주는 권장 개수다. 시드·회사 파일도 같은 상한을 지킨다.
+ */
+export const KNOWLEDGE_LIMITS = {
+  items: 50,
+  recommendedItems: 30,
+  titleChars: 100,
+  categoryChars: 30,
+  blocks: 10,
+  blockChars: 1000,
+  /** 회사 FAQ 전체의 제목·문단 글자 합(knowledgeChars). */
+  totalChars: 30_000,
+} as const;
+
+/** FAQ id. 시드의 faq:refund-policy 같은 모양이고, 콘솔은 새 항목에 faq:<무작위>를 만들어 PUT한다. */
+export const KNOWLEDGE_ID_PATTERN = /^faq:[a-z0-9][a-z0-9-]{0,63}$/;
+
+/** PUT /api/console/knowledge/:id 본문. 문단(blocks) 하나가 위젯이 인용하는 최소 단위다. */
+export interface KnowledgeInput {
+  /** 방문객이 묻는 질문. 위젯의 출처 이름으로도 보인다. */
+  title: string;
+  category: string;
+  blocks: string[];
+}
+
+export interface KnowledgeItemDto extends KnowledgeInput {
+  id: string;
+}
+
+export interface KnowledgeListResponse {
+  items: KnowledgeItemDto[];
+}
+
+/**
+ * 전체 글자 상한(totalChars)이 세는 양. 분류는 위젯이 읽는 자료에 들어가지 않아 세지 않는다.
+ * 길이는 코드 포인트로 센다. 칸마다의 상한(zod의 .max())과 같은 단위라야 칸을 모두 지킨 저장이 합계에서 다르게 세지지 않는다.
+ */
+export function knowledgeChars(item: Pick<KnowledgeInput, 'title' | 'blocks'>): number {
+  const length = (text: string): number => [...text].length;
+  return item.blocks.reduce((sum, block) => sum + length(block), length(item.title));
 }

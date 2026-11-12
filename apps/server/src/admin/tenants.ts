@@ -10,18 +10,18 @@ import type { Tenant, TenantRepository } from '../repo/types.js';
 /** 운영자가 고칠 수 있는 입력 문제. 명령은 이 메시지만 보여 주고 1로 끝난다. */
 export class AdminError extends Error {}
 
-export interface AddedTenant {
-  tenant: SeedFile['tenant'];
-  knowledge: number;
-  initialCredits: number;
-  /** false면 이미 있던 회사의 정보와 FAQ를 파일대로 바꾼 것이다(--update). */
-  created: boolean;
-}
+/** created: 파일의 FAQ와 초기 크레딧까지 넣었다. updated: 이름·허용 사이트만 바꿨고 knowledge는 그대로 둔 지금의 FAQ 개수다. */
+export type AddedTenant =
+  | { created: true; tenant: SeedFile['tenant']; knowledge: number; initialCredits: number }
+  | { created: false; tenant: SeedFile['tenant']; knowledge: number };
 
-/** 회사 파일 하나를 DB에 넣는다. 이미 있는 회사는 update일 때만 바꾸고, 다른 회사가 쓰는 키는 받지 않는다. 콘솔 키는 건드리지 않는다. */
+/**
+ * 회사 파일 하나를 DB에 넣는다. 다른 회사가 쓰는 키는 받지 않고, 콘솔 키는 건드리지 않는다.
+ * 이미 있는 회사는 update일 때 이름과 허용 사이트만 바꾼다. FAQ는 그 회사 담당자가 콘솔에서 고치므로 파일로 덮어쓰지 않는다.
+ */
 export async function addTenant(prisma: PrismaClient, seed: SeedFile, { update = false }: { update?: boolean } = {}): Promise<AddedTenant> {
   const existing = await prisma.tenant.findUnique({ where: { id: seed.tenant.id } });
-  if (existing && !update) throw new AdminError(`이미 있는 회사다(id ${seed.tenant.id}). 정보와 FAQ를 파일대로 바꾸려면 --update를 붙인다`);
+  if (existing && !update) throw new AdminError(`이미 있는 회사다(id ${seed.tenant.id}). 이름과 허용 사이트를 파일대로 바꾸려면 --update를 붙인다`);
   // 회사 키는 고객 사이트에 이미 붙인 설치 스니펫에 들어 있다. 바꾸면 그 사이트의 위젯이 조용히 멈춘다.
   if (existing && existing.apiKey !== seed.tenant.apiKey) {
     throw new AdminError(`회사 키는 바꿀 수 없다(지금 ${existing.apiKey}, 파일 ${seed.tenant.apiKey}). 설치한 사이트의 위젯이 멈춘다`);
@@ -30,8 +30,12 @@ export async function addTenant(prisma: PrismaClient, seed: SeedFile, { update =
   if (keyOwner && keyOwner.id !== seed.tenant.id) {
     throw new AdminError(`회사 키 ${seed.tenant.apiKey}는 다른 회사(id ${keyOwner.id})가 쓰고 있다`);
   }
+  if (existing) {
+    await prisma.tenant.update({ where: { id: existing.id }, data: { name: seed.tenant.name, allowedOrigins: seed.tenant.allowedOrigins } });
+    return { created: false, tenant: seed.tenant, knowledge: await prisma.knowledgeItem.count({ where: { tenantId: existing.id } }) };
+  }
   await applySeed(prisma, seed);
-  return { tenant: seed.tenant, knowledge: seed.knowledge.length, initialCredits: seed.initialCredits, created: !existing };
+  return { created: true, tenant: seed.tenant, knowledge: seed.knowledge.length, initialCredits: seed.initialCredits };
 }
 
 /** 찾은 뒤 저장하기 전에 회사가 지워졌으면 "발급했다"고 말하지 않는다. */

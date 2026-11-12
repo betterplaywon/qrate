@@ -4,6 +4,7 @@ import type {
   CreateTopUpBody,
   HandoffQueueItemDto,
   HandoffStatus,
+  KnowledgeInput,
   PaymentResult,
 } from '@qrate/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +24,7 @@ export const keys = {
   topUps: ['topUps'] as const,
   topUpConfirm: (paymentKey: string) => ['topUpConfirm', paymentKey] as const,
   metrics: ['metrics'] as const,
+  knowledge: ['knowledge'] as const,
 };
 
 /** 세션 조회. 401은 오류가 아니라 "로그인 필요"(null)다. */
@@ -94,6 +96,28 @@ export function useCredits() {
 
 export function useMetrics() {
   return useQuery({ queryKey: keys.metrics, queryFn: api.metrics });
+}
+
+/** 회사 FAQ 전부(상한 50개라 페이지를 나누지 않는다). 목록과 고치기 화면이 같은 쿼리를 본다. */
+export function useKnowledge() {
+  return useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge });
+}
+
+/** 만들기와 고치기가 같은 PUT이다. 목록을 다시 읽은 뒤에 끝나므로, 끝나고 목록으로 가면 바뀐 내용이 보인다. */
+export function useSaveKnowledge() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: KnowledgeInput }) => api.putKnowledge(id, body),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.knowledge }),
+  });
+}
+
+export function useDeleteKnowledge() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteKnowledge(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.knowledge }),
+  });
 }
 
 export function useTopUps() {
