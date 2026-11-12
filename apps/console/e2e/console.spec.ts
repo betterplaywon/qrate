@@ -542,4 +542,12 @@ test('FAQ: 목록 27개·지원하지 않는 것 5개 → 고친 문단이 다�
   await page.getByRole('button', { name: '저장' }).click();
   await expect(page.getByTestId('faq-notice')).toContainText('저장했어요');
   expect(consoleErrors).toEqual([]);
+
+  // 대화 상세 주소도 같은 규칙이다. 로그인 시도 제한(분당 10회) 때문에 같은 세션으로 본다.
+  // 없는 대화의 404는 브라우저가 네트워크 오류로 찍으므로 그 줄 말고는 없어야 한다
+  await page.goto('/console/#/conversations/%E0%A4%A');
+  await expect(page.getByText('그 대화를 찾을 수 없어요.')).toBeVisible();
+  await page.getByTestId('nav-faq').click();
+  await expect(page.getByTestId('faq-count')).toHaveText('27개');
+  expect(consoleErrors.filter((e) => !/status of 404/.test(e))).toEqual([]);
 });
