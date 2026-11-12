@@ -83,18 +83,22 @@ test('틀린 키는 안내, 맞는 키는 시작하기(4단계 중 2단계) → 
   await expect(items.first()).toContainText('연결 요청 1');
   await items.first().click();
   await expect(page.getByTestId('messages').locator('li')).toHaveCount(2);
+  await expect(page.getByRole('navigation', { name: '주 메뉴' }).locator('[aria-current="page"]')).toHaveText(['대화 로그']);
   await expect(page.getByTestId('detail-handoffs')).toContainText('모델 신호');
 
   await page.goto('/console/#/queue/open');
   const queued = page.getByTestId('queue-item');
   await expect(queued).toHaveCount(1);
   await expect(queued.first()).toContainText('카카오톡으로 알림');
+  await expect(queued.first().getByRole('group', { name: '상태 바꾸기' }).getByRole('button')).toHaveText(['처리 중으로', '완료로']);
   await queued.first().getByTestId('move-in_progress').click();
   // 열림 탭에서 빠지고 처리 중 탭에 보인다
   await expect(page.getByTestId('queue-empty')).toBeVisible();
   await page.getByTestId('tab-in_progress').click();
   await expect(page.getByTestId('queue-item')).toHaveCount(1);
+  await expect(page.getByRole('navigation', { name: '상태' }).locator('[aria-current="page"]')).toHaveText(['처리 중']);
   await expect(page.getByTestId('status')).toHaveText('처리 중');
+  await expect(page.getByTestId('queue-item').getByRole('group', { name: '상태 바꾸기' }).getByRole('button')).toHaveText(['열림으로', '완료로']);
 
   // 크레딧: 시드 100에서 답이 있는 턴 둘이 빠져 98. 원장은 최근순 — 답변 -1, 답변 -1, 초기 지급 +100
   await page.getByTestId('nav-billing').click();

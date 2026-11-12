@@ -177,8 +177,8 @@ input:focus-visible {
   border-radius: 999px;
 }
 
-.nav a.active,
-.tabs a.active {
+.nav a[aria-current='page'],
+.tabs a[aria-current='page'] {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;

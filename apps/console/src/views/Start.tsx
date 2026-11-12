@@ -37,15 +37,15 @@ function Step({ n, title, state, badge, children }: StepProps) {
 
 function Steps({ install, faqCount }: { install: InstallStatusResponse; faqCount: number }) {
   const progress = setupProgress(install, faqCount);
-  const order = [progress.origins, progress.faq, progress.verified, progress.verified];
-  const now = order.findIndex((done) => !done);
-  const state = (i: number): StepProps['state'] => (order[i] ? 'done' : i === now ? 'now' : 'later');
+  const now = progress.steps.findIndex((done) => !done);
+  const state = (i: number): StepProps['state'] => (progress.steps[i] ? 'done' : i === now ? 'now' : 'later');
+  const summary = `${progress.steps.length}단계 중 ${progress.doneCount}단계 끝`;
 
   return (
     <>
       <div className="start-progress">
-        <strong data-testid="start-progress">4단계 중 {progress.doneCount}단계 끝</strong>
-        <progress max={4} value={progress.doneCount} aria-label={`4단계 중 ${progress.doneCount}단계 끝`} />
+        <strong data-testid="start-progress">{summary}</strong>
+        <progress max={progress.steps.length} value={progress.doneCount} aria-label={summary} />
       </div>
       <ol className="start-steps">
         <Step n={1} title="홈페이지 주소 등록" state={state(0)}>
