@@ -15,6 +15,7 @@ import {
   type HandoffListResponse,
   type HandoffQueueItemDto,
   type HandoffStatus,
+  type InstallStatusResponse,
   type KnowledgeInput,
   type KnowledgeItemDto,
   type KnowledgeListResponse,
@@ -22,6 +23,7 @@ import {
   type SimulatePaymentResponse,
   type TopUpDto,
   type TopUpListResponse,
+  type UpdateAllowedOriginsBody,
   type UpdateHandoffBody,
 } from '@qrate/contracts';
 import ky, { HTTPError } from 'ky';
@@ -82,6 +84,9 @@ export const api = {
   putKnowledge: (id: string, body: KnowledgeInput) =>
     run(client.put(`knowledge/${encodeURIComponent(id)}`, { json: body }).json<KnowledgeItemDto>()),
   deleteKnowledge: (id: string) => run(client.delete(`knowledge/${encodeURIComponent(id)}`).then(() => undefined)),
+  install: () => run(client.get('install').json<InstallStatusResponse>()),
+  putOrigins: (origins: string[]) =>
+    run(client.put('install/origins', { json: { origins } satisfies UpdateAllowedOriginsBody }).json<InstallStatusResponse>()),
   topUps: (cursor: string | null) => run(client.get('top-ups', { searchParams: search({ cursor }) }).json<TopUpListResponse>()),
   createTopUp: (body: CreateTopUpBody, key: string) =>
     run(client.post('top-ups', { json: body, headers: { [IDEMPOTENCY_KEY_HEADER]: key } }).json<TopUpDto>()),

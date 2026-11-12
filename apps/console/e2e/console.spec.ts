@@ -14,6 +14,8 @@ import {
   type TopUpListResponse,
 } from '@qrate/contracts';
 import { createHmac } from 'node:crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { CONSOLE_KEY, MOCK_PAYMENT_SECRET, SERVER_ORIGIN } from './servers';
 
 // 브라우저는 4xx 응답도 콘솔 오류로 찍는다. 세션 확인(/me)과 틀린 키의 401은 이 흐름에서 정상이라 그 한 줄만 거른다.
@@ -44,8 +46,9 @@ test('콘솔 문서는 CSP와 함께 내려오고, 로그인 전 API는 401', as
   expect((await request.get('/api/console/me')).status()).toBe(401);
 });
 
-test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화가 생기면 로그·상세·큐에 보이고 상태를 옮길 수 있다 → 크레딧 98 → 로그아웃', async ({
+test('틀린 키는 안내, 맞는 키는 시작하기(4단계 중 2단계) → 빈 큐·빈 로그 → 대화가 생기면 로그·상세·큐에 보이고 상태를 옮길 수 있다 → 크레딧 98 → 설치(주소 등록·한 줄 복사·고객 사이트에서 열림·설치됨) → 로그아웃', async ({
   page,
+  context,
   request,
   consoleErrors,
 }) => {
@@ -55,6 +58,10 @@ test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화
 
   await login(page, CONSOLE_KEY);
   await expect(page.getByTestId('tenant-name')).toHaveText('마루인보이스');
+  // 첫 화면은 시작하기다. 데모 회사는 주소(데모 페이지)와 FAQ가 있고 설치 신호는 아직 없다
+  await expect(page.getByTestId('start-progress')).toHaveText('4단계 중 2단계 끝');
+  await expect(page.getByTestId('start-step-3')).toContainText('지금 할 일');
+  await page.getByRole('link', { name: '미응답 큐' }).click();
   await expect(page.getByTestId('queue-empty')).toBeVisible();
   await page.goto('/console/#/conversations');
   await expect(page.getByTestId('conversations-empty')).toBeVisible();
@@ -98,6 +105,63 @@ test('틀린 키는 안내, 맞는 키는 셸 — 빈 큐·빈 로그 → 대화
   await expect(entries.first()).toContainText('-1');
   await expect(entries.last()).toContainText('초기 지급');
   await expect(entries.last()).toContainText('+100');
+
+  // 설치: 주소 등록 → 한 줄 복사 → 고객 사이트에 붙여 넣기 → 위젯 열기 → 설치 확인 → 시작하기 4단계 끝.
+  // 고객 사이트는 빈 포트의 로컬 HTTP 서버다. 가로챈 가짜 주소는 브라우저가 공용 주소로 보고 localhost 스크립트를 막는다(사설망 보호).
+  let siteHtml = '';
+  const site = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(siteHtml);
+  });
+  await new Promise<void>((resolve) => site.listen(0, '127.0.0.1', resolve));
+  const siteOrigin = `http://127.0.0.1:${(site.address() as AddressInfo).port}`;
+  try {
+    await page.getByTestId('nav-install').click();
+    await expect(page.getByTestId('install-waiting')).toBeVisible();
+    // 사람이 적은 주소는 앞부분(오리진)만 남긴다. https://가 없으면 붙인다
+    for (const [typed, saved] of [
+      ['www.haram-bio.example', 'https://www.haram-bio.example'],
+      ['HTTPS://Shop.Example.com/visit?from=ad', 'https://shop.example.com'],
+    ] as const) {
+      await page.locator('#origin-address').fill(typed);
+      await expect(page.getByText(`등록될 주소: ${saved}`)).toBeVisible();
+    }
+    await page.locator('#origin-address').fill('haram');
+    await page.getByRole('button', { name: '추가' }).click();
+    await expect(page.getByText('주소를 읽을 수 없어요. 예: https://www.example.com')).toBeVisible();
+    await page.locator('#origin-address').fill(`${siteOrigin}/products?id=1`);
+    await expect(page.getByText(`등록될 주소: ${siteOrigin}`)).toBeVisible();
+    await page.getByRole('button', { name: '추가' }).click();
+    await expect(page.getByTestId('origin-list')).toContainText(siteOrigin);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: SERVER_ORIGIN });
+    await page.getByRole('button', { name: '복사', exact: true }).click();
+    await expect(page.getByText('복사했어요.')).toBeVisible();
+    const snippet = await page.evaluate(() => navigator.clipboard.readText());
+    expect(snippet).toBe(`<script src="${SERVER_ORIGIN}/widget.js" data-tenant="demo" defer></script>`);
+
+    siteHtml = `<!doctype html><html lang="ko"><body><h1>가게</h1>${snippet}</body></html>`;
+    const shop = await context.newPage();
+    await shop.goto(`${siteOrigin}/products?id=1`);
+    const reported = shop.waitForResponse((r) => r.url() === `${SERVER_ORIGIN}/api/events` && r.status() === 202);
+    await shop.locator('#qrate-host .launcher').click();
+    await expect(shop.locator('#qrate-host .loading')).toHaveCount(0);
+    await reported;
+    await shop.close();
+
+    await expect(async () => {
+      await page.getByRole('button', { name: '다시 확인' }).click();
+      await expect(page.getByTestId('install-verified')).toContainText('홈페이지에서 위젯이 열렸어요', { timeout: 1000 });
+    }).toPass();
+    await page.getByTestId('nav-start').click();
+    await expect(page.getByTestId('start-progress')).toHaveText('4단계 중 4단계 끝');
+    // 등록한 주소를 지워 데모 회사를 처음 상태로 둔다
+    await page.getByTestId('nav-install').click();
+    await page.getByRole('button', { name: `${siteOrigin} 지우기` }).click();
+    await page.getByRole('button', { name: '지우기', exact: true }).click();
+    await expect(page.getByTestId('origin-list')).not.toContainText(siteOrigin);
+  } finally {
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+  }
 
   await page.getByRole('button', { name: '로그아웃' }).click();
   await expect(page.getByRole('button', { name: '로그인' })).toBeVisible();

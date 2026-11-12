@@ -1003,3 +1003,228 @@ button.danger {
 .faq-block textarea[aria-invalid='true'] {
   border-color: var(--danger);
 }
+
+/* 시작하기 */
+.start,
+.install {
+  display: grid;
+  gap: 16px;
+}
+
+.start-progress {
+  display: grid;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.start-progress progress {
+  width: 100%;
+  height: 8px;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.start-progress progress::-webkit-progress-bar {
+  background: var(--bg);
+}
+
+.start-progress progress::-webkit-progress-value {
+  background: var(--ok);
+}
+
+.start-progress progress::-moz-progress-bar {
+  background: var(--ok);
+}
+
+.start-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.start-step {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.start-step.now {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.start-step-number {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.start-step.done .start-step-number {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.start-step.now .start-step-number {
+  background: var(--accent);
+  color: #fff;
+}
+
+.start-step-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.start-step-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.start-step-body a {
+  justify-self: start;
+}
+
+.start-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.start-step-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* 설치 안내 */
+.install-step {
+  display: grid;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+
+.install-step h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.install-step p {
+  margin: 0;
+}
+
+.origin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.origin-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.origin-item code {
+  overflow-wrap: anywhere;
+}
+
+.origin-input {
+  display: flex;
+  gap: 8px;
+}
+
+.origin-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+button.small-solid {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.snippet {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--fg);
+  color: #fff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.builder-guide {
+  display: grid;
+  gap: 8px;
+}
+
+.builder-guide ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}
+
+.developer-note {
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.builder-links a,
+.inline-link {
+  margin-right: 10px;
+}
+
+.install-ok {
+  overflow-wrap: anywhere;
+}
+
+/* 메뉴가 늘어 좁은 화면에서는 한 줄로 두고 옆으로 민다(낱말 중간에서 줄이 바뀌지 않게). */
+.nav a {
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .nav {
+    order: 3;
+    width: 100%;
+    margin-right: 0;
+    overflow-x: auto;
+  }
+
+  .top > button.ghost {
+    margin-left: auto;
+  }
+}

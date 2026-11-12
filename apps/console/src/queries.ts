@@ -1,6 +1,7 @@
 import type {
   ConsoleLoginBody,
   ConsoleTenant,
+  InstallStatusResponse,
   CreateTopUpBody,
   HandoffQueueItemDto,
   HandoffStatus,
@@ -9,7 +10,9 @@ import type {
 } from '@qrate/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from './api';
+import { setupProgress } from './install';
 import { ME_KEY } from './queryClient';
+import type { Route } from './route';
 import { clearTossReturn, openTossPaymentWindow, type TossSuccess } from './toss';
 
 // 서버 상태는 전부 react-query가 든다 — 화면 컴포넌트에는 useEffect로 데이터를 끌어오는 코드가 없다.
@@ -25,6 +28,7 @@ export const keys = {
   topUpConfirm: (paymentKey: string) => ['topUpConfirm', paymentKey] as const,
   metrics: ['metrics'] as const,
   knowledge: ['knowledge'] as const,
+  install: ['install'] as const,
 };
 
 /** 세션 조회. 401은 오류가 아니라 "로그인 필요"(null)다. */
@@ -118,6 +122,31 @@ export function useDeleteKnowledge() {
     mutationFn: (id: string) => api.deleteKnowledge(id),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.knowledge }),
   });
+}
+
+export function useInstall({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: keys.install, queryFn: api.install, enabled });
+}
+
+/** 허용 사이트 목록을 통째로 보낸다. 답이 지금 상태라 캐시에 바로 넣는다. */
+export function useSaveOrigins() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (origins: string[]) => api.putOrigins(origins),
+    onSuccess: (status: InstallStatusResponse) => client.setQueryData(keys.install, status),
+  });
+}
+
+/**
+ * 해시가 빈 첫 화면. 시작하기 네 단계가 끝나지 않았으면 시작하기, 끝났으면 미응답 큐. 고르는 동안은 null.
+ * 둘 중 하나를 불러오지 못하면 전의 첫 화면(미응답 큐)으로 간다. 해시가 빌 때만 묻는다.
+ */
+export function useLanding(enabled: boolean): Route | null {
+  const install = useInstall({ enabled });
+  const knowledge = useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge, enabled });
+  if (install.isError || knowledge.isError) return { name: 'queue', status: 'open' };
+  if (!install.data || !knowledge.data) return null;
+  return setupProgress(install.data, knowledge.data.items.length).done ? { name: 'queue', status: 'open' } : { name: 'start' };
 }
 
 export function useTopUps() {
