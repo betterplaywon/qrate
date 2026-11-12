@@ -63,6 +63,21 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       expect(await ctx.repos.tenants.findById('nope')).toBeNull();
     });
 
+    it('테넌트: 콘솔 키 해시를 바꾸고 지우면 키·id 어느 쪽으로 찾아도 바뀐 값이다. 없는 테넌트는 false', async () => {
+      const { tenants } = ctx.repos;
+      const before = (await tenants.findById(ctx.tenantId))?.consoleKeyHash ?? null;
+      try {
+        expect(await tenants.setConsoleKeyHash(ctx.tenantId, 'scrypt$salt$issued')).toBe(true);
+        expect((await tenants.findByKey('demo'))?.consoleKeyHash).toBe('scrypt$salt$issued');
+        expect((await tenants.findById(ctx.tenantId))?.consoleKeyHash).toBe('scrypt$salt$issued');
+        expect(await tenants.setConsoleKeyHash(ctx.tenantId, null)).toBe(true);
+        expect((await tenants.findByKey('demo'))?.consoleKeyHash).toBeNull();
+        expect(await tenants.setConsoleKeyHash('nope', 'scrypt$salt$x')).toBe(false);
+      } finally {
+        await tenants.setConsoleKeyHash(ctx.tenantId, before);
+      }
+    });
+
     it('지식: 테넌트별로, id 오름차순 고정 (프롬프트 캐시 접두사가 요청마다 같아야 한다)', async () => {
       const items = await ctx.repos.knowledge.listByTenant(ctx.tenantId);
       expect(items.length).toBeGreaterThanOrEqual(20);

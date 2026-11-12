@@ -10,6 +10,7 @@ import { updateHandoffSchema } from '@qrate/contracts/schemas';
 import express, { Router } from 'express';
 import type { PaymentProvider } from '../../billing/provider.js';
 import type { BillingService } from '../../billing/service.js';
+import { consoleKeyFingerprint } from '../../console/key.js';
 import type { SessionCodec } from '../../console/session.js';
 import { computeMetrics } from '../../events/metrics.js';
 import type { GreetingExperiment } from '../../greeting/experiment.js';
@@ -63,7 +64,7 @@ export function createConsoleRouter({
 }: ConsoleRouterOptions): Router {
   const router = Router();
   const ownOrigin = requireOwnOrigin(publicOrigin);
-  const session = requireSession(sessions);
+  const session = requireSession(sessions, repos.tenants);
   const json = express.json({ limit: '4kb' });
   const cookieOptions = { secure: publicOrigin.startsWith('https:') };
   // 무차별 대입을 늦춘다. 키 검증(scrypt)이 한 번에 수십 ms라 이미 느리지만, 병렬로 밀어붙이는 것은 창으로 막는다.
@@ -75,7 +76,7 @@ export function createConsoleRouter({
       res.status(401).json({ error: 'invalid_credentials' } satisfies ApiErrorBody);
       return;
     }
-    const token = await sessions.issue(tenant.id);
+    const token = await sessions.issue(tenant.id, consoleKeyFingerprint(tenant.consoleKeyHash));
     res.setHeader('Set-Cookie', sessionCookie(token, { ...cookieOptions, maxAgeSec: Math.floor(sessions.ttlMs / 1000) }));
     res.setHeader('Cache-Control', 'no-store');
     res.json({ tenant: { id: tenant.id, name: tenant.name } } satisfies ConsoleSessionResponse);

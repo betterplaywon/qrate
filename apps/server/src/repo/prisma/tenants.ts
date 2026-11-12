@@ -15,4 +15,9 @@ export class PrismaTenantRepository implements TenantRepository {
   async findById(id: string): Promise<Tenant | null> {
     return toTenant(await this.prisma.tenant.findUnique({ where: { id } }));
   }
+
+  async setConsoleKeyHash(id: string, consoleKeyHash: string | null): Promise<boolean> {
+    const { count } = await this.prisma.tenant.updateMany({ where: { id }, data: { consoleKeyHash } });
+    return count === 1;
+  }
 }

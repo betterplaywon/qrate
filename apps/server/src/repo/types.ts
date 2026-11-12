@@ -76,6 +76,8 @@ export interface TenantRepository {
   findByKey(apiKey: string): Promise<Tenant | null>;
   /** 세션에 든 id로 찾기(콘솔). */
   findById(id: string): Promise<Tenant | null>;
+  /** 콘솔 키 해시를 바꾼다(발급) 또는 지운다(회수, null). 없는 테넌트면 false. */
+  setConsoleKeyHash(id: string, consoleKeyHash: string | null): Promise<boolean>;
 }
 
 export interface KnowledgeRepository {

@@ -18,4 +18,11 @@ export class MemoryTenantRepository implements TenantRepository {
   async findById(id: string): Promise<Tenant | null> {
     return copyTenant([...this.byKey.values()].find((t) => t.id === id));
   }
+
+  async setConsoleKeyHash(id: string, consoleKeyHash: string | null): Promise<boolean> {
+    const tenant = [...this.byKey.values()].find((t) => t.id === id);
+    if (!tenant) return false;
+    this.byKey.set(tenant.apiKey, { ...tenant, consoleKeyHash });
+    return true;
+  }
 }

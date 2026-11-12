@@ -1,16 +1,20 @@
 import type { ApiErrorBody } from '@qrate/contracts';
 import type { RequestHandler, Response } from 'express';
+import { consoleKeyFingerprint } from '../../console/key.js';
 import type { SessionCodec } from '../../console/session.js';
+import type { TenantRepository } from '../../repo/types.js';
 import { readSessionToken } from './cookie.js';
 
-// 세션이 있어야 하는 라우트 앞의 미들웨어. 쿠키의 토큰을 검증하고 테넌트 id를 res.locals에 둔다.
-// 없거나 틀리거나 만료면 401 — 이유는 구분하지 않는다(어느 쪽이든 다시 로그인).
+// 세션이 있어야 하는 라우트 앞의 미들웨어. 쿠키의 토큰을 검증하고, 테넌트의 지금 콘솔 키 지문이 세션의 지문과 같을 때만
+// 테넌트 id를 res.locals에 둔다. 콘솔 키를 다시 발급하거나 회수하면 지문이 달라져 그 전 세션은 여기서 끝난다(요청마다 테넌트를 한 번 읽는다).
+// 없거나 틀리거나 만료거나 지문이 다르면 401 — 이유는 구분하지 않는다(어느 쪽이든 다시 로그인).
 
-export function requireSession(sessions: SessionCodec): RequestHandler {
+export function requireSession(sessions: SessionCodec, tenants: Pick<TenantRepository, 'findById'>): RequestHandler {
   return async (req, res, next) => {
     const token = readSessionToken(req);
     const session = token ? await sessions.verify(token) : null;
-    if (!session) {
+    const tenant = session ? await tenants.findById(session.tenantId) : null;
+    if (!session || !tenant?.consoleKeyHash || consoleKeyFingerprint(tenant.consoleKeyHash) !== session.keyFingerprint) {
       res.status(401).json({ error: 'unauthorized' } satisfies ApiErrorBody);
       return;
     }

@@ -11,6 +11,7 @@
     "eval": "tsx --conditions=source eval/run.ts",
     "eval:paid": "tsx --conditions=source --env-file=.env eval/run.ts",
     "load": "tsx --conditions=source load/ladder.ts",
+    "admin": "tsx --conditions=source --env-file-if-exists=.env src/admin/cli.ts",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
