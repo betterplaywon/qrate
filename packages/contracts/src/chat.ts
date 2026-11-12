@@ -18,6 +18,7 @@
 // 이벤트 종류를 늘릴 때는 ChatStreamEvent에 변형을 추가하고 encode·parse를 함께 고친다. 왕복 테스트(test/chat.test.ts)가 어긋남을 잡는다.
 // 수신 쪽은 모르는 이벤트와 형식이 다른 데이터를 건너뛴다(parseChatEvent → null). 서버가 먼저 배포돼도 이전 위젯이 깨지지 않게.
 
+import { isOneOf } from './one-of.js';
 import { formatSSE, type SSEEvent } from './sse.js';
 
 export const CHAT_PATH = '/api/chat';
@@ -105,13 +106,15 @@ export interface ApiErrorBody {
   reasons?: string[];
 }
 
-export type StopReason = 'end_turn' | 'max_tokens' | 'refusal' | 'other';
+export const STOP_REASONS = ['end_turn', 'max_tokens', 'refusal', 'other'] as const;
+export type StopReason = (typeof STOP_REASONS)[number];
 
 /**
  * 모델이 상담원 연결을 요청한 이유. not_in_knowledge = 안내 자료에 없는 질문, needs_human = 환불 실행·계정 변경처럼 사람이
  * 직접 처리해야 하는 요청, out_of_scope = 서비스와 무관한 질문. 수신 쪽은 모르는 값을 other로 읽는다.
  */
-export type HandoffReason = 'not_in_knowledge' | 'needs_human' | 'out_of_scope' | 'other';
+export const HANDOFF_REASONS = ['not_in_knowledge', 'needs_human', 'out_of_scope', 'other'] as const;
+export type HandoffReason = (typeof HANDOFF_REASONS)[number];
 
 /** API가 원문에서 잘라 준 인용. 모델이 만든 문장이 아니라 서버가 넣은 지식 블록의 텍스트다. */
 export interface Citation {
@@ -139,8 +142,6 @@ export type ChatStreamEvent =
   | { type: 'end' };
 
 const DONE_SENTINEL = '[DONE]';
-const STOP_REASONS: readonly string[] = ['end_turn', 'max_tokens', 'refusal', 'other'] satisfies StopReason[];
-const HANDOFF_REASONS: readonly string[] = ['not_in_knowledge', 'needs_human', 'out_of_scope', 'other'] satisfies HandoffReason[];
 
 export function encodeChatEvent(ev: ChatStreamEvent): string {
   switch (ev.type) {
@@ -220,7 +221,7 @@ export function parseChatEvent(raw: SSEEvent): ChatStreamEvent | null {
       return {
         type: 'handoff',
         // 서버가 이유를 늘려도 이전 위젯이 깨지지 않게, 모르는 값은 other로 읽는다.
-        reason: HANDOFF_REASONS.includes(data.reason) ? (data.reason as HandoffReason) : 'other',
+        reason: isOneOf(HANDOFF_REASONS, data.reason) ? data.reason : 'other',
         summary: typeof data.summary === 'string' && data.summary ? data.summary : null,
       };
     case 'done':
@@ -228,7 +229,7 @@ export function parseChatEvent(raw: SSEEvent): ChatStreamEvent | null {
       return {
         type: 'done',
         // 서버가 종료 사유를 늘려도 이전 위젯이 깨지지 않게, 모르는 값은 other로 읽는다.
-        stopReason: STOP_REASONS.includes(data.stopReason) ? (data.stopReason as StopReason) : 'other',
+        stopReason: isOneOf(STOP_REASONS, data.stopReason) ? data.stopReason : 'other',
         refusalCategory: typeof data.refusalCategory === 'string' ? data.refusalCategory : null,
       };
     case 'error':

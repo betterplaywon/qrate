@@ -1,4 +1,4 @@
-import { isHandoffStatus, type HandoffStatus } from '@qrate/contracts';
+import { HANDOFF_STATUSES, isOneOf, type HandoffStatus } from '@qrate/contracts';
 import { useSyncExternalStore } from 'react';
 
 // 해시 라우팅. 서버가 /console/ 아래를 정적 파일로만 서빙하므로(SPA 폴백 없음) 화면 상태는 해시에 둔다.
@@ -45,7 +45,7 @@ export function parseRoute(hash: string): Route {
     return parts[1] ? { name: 'conversation', id: decodeSegment(parts[1]) } : { name: 'conversations' };
   }
   if (parts[0] === 'queue') {
-    return { name: 'queue', status: isHandoffStatus(parts[1]) ? parts[1] : 'open' };
+    return { name: 'queue', status: isOneOf(HANDOFF_STATUSES, parts[1]) ? parts[1] : 'open' };
   }
   if (parts[0] === 'faq') {
     if (!parts[1]) return { name: 'faq', notice: parseFaqNotice(new URLSearchParams(query)) };
