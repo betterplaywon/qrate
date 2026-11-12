@@ -26,4 +26,10 @@ export class PrismaEventRepository implements EventRepository {
     });
     return sortEventCounts(groups.map((g) => ({ type: g.type, variant: g.variant, count: g._count._all })));
   }
+
+  async lastAt(tenantId: string, type: AppEvent['type']): Promise<Date | null> {
+    // (tenantId, type, createdAt) 인덱스의 끝 한 줄.
+    const row = await this.prisma.event.findFirst({ where: { tenantId, type }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+    return row?.createdAt ?? null;
+  }
 }

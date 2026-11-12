@@ -92,6 +92,8 @@ export type ApiErrorCode =
   | 'invalid_knowledge'
   | 'knowledge_limit'
   | 'knowledge_too_large'
+  /** 콘솔 허용 사이트 편집(console.ts의 install). 정규형 오리진이 아니거나 너무 많음(400). */
+  | 'invalid_origins'
   | StreamErrorCode;
 
 export interface ApiErrorBody {

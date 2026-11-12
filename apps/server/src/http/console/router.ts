@@ -20,6 +20,7 @@ import { jsonRateLimit } from '../rate-limit.js';
 import { authenticate } from './auth.js';
 import { sessionCookie } from './cookie.js';
 import { toCreditDto, toDetailDto, toMetricsDto, toQueueDto, toSummaryDto } from './dto.js';
+import { createInstallRoutes } from './install.js';
 import { createKnowledgeRoutes } from './knowledge.js';
 import { parseListQuery, withCursorErrors } from './query.js';
 import { requireSession, tenantIdOf, tenantOf } from './session.js';
@@ -33,6 +34,7 @@ import { createTopUpRoutes } from './top-ups.js';
 //   dto.ts      저장소 타입 → 응답
 //   top-ups.ts  충전 요청·목록·결제 시뮬레이션
 //   knowledge.ts FAQ 목록·저장·지우기
+//   install.ts  설치 안내(허용 사이트·설치 확인)
 //
 // 인증(콘솔 결정 2026-11-04, A): 성공하면 서명된 세션 토큰(JWT)을 HttpOnly 쿠키로 준다. 상태를 바꾸는 요청(login·logout·PATCH·POST)은
 // 대화 API와 같은 Origin 검사를 한 번 더 받는다 — SameSite가 없는 옛 브라우저와 꾸민 요청을 서버 쪽에서도 막는다.
@@ -165,6 +167,7 @@ export function createConsoleRouter({
 
   router.use('/top-ups', createTopUpRoutes({ repos, billing, payments, session, ownOrigin, json }));
   router.use('/knowledge', createKnowledgeRoutes({ repos, session, ownOrigin }));
+  router.use('/install', createInstallRoutes({ repos, publicOrigin, session, ownOrigin, json }));
 
   return router;
 }

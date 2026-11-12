@@ -153,6 +153,7 @@ describe('관리 명령의 실수 안내', () => {
       findByKey: async () => tenant,
       findById: async () => tenant,
       setConsoleKeyHash: async () => false,
+      setAllowedOrigins: async () => false,
     };
     await expect(issueConsoleKey(vanishing, 'gone')).rejects.toThrow(/그사이 사라졌다/);
     await expect(revokeConsoleKey(vanishing, 'gone')).rejects.toThrow(/그사이 사라졌다/);

@@ -17,6 +17,9 @@
 //                                       같은 요청을 다시 보내도 항목은 하나다. id·본문 모양 400 invalid_knowledge,
 //                                       새 항목인데 개수가 상한이면 409 knowledge_limit, 전체 글자가 상한을 넘고 전보다 늘면 409 knowledge_too_large
 //   DELETE /api/console/knowledge/:id   → 204. 이미 없어도 204. id 모양 400 invalid_knowledge
+//   GET   /api/console/install          → InstallStatusResponse (설치 스니펫 재료·허용 사이트·위젯이 마지막으로 열린 때)
+//   PUT   /api/console/install/origins  UpdateAllowedOriginsBody → InstallStatusResponse. 정규형 오리진만, 최대 MAX_ALLOWED_ORIGINS개.
+//                                       같은 값은 한 번만 저장한다. 모양 400 invalid_origins
 //   GET   /api/console/top-ups          ?limit=&cursor= → TopUpListResponse (충전 주문 최근순 + 콘솔이 결제하는 방법: provider, 토스면 clientKey)
 //   POST  /api/console/top-ups          헤더 Idempotency-Key(8~128자 [A-Za-z0-9_-]) + CreateTopUpBody → 201 TopUpDto.
 //                                       같은 키 재요청도 201 + 같은 본문 + Idempotent-Replayed: true. 같은 키·다른 상품 422 idempotency_key_reused,
@@ -312,4 +315,36 @@ export interface KnowledgeListResponse {
 export function knowledgeChars(item: Pick<KnowledgeInput, 'title' | 'blocks'>): number {
   const length = (text: string): number => [...text].length;
   return item.blocks.reduce((sum, block) => sum + length(block), length(item.title));
+}
+
+/** 서버가 위젯 런처 스크립트를 주는 경로. 런처는 이 스크립트를 내려준 오리진을 위젯 서버로 쓴다(packages/widget/src/loader.ts). */
+export const WIDGET_SCRIPT_PATH = '/widget.js';
+
+/** 위젯을 넣을 수 있는 사이트 수 상한. 허용 사이트는 대화창 응답의 CSP frame-ancestors 헤더에 그대로 들어간다. */
+export const MAX_ALLOWED_ORIGINS = 10;
+
+export interface InstallStatusResponse {
+  /** 설치 스니펫의 data-tenant 값. 공개 식별자다. */
+  tenantKey: string;
+  /** 위젯 런처 스크립트 주소(이 서버의 WIDGET_SCRIPT_PATH). */
+  scriptUrl: string;
+  /** 위젯이 열리는 사이트의 정규형 오리진(scheme://host[:port]). */
+  allowedOrigins: string[];
+  /**
+   * 대화창이 마지막으로 열린 때(widget_open 사건). 없으면 null. 대화창은 허용 사이트에서만 열리지만,
+   * 방문자 브라우저가 보내는 사건이라 공개 키로 꾸밀 수 있다. 설치 확인 표시에만 쓴다.
+   */
+  lastOpenedAt: string | null;
+}
+
+/** PUT /api/console/install/origins 본문. 목록 전체를 바꾼다(빈 목록이면 어느 사이트에서도 위젯이 열리지 않는다). */
+export interface UpdateAllowedOriginsBody {
+  origins: string[];
+}
+
+const escapeAttribute = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
+
+/** 고객 사이트에 붙이는 설치 스니펫 한 줄. 콘솔 설치 화면과 운영자 명령(tenant:add)이 같은 모양을 쓴다. */
+export function widgetSnippet({ scriptUrl, tenantKey }: { scriptUrl: string; tenantKey: string }): string {
+  return `<script src="${escapeAttribute(scriptUrl)}" data-tenant="${escapeAttribute(tenantKey)}" defer></script>`;
 }

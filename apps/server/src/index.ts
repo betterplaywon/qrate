@@ -1,6 +1,6 @@
 // Sentry가 가장 먼저 로드되어야 한다 — 아래 import 순서는 의도된 것. (src/sentry.ts 참고)
 import { Sentry, sentryEnabled } from './sentry.js';
-import { CONSOLE_API_PATH, CONSOLE_PATH, paymentWebhookPath } from '@qrate/contracts';
+import { CONSOLE_API_PATH, CONSOLE_PATH, WIDGET_SCRIPT_PATH, paymentWebhookPath } from '@qrate/contracts';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -47,6 +47,7 @@ const engine = createEngine(config);
 const storage = await createRepositories(config);
 // 대화창 앱(app.js·app.css)과 운영 콘솔 앱(index.html·assets/)은 각 패키지의 빌드 산출물이다. 워크스페이스 의존성으로 받아 서빙한다.
 const frameAssetsDir = packageDist('@qrate/widget', 'frame');
+const widgetScript = packageDist('@qrate/widget', 'widget.js');
 const consoleAssetsDir = packageDist('@qrate/console');
 // 처리 중 예외의 보고 통로. 앱의 마지막 오류 핸들러(app.ts)와 턴 저장·엔진 실패(chat/, http/)가 이 함수를 부른다.
 // Sentry가 켜져 있으면 거기로도 보낸다. 요청 본문·사용자 메시지는 어느 구현에도 넘기지 않는다(src/report.ts).
@@ -69,6 +70,7 @@ const app = createApp({
   repos: storage.repos,
   publicOrigin: config.publicOrigin,
   frameAssetsDir,
+  widgetScript,
   sentryEnabled,
   reportError,
   // 사건 JSON을 stdout에도 한 줄씩 — 개발 중 보기용. verify·E2E 서버는 NODE_ENV 없이 떠서 켜지고, 컨테이너(production)는 끈다.
@@ -90,6 +92,7 @@ const onListening = (): void => {
   console.log(`[server] ${describePayments(config.payments)}`);
   console.log(`[server] publicOrigin=${config.publicOrigin} — 대화 API는 이 오리진의 iframe에서 온 요청만 받는다`);
   console.log(`[server] frame assets=${frameAssetsDir}`);
+  console.log(`[server] widget script=${config.publicOrigin}${WIDGET_SCRIPT_PATH} file=${widgetScript}`);
   console.log(`[server] console app=${CONSOLE_PATH}/ assets=${consoleAssetsDir}`);
 };
 if (config.host) app.listen(config.port, config.host, onListening);

@@ -10,6 +10,7 @@ import {
   HANDOFF_STATUSES,
   KNOWLEDGE_ID_PATTERN,
   KNOWLEDGE_LIMITS,
+  MAX_ALLOWED_ORIGINS,
   PAYMENT_RESULTS,
   TOP_UP_PACKAGE_IDS,
 } from './console.js';
@@ -145,3 +146,6 @@ export const knowledgeInputSchema = z.object({
 export type KnowledgeInputValues = z.infer<typeof knowledgeInputSchema>;
 
 export const knowledgeIdSchema = z.string().regex(KNOWLEDGE_ID_PATTERN);
+
+/** PUT /api/console/install/origins 본문. 각 값이 정규형 오리진인지는 서버가 isOriginString으로 본다(CSP 헤더에 그대로 들어가므로 서버 한 곳에서). */
+export const updateAllowedOriginsSchema = z.object({ origins: z.array(z.string().max(2048)).max(MAX_ALLOWED_ORIGINS) });

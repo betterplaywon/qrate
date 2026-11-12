@@ -20,9 +20,17 @@ export class MemoryTenantRepository implements TenantRepository {
   }
 
   async setConsoleKeyHash(id: string, consoleKeyHash: string | null): Promise<boolean> {
+    return this.update(id, { consoleKeyHash });
+  }
+
+  async setAllowedOrigins(id: string, allowedOrigins: string[]): Promise<boolean> {
+    return this.update(id, { allowedOrigins: [...allowedOrigins] });
+  }
+
+  private update(id: string, fields: Partial<Pick<Tenant, 'consoleKeyHash' | 'allowedOrigins'>>): boolean {
     const tenant = [...this.byKey.values()].find((t) => t.id === id);
     if (!tenant) return false;
-    this.byKey.set(tenant.apiKey, { ...tenant, consoleKeyHash });
+    this.byKey.set(tenant.apiKey, { ...tenant, ...fields });
     return true;
   }
 }

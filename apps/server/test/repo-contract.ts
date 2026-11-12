@@ -78,6 +78,23 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       }
     });
 
+    it('테넌트: 허용 사이트를 통째로 바꾸면 키·id 어느 쪽으로 찾아도 바뀐 값이다. 넘긴 배열을 나중에 바꿔도 그대로. 없는 테넌트는 false', async () => {
+      const { tenants } = ctx.repos;
+      const before = (await tenants.findById(ctx.tenantId))?.allowedOrigins ?? [];
+      try {
+        const next = ['https://www.example.com', 'https://shop.example.com'];
+        expect(await tenants.setAllowedOrigins(ctx.tenantId, next)).toBe(true);
+        next.push('https://evil.example');
+        expect((await tenants.findByKey('demo'))?.allowedOrigins).toEqual(['https://www.example.com', 'https://shop.example.com']);
+        expect((await tenants.findById(ctx.tenantId))?.allowedOrigins).toEqual(['https://www.example.com', 'https://shop.example.com']);
+        expect(await tenants.setAllowedOrigins(ctx.tenantId, [])).toBe(true);
+        expect((await tenants.findByKey('demo'))?.allowedOrigins).toEqual([]);
+        expect(await tenants.setAllowedOrigins('nope', ['https://x.example'])).toBe(false);
+      } finally {
+        await tenants.setAllowedOrigins(ctx.tenantId, before);
+      }
+    });
+
     it('지식: 테넌트별로, id 오름차순 고정 (프롬프트 캐시 접두사가 요청마다 같아야 한다)', async () => {
       const items = await ctx.repos.knowledge.listByTenant(ctx.tenantId);
       expect(items.length).toBeGreaterThanOrEqual(20);
@@ -537,6 +554,16 @@ export function describeRepositoryContract(name: string, setup: () => Promise<Re
       const empty = { from: at('2002-01-01T00:00:00Z'), to: at('2002-01-08T00:00:00Z') };
       expect(await ctx.repos.events.ttftSamples(t, empty)).toEqual([]);
       expect(await ctx.repos.events.counts(t, empty)).toEqual([]);
+    });
+
+    it('사건: lastAt은 그 테넌트·종류 중 가장 늦은 사건 시각이고, 없으면 null', async () => {
+      // 시험 DB는 사건을 지우지 않고 쌓는다. 먼 미래 시각으로 넣어 다른 실행이 남긴 행보다 늦게 둔다.
+      const t = ctx.otherTenantId;
+      const opened = (iso: string): AppEvent => ({ type: 'widget_open', tenantId: t, createdAt: new Date(iso), conversationId: null, variant: null, payload: {} });
+      for (const iso of ['2999-01-01T00:00:00Z', '2999-01-02T00:00:00Z', '2998-12-31T00:00:00Z']) await ctx.repos.events.record(opened(iso));
+      expect(await ctx.repos.events.lastAt(t, 'widget_open')).toEqual(new Date('2999-01-02T00:00:00Z'));
+      expect((await ctx.repos.events.lastAt(ctx.tenantId, 'widget_open'))?.getTime() ?? 0).toBeLessThan(Date.parse('2998-01-01T00:00:00Z'));
+      expect(await ctx.repos.events.lastAt('nope', 'widget_open')).toBeNull();
     });
 
     it('대화 결과: 창 [from, to) 안에 시작한 이 테넌트의 대화마다 질문·답이 있는지, 연결 요청이 있는지(출처·상태 무관)', async () => {
