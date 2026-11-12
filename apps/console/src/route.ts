@@ -19,6 +19,15 @@ export type Route =
   | { name: 'metrics' }
   | { name: 'billing' };
 
+/** 손으로 고친 주소의 깨진 퍼센트 문자(%E0%A4%A)는 decodeURIComponent가 던져 화면 전체가 멈춘다. 그대로 두면 그런 id는 없어서 "찾을 수 없음"이 된다. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 function parseFaqNotice(query: URLSearchParams): FaqNotice | null {
   const saved = query.get('saved');
   if (saved) return { kind: 'saved', id: saved };
@@ -29,14 +38,14 @@ export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#\/?/, '').split('?');
   const parts = path.split('/').filter(Boolean);
   if (parts[0] === 'conversations') {
-    return parts[1] ? { name: 'conversation', id: decodeURIComponent(parts[1]) } : { name: 'conversations' };
+    return parts[1] ? { name: 'conversation', id: decodeSegment(parts[1]) } : { name: 'conversations' };
   }
   if (parts[0] === 'queue') {
     return { name: 'queue', status: isHandoffStatus(parts[1]) ? parts[1] : 'open' };
   }
   if (parts[0] === 'faq') {
     if (!parts[1]) return { name: 'faq', notice: parseFaqNotice(new URLSearchParams(query)) };
-    return { name: 'faqItem', id: parts[1] === 'new' ? null : decodeURIComponent(parts[1]) };
+    return { name: 'faqItem', id: parts[1] === 'new' ? null : decodeSegment(parts[1]) };
   }
   if (parts[0] === 'metrics') return { name: 'metrics' };
   if (parts[0] === 'billing') return { name: 'billing' };

@@ -531,6 +531,11 @@ test('FAQ: 목록 27개·지원하지 않는 것 5개 → 고친 문단이 다�
   await expect(page.getByTestId('faq-count')).toHaveText('27개');
   await expect(page.getByRole('link', { name: '콘솔로 추가한 질문 고치기' })).toHaveCount(0);
 
+  // 손으로 고친 주소의 깨진 퍼센트 문자는 화면을 멈추지 않고 "찾을 수 없음"이 된다
+  await page.goto('/console/#/faq/%E0%A4%A');
+  await expect(page.getByTestId('faq-missing')).toBeVisible();
+  await page.goto('/console/#/faq');
+
   // 되돌린다. 같은 서버를 쓰는 다른 시험이 바뀐 근거 문장을 보지 않게
   await page.getByRole('link', { name: '연간 결제 할인 고치기' }).click();
   await page.locator('#faq-block-0').fill(original);
