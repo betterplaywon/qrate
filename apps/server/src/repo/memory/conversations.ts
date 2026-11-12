@@ -49,7 +49,8 @@ export class MemoryConversationRepository implements ConversationRepository {
     conversation.messages.push(toMessage(turn.question, now));
     if (turn.answer) conversation.messages.push(toMessage(turn.answer, now));
     if (turn.handoff) {
-      conversation.handoffs.push(newHandoff({ source: 'model', reason: turn.handoff.reason, summary: turn.handoff.summary, contact: null }, now));
+      const { reason, summary } = turn.handoff;
+      conversation.handoffs.push(newHandoff({ id: this.store.nextHandoffId(), source: 'model', reason, summary, contact: null }, now));
     }
     // 차감은 턴과 함께. 같은 키가 이미 있으면 건너뛴다(중복 차감 없음).
     if (turn.charge) appendCredit(this.store, tenantId, turn.charge);

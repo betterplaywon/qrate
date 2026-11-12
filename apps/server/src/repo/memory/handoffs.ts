@@ -5,8 +5,10 @@ import type { MemoryStore } from './store.js';
 
 export class MemoryHandoffRepository implements HandoffRepository {
   private readonly conversations: Map<string, Conversation>;
+  private readonly store: MemoryStore;
 
   constructor(store: MemoryStore) {
+    this.store = store;
     this.conversations = store.conversations;
   }
 
@@ -50,7 +52,8 @@ export class MemoryHandoffRepository implements HandoffRepository {
       conversation = { id: conversationId, tenantId, createdAt: now, messages: [], handoffs: [] };
       this.conversations.set(conversationId, conversation);
     }
-    const handoff = newHandoff({ source: 'visitor', reason: 'needs_human', summary: input.summary, contact: input.contact }, now);
+    const { summary, contact } = input;
+    const handoff = newHandoff({ id: this.store.nextHandoffId(), source: 'visitor', reason: 'needs_human', summary, contact }, now);
     conversation.handoffs.push(handoff);
     return { id: handoff.id };
   }
