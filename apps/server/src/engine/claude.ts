@@ -136,7 +136,7 @@ export class ClaudeEngine implements AnswerEngine {
   private readonly client: Anthropic;
 
   constructor(
-    private readonly config: AppConfig,
+    private readonly config: Pick<AppConfig, 'apiKey' | 'model' | 'maxTokens' | 'thinking' | 'fallback'>,
     client?: Anthropic,
   ) {
     this.model = config.model;
