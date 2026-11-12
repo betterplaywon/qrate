@@ -34,6 +34,7 @@ const SENSITIVE = [
   'apps/server/src/chat/moderation.ts',
   'apps/server/src/origin.ts',
   'apps/server/src/http/frame.ts',
+  'packages/contracts/src/origin.ts',
   'apps/server/src/http/rate-limit.ts',
   'apps/server/prisma/**',
   'apps/server/src/repo/**/credits*',
