@@ -1,45 +1,22 @@
 import { HANDOFF_PATH, type HandoffRequestResponse } from '@qrate/contracts';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
-import { MockEngine } from '../src/engine/mock.js';
-import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 
 // POST /api/handoff — 방문자의 상담원 연결 요청. 실제 HTTP로 Origin 검사·본문 검증·테넌트·대화 연결·요율 제한을 고정한다.
 
 const OWN_ORIGIN = 'http://widget.test';
-const seed = loadSeedFile(DEFAULT_SEED_PATH);
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-handoff-'));
 
-let server: Server;
 let baseUrl: string;
 let repos: Repositories;
-
-function serve(app: ReturnType<typeof createApp>): Promise<{ server: Server; url: string }> {
-  return new Promise((resolve) => {
-    const s = app.listen(0, () => resolve({ server: s, url: `http://127.0.0.1:${(s.address() as AddressInfo).port}` }));
-  });
-}
+let closeApp: () => Promise<void>;
 
 beforeAll(async () => {
-  repos = createRepositoriesFromSeed(seed);
-  const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir });
-  ({ server, url: baseUrl } = await serve(app));
+  ({ url: baseUrl, repos, close: closeApp } = await startApp({ publicOrigin: OWN_ORIGIN }));
 });
 
-afterAll(
-  () =>
-    new Promise<void>((resolve) => {
-      rmSync(frameAssetsDir, { recursive: true, force: true });
-      server.close(() => resolve());
-    }),
-);
+afterAll(() => closeApp());
 
 function post(body: unknown, headers: Record<string, string> = { origin: OWN_ORIGIN }, url = baseUrl) {
   return fetch(`${url}${HANDOFF_PATH}`, {
@@ -102,14 +79,7 @@ describe('POST /api/handoff', () => {
   });
 
   it('IP당 요율 제한 — 넘으면 429 too_many_requests + Retry-After', async () => {
-    const app = createApp({
-      engine: new MockEngine(0),
-      repos: createRepositoriesFromSeed(seed),
-      publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
-      handoffRequests: { max: 2, windowMs: 60_000 },
-    });
-    const { server: s, url } = await serve(app);
+    const { url, close } = await startApp({ publicOrigin: OWN_ORIGIN, handoffRequests: { max: 2, windowMs: 60_000 } });
     try {
       expect((await post({ tenant: 'demo', contact: 'a@b.co' }, { origin: OWN_ORIGIN }, url)).status).toBe(201);
       expect((await post({ tenant: 'demo', contact: 'a@b.co' }, { origin: OWN_ORIGIN }, url)).status).toBe(201);
@@ -118,7 +88,7 @@ describe('POST /api/handoff', () => {
       expect(await blocked.json()).toEqual({ error: 'too_many_requests' });
       expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0);
     } finally {
-      await new Promise<void>((resolve) => s.close(() => resolve()));
+      await close();
     }
   });
 });
