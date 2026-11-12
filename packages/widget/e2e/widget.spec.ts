@@ -20,16 +20,32 @@ const EVENTS_URL = `${SERVER_ORIGIN}/api/events`;
 const GREETING_URL = `${SERVER_ORIGIN}/api/greeting`;
 const VARIANT_KEY = 'qrate.greeting.demo';
 
-// 페이지(모든 프레임)의 콘솔 오류와 예외를 모은다. 정상 흐름에서는 0건이어야 한다.
-const test = base.extend<{ consoleErrors: string[] }>({
+/**
+ * 사건(POST /api/events)을 단언하는 시험에 붙인다. 그 시험의 사건만 서버로 가서 서버가 본문을 받아들이는지(202)까지 본다.
+ * 나머지 시험의 사건은 서버의 202 모양으로 대신 답한다. 사건 요율 제한(IP당 30회/분)은 스위트 전체가 한 창에서 나눠 쓴다.
+ */
+const SERVER_EVENTS = { tag: '@server-events' };
+
+const test = base.extend<{ consoleErrors: string[]; eventsStub: void }>({
+  // 페이지(모든 프레임)의 콘솔 오류와 예외를 모은다. 정상 흐름에서는 0건이어야 한다.
+  // 실패한 요청의 오류 문장("Failed to load resource: … 429")에는 주소가 없어서 출처를 덧붙인다.
   consoleErrors: async ({ page }, use) => {
     const errors: string[] = [];
     page.on('console', (m) => {
-      if (m.type() === 'error') errors.push(m.text());
+      if (m.type() !== 'error') return;
+      const { url } = m.location();
+      errors.push(url ? `${m.text()} [${url}]` : m.text());
     });
     page.on('pageerror', (e) => errors.push(String(e)));
     await use(errors);
   },
+  eventsStub: [
+    async ({ context }, use, testInfo) => {
+      if (!testInfo.tags.includes(SERVER_EVENTS.tag)) await context.route(EVENTS_URL, (route) => route.fulfill({ status: 202 }));
+      await use();
+    },
+    { auto: true },
+  ],
 });
 
 /** 데모 페이지를 열고 런처를 눌러 대화창이 준비(ready postMessage → 로딩 문구 제거)될 때까지 기다린다. */
@@ -140,7 +156,7 @@ test('열면 서버 오리진의 iframe이 뜨고, 호스트 문서는 대화 DO
   expect(consoleErrors).toEqual([]);
 });
 
-test('처음 열면 대화창 문서가 widget_open 사건을 한 번 보내고, 닫았다 다시 열어도 더 보내지 않는다', async ({ page, consoleErrors }) => {
+test('처음 열면 대화창 문서가 widget_open 사건을 한 번 보내고, 닫았다 다시 열어도 더 보내지 않는다', SERVER_EVENTS, async ({ page, consoleErrors }) => {
   const sent: { frameUrl: string; body: WidgetEventBody }[] = [];
   page.on('request', (r) => {
     if (r.url() === EVENTS_URL && r.method() === 'POST') sent.push({ frameUrl: r.frame().url(), body: r.postDataJSON() as WidgetEventBody });
@@ -258,8 +274,6 @@ test('앞 실패의 "다시 보내기"는 전송 버튼과 같은 때 잠긴다 
   page.on('request', (r) => {
     if (r.url() === CHAT_URL && r.method() === 'POST') asked.push((r.postDataJSON() as ChatRequestBody).message);
   });
-  // 열림·첫 질문 사건도 서버의 202 응답 모양으로 대신 답한다. 사건 요율 제한(IP당 30회/분)은 스위트 전체가 한 창에서 나눠 쓰고, 이 시험은 사건을 단언하지 않는다
-  await page.route(EVENTS_URL, (route) => route.fulfill({ status: 202 }));
   const frame = await openWidget(page);
   const firstRetry = frame.locator('.msg.notice').first().locator('.notice-action');
 
@@ -459,7 +473,7 @@ test('허용 목록 밖의 사이트에서는 서버가 대화창을 내려주�
   await expect(page.locator(`${HOST} .loading`)).toBeVisible();
 });
 
-test('인사말 A/B: 처음 방문하면 서버가 배정한 인사말이 대화 맨 위에 보이고, 이 사이트가 그 변형을 보존하며, 열림·첫 질문 사건이 같은 변형을 싣는다', async ({
+test('인사말 A/B: 처음 방문하면 서버가 배정한 인사말이 대화 맨 위에 보이고, 이 사이트가 그 변형을 보존하며, 열림·첫 질문 사건이 같은 변형을 싣는다', SERVER_EVENTS, async ({
   page,
   consoleErrors,
 }) => {
@@ -488,7 +502,7 @@ test('인사말 A/B: 처음 방문하면 서버가 배정한 인사말이 대화
   expect(consoleErrors).toEqual([]);
 });
 
-test('인사말 A/B: 다시 로드하면 런처가 보존한 변형을 v=로 넘기고 같은 인사말을 본다', async ({ page, consoleErrors }) => {
+test('인사말 A/B: 다시 로드하면 런처가 보존한 변형을 v=로 넘기고 같은 인사말을 본다', SERVER_EVENTS, async ({ page, consoleErrors }) => {
   const sent = watchEvents(page);
   const first = greetingResponse(page);
   await openWidget(page);
@@ -565,7 +579,7 @@ test('인사말 A/B: 이 사이트의 저장소가 막힌 브라우저에서도 
   expect(consoleErrors).toEqual([]);
 });
 
-test('인사말 A/B: 인사말이 오기 전에 닫으면 열림은 변형 없이 세고, 그 페이지 로드는 실험 밖이다', async ({ page, consoleErrors }) => {
+test('인사말 A/B: 인사말이 오기 전에 닫으면 열림은 변형 없이 세고, 그 페이지 로드는 실험 밖이다', SERVER_EVENTS, async ({ page, consoleErrors }) => {
   await page.route(`${GREETING_URL}?**`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     await route.continue();
@@ -591,7 +605,7 @@ test('인사말 A/B: 인사말이 오기 전에 닫으면 열림은 변형 없�
   expect(consoleErrors).toEqual([]);
 });
 
-test('인사말 A/B: 인사말 요청이 실패하면 기다리지 않고 변형 없이 열림 사건을 보내고, 인사말 없이 대화창이 뜬다', async ({ page, consoleErrors }) => {
+test('인사말 A/B: 인사말 요청이 실패하면 기다리지 않고 변형 없이 열림 사건을 보내고, 인사말 없이 대화창이 뜬다', SERVER_EVENTS, async ({ page, consoleErrors }) => {
   await page.route(`${GREETING_URL}?**`, (route) =>
     route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'internal_error' }) }),
   );
