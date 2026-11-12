@@ -29,8 +29,11 @@ export const PRICES: Readonly<Record<string, Price>> = {
 
 const MOST_EXPENSIVE: Price = Object.values(PRICES).reduce((a, b) => (b.output > a.output ? b : a));
 
-/** 감싸는 토큰(역할 표시, 도구 정의 틀, search_result 구조)의 몫. 바이트로 센 본문 위에 더한다. */
-const PROMPT_OVERHEAD_TOKENS = 2048;
+/**
+ * 바이트로 센 본문 밖의 토큰(시스템 지시, 도구 정의, 역할 표시, search_result 구조)의 몫. 바이트로 센 본문 위에 더한다.
+ * 시스템 지시와 도구 정의만 2,218토큰으로 쟀다(2026-11-12 FAQ 크기 실측, docs/eval/faq-size). 상한이 되려면 그보다 커야 해서 넉넉히 둔다.
+ */
+const PROMPT_OVERHEAD_TOKENS = 4096;
 
 export function priceOf(model: string): Price | null {
   return PRICES[model] ?? null;

@@ -10,6 +10,8 @@
     "test": "vitest run",
     "eval": "tsx --conditions=source eval/run.ts",
     "eval:paid": "tsx --conditions=source --env-file=.env eval/run.ts",
+    "eval:faq-size": "tsx --conditions=source eval/faq-size.ts",
+    "eval:faq-size:paid": "tsx --conditions=source --env-file=.env eval/faq-size.ts --paid",
     "load": "tsx --conditions=source load/ladder.ts",
     "admin": "tsx --conditions=source --env-file-if-exists=.env src/admin/cli.ts",
     "postinstall": "prisma generate",
