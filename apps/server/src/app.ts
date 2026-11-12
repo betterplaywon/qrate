@@ -31,21 +31,19 @@ import { requireOwnOrigin } from './origin.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import type { Repositories } from './repo/types.js';
 
-// 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
-//   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, chat_request 사건,
-//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts), 위젯 사건 수집(events.ts), 인사말 배정(greeting.ts),
-//             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, top-ups 충전, static 페이지 서빙),
-//             결제 제공자 웹훅(payments.ts)
-//   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
-//   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장. Express를 모른다
-//   billing/  충전 유스케이스 — 결제 제공자 경계(provider)·모의 제공자(mock)·이벤트 판정(settlement, 순수)·충전 요청과 웹훅(service). Express를 모른다
+// 서버 구조. Express를 아는 것은 http/·origin.ts·이 파일뿐이고, http/를 import하는 것은 이 파일뿐이다.
+//   http/     Express 어댑터 — 공개 API(대화 SSE·상담원 연결·위젯 사건·인사말·대화창 문서·결제 웹훅), 요율 제한, 오류 응답, 운영 콘솔 API(console/, 로그인 시도 제한 포함)
+//   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장
+//   billing/  충전 유스케이스 — 결제 제공자 경계와 구현(mock·toss), 이벤트 판정(settlement), 충전 요청과 웹훅(service)
+//   console/  콘솔 규칙 — 키 해시(scrypt), 세션 토큰(JWT), FAQ 저장 상한(knowledge.ts)
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
-//   events/   이벤트 로그 — 사건 기록 통로(sink), 콘솔 지표 정의(metrics, 순수 계산). Express를 모른다
-//   greeting/ 인사말 A/B 실험의 정의(변형 목록·문구·비율)와 배정. Express를 모른다
-//   repo/     저장소 계약과 구현(메모리; W3에서 Postgres)
+//   events/   사건 기록 통로(sink)와 콘솔 지표 정의(metrics)
+//   greeting/ 인사말 A/B 실험의 정의(변형 목록·문구·비율)와 배정
+//   repo/     저장소 계약(types.ts)과 구현 둘(memory/·prisma/), 시작 때 고르기(create.ts), 시드 파일 읽기(seed.ts)
+//   admin/    플랫폼 운영자 명령(회사 등록, 콘솔 키 발급·회수, 목록). DB에 붙는 별도 진입점(cli.ts)
 //   origin.ts 오리진 규칙(설정 해석·시드 검증·Origin 검사가 함께 쓴다)
 //   report.ts 예외 보고 통로(reportError). index.ts가 Sentry를 꽂는다
-//   @qrate/contracts  위젯과 함께 쓰는 전송 계약(경로, SSE 이벤트, 오류 본문)
+//   @qrate/contracts  위젯·콘솔과 함께 쓰는 전송 계약(경로, SSE 이벤트, 요청 스키마, 오류 본문)
 // 이 파일은 조립만 한다. 프로세스 시작·Sentry·listen은 index.ts, 테스트는 이 함수로 앱을 만들어 임시 포트에 띄운다.
 
 export interface AppOptions {
