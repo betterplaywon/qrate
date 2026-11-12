@@ -69,7 +69,7 @@ export function createView(root: HTMLElement, handlers: ViewHandlers): ChatView 
   const head = el('header', 'head');
   const title = el('h1', 'title', '무엇을 도와드릴까요?');
   const actions = el('div', 'head-actions');
-  // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보여야 한다. 실제 연결은 W3.
+  // 요구사항(README 타깃): 사람에게 연결하는 버튼은 항상 보여야 한다.
   const handoff = el('button', 'handoff', '상담원 연결');
   handoff.type = 'button';
   const close = el('button', 'close', '✕');
