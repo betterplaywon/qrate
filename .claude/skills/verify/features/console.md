@@ -6,7 +6,7 @@
 
 - `console-document` `/console/` 문서가 CSP `default-src 'self'; frame-ancestors 'none'; base-uri 'none'`와 `cache-control: no-cache`로 내려오고, 로그인 전 콘솔 API는 401이다.
 - `console-login-wrong` 틀린 콘솔 키는 "테넌트 키 또는 콘솔 키가 맞지 않아요." 안내를 보인다.
-- `console-login` 맞는 키로 로그인하면 머리글에 테넌트 이름이 보이고, 큐와 대화 로그가 비어 있으며, 브라우저의 세션 쿠키로 `/api/console/me`가 200이다.
+- `console-login` 맞는 키로 로그인하면 머리글에 테넌트 이름이 보이고, 첫 화면은 시작하기(새 launch라 설치 신호가 없어 "4단계 중 2단계 끝")이며, 큐와 대화 로그가 비어 있고, 브라우저의 세션 쿠키로 `/api/console/me`가 200이다.
 - `console-seed-demo-plain`·`console-seed-demo-signal` 위젯에서 대화 2건을 만든다(두 번째는 모델 신호).
 - `console-conversations` 대화 로그를 새로 고치면 2건이 최근순으로 보이고, 신호가 난 대화를 열면 메시지 2건과 "모델 신호" 연결 요청이 있다.
 - `console-queue-move` 미응답 큐(열림)의 1건을 "처리 중"으로 옮기면 열림 탭에서 빠지고 처리 중 탭에 보이며, API로 읽어도 `in_progress`다.
@@ -30,7 +30,7 @@ Preconditions:
 
 - **문서와 비로그인 API(`console-document`).** 별도 요청 컨텍스트로 `GET /console/` → 200, CSP가 정확히 `default-src 'self'; frame-ancestors 'none'; base-uri 'none'`, cache-control `no-cache`; `GET /api/console/me` → 401. 응답은 `console-document.txt`.
 - **틀린 키(`console-login-wrong`).** 브라우저로 `http://localhost:8787/console/` → `#tenant`에 `demo`, `#key`에 `wrong-key`, 버튼 "로그인" → `getByRole('alert')`에 "맞지 않아요".
-- **로그인(`console-login`).** `#key`에 콘솔 키로 다시 "로그인" → `[data-testid=tenant-name]` "마루인보이스", `[data-testid=queue-empty]` 보임 → `#/conversations`로 이동 → `[data-testid=conversations-empty]` 보임 → `page.request.get('/api/console/me')` 200(브라우저 쿠키 사용).
+- **로그인(`console-login`).** `#key`에 콘솔 키로 다시 "로그인" → `[data-testid=tenant-name]` "마루인보이스", `[data-testid=start-progress]` "4단계 중 2단계 끝"(해시가 빈 첫 화면은 시작하기 네 단계가 끝나기 전까지 시작하기다) → `#/queue/open`으로 이동 → `[data-testid=queue-empty]` 보임 → `#/conversations`로 이동 → `[data-testid=conversations-empty]` 보임 → `page.request.get('/api/console/me')` 200(브라우저 쿠키 사용).
 - **대화 만들기(`console-seed-demo-plain`, `console-seed-demo-signal`).** 데모 페이지를 두 번 새로 열어 각각 대화창을 열고 "요금제가 어떻게 되나요?", "[[handoff]] 카카오톡으로 알림 받을 수 있나요?"를 보내 끝난 답변 1개씩을 본다(대화창 하나가 대화 하나이므로 페이지를 나눈다).
 - **대화 로그·상세(`console-conversations`).** 콘솔 페이지를 `reload` → `[data-testid=conversation-item]` 2개, 첫 항목에 "카카오톡으로 알림"과 "연결 요청 1" → 클릭 → `[data-testid=messages] li` 2개, `[data-testid=detail-handoffs]`에 "모델 신호".
 - **큐 상태 이동(`console-queue-move`).** `#/queue/open` → `[data-testid=queue-item]` 1개에 "카카오톡으로 알림" → 그 안의 `[data-testid=move-in_progress]` 클릭 → `[data-testid=queue-empty]` 보임 → `[data-testid=tab-in_progress]` 클릭 → `queue-item` 1개, `[data-testid=status]` "처리 중" → `page.request.get('/api/console/handoffs?status=in_progress')`의 items 1건이 status `in_progress`, source `model`. 응답은 `console-handoffs-in_progress.txt`.
