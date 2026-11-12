@@ -1,9 +1,10 @@
 // FAQ 크기에 따른 질문 1건의 비용·첫 응답 시간 실측. 위젯은 질문마다 회사 FAQ 전체를 모델에 보내서(ADR-0004)
-// 콘솔의 FAQ 상한(KNOWLEDGE_LIMITS: 50개·제목과 문단 합계 3만 자)이 곧 질문 하나의 최대 비용과 지연이다.
-// 데모 FAQ(27개)·1만 5천 자·3만 자에서 같은 질문을 세 번씩 묻는다. 첫 번째는 FAQ를 처음 읽고(캐시 쓰기), 나머지 둘은 5분 안에 다시 읽는다(캐시 읽기).
+// 콘솔의 FAQ 상한(KNOWLEDGE_LIMITS: 50개·제목과 문단 합계 1만 5천 자)이 곧 질문 하나의 최대 비용과 지연이다.
+// 데모 FAQ(27개)·1만 5천 자(지금 상한)·3만 자(옛 상한, 비교용)에서 같은 질문을 세 번씩 묻는다.
+// 첫 번째는 FAQ를 처음 읽고(캐시 쓰기), 나머지 둘은 5분 안에 다시 읽는다(캐시 읽기).
 //
 //   pnpm --filter @qrate/server eval:faq-size        가짜 엔진으로 흐름만 확인(비용 0)
-//   pnpm --filter @qrate/server eval:faq-size:paid   실제 Claude(운영 엔진·설정 그대로). 작성자가 정한 상한(2026-11-12: 12회·$0.5) 안에서만 부른다
+//   pnpm --filter @qrate/server eval:faq-size:paid   실제 Claude(운영 엔진·설정에서 서버 측 폴백만 끔). 작성자가 정한 상한(2026-11-12: 12회·$0.5) 안에서만 부른다
 //
 // 호출마다 그 호출의 비용 상한을 미리 셈해 예산을 넘으면 부르지 않고 멈춘다(faq-size-plan.ts). 결과는 docs/eval/faq-size/runs/<시각>.jsonl.
 import { mkdirSync, writeFileSync } from 'node:fs';

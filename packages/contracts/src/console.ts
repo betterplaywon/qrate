@@ -285,8 +285,11 @@ export const KNOWLEDGE_LIMITS = {
   categoryChars: 30,
   blocks: 10,
   blockChars: 1000,
-  /** 회사 FAQ 전체의 제목·문단 글자 합(knowledgeChars). */
-  totalChars: 30_000,
+  /**
+   * 회사 FAQ 전체의 제목·문단 글자 합(knowledgeChars). 1만 5천 자에서 FAQ를 처음 읽는 답 1건은 $0.0528~$0.0581로 실측돼
+   * 크레딧 판매가(1개 100원) 안이다. 3만 자는 그 값을 넘어 2026-11-12에 낮췄다(docs/eval/faq-size).
+   */
+  totalChars: 15_000,
 } as const;
 
 /** FAQ id. 시드의 faq:refund-policy 같은 모양이고, 콘솔은 새 항목에 faq:<무작위>를 만들어 PUT한다. */
