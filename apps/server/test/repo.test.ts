@@ -72,6 +72,14 @@ describe('시드 로더', () => {
     expect(() => parseSeed({ tenant, knowledge: long })).toThrow(`${count * 1000}자, 상한은 ${KNOWLEDGE_LIMITS.totalChars}자`);
   });
 
+  it('FAQ의 앞뒤 공백은 콘솔에서 저장할 때처럼 떼고 올린다', () => {
+    const tenant = { id: 't', apiKey: 'k', name: '테스트', allowedOrigins: [] };
+    const knowledge = [{ id: 'faq:refund', title: '  환불  ', category: ' 결제 ', blocks: [' 7일 안에 환불한다.\n', '\t영수증이 필요하다. '] }];
+    expect(parseSeed({ tenant, knowledge }).knowledge).toEqual([
+      { id: 'faq:refund', title: '환불', category: '결제', blocks: ['7일 안에 환불한다.', '영수증이 필요하다.'] },
+    ]);
+  });
+
   it('allowedOrigins는 정규형 오리진만 — CSP 헤더에 그대로 들어가므로', () => {
     const knowledge = [{ id: 'faq:a', title: 'A', category: 'c', blocks: ['x'] }];
     const tenant = { id: 't', apiKey: 'k', name: '테스트', allowedOrigins: ['https://shop.example.com/'] };
