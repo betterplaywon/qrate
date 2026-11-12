@@ -18,7 +18,7 @@ export interface TurnEffects {
   offerHandoff(): void;
   /** 재시도 가능한 실패에서 방문자가 "다시 보내기"를 눌렀다. */
   retry(): void;
-  /** 서버가 Retry-After로 기다리라고 했다. 그동안 새 메시지도 보내지 못하게 한다. */
+  /** 서버가 Retry-After로 기다리라고 했다. 그동안 새 메시지도 "다시 보내기"도 보내지 못하게 한다. */
   waitBeforeSending(ms: number): void;
 }
 
@@ -47,7 +47,7 @@ export class Turn {
     handoff: () =>
       this.view.addNotice('상담원에게 연결해 드릴까요?', {
         label: '상담원 연결',
-        disabledForMs: null,
+        sends: false,
         run: () => this.effects.offerHandoff(),
       }),
     end: (ev) => {
@@ -60,7 +60,7 @@ export class Turn {
     failed: (ev) => {
       this.answer?.finish('interrupted');
       if (ev.retryAfterMs) this.effects.waitBeforeSending(ev.retryAfterMs);
-      const retry = ev.retryable ? { label: '다시 보내기', disabledForMs: ev.retryAfterMs, run: () => this.effects.retry() } : undefined;
+      const retry = ev.retryable ? { label: '다시 보내기', sends: true, run: () => this.effects.retry() } : undefined;
       this.view.addNotice(failureText(ev), retry);
     },
   };

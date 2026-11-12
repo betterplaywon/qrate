@@ -56,7 +56,7 @@ export function createKnowledgeRoutes({ repos, session, ownOrigin }: KnowledgeRo
       invalid(res);
       return;
     }
-    await repos.knowledge.remove(tenantIdOf(res), id.data);
+    await repos.knowledge.remove(id.data, tenantIdOf(res));
     res.status(204).end();
   });
 
