@@ -258,6 +258,8 @@ test('앞 실패의 "다시 보내기"는 전송 버튼과 같은 때 잠긴다 
   page.on('request', (r) => {
     if (r.url() === CHAT_URL && r.method() === 'POST') asked.push((r.postDataJSON() as ChatRequestBody).message);
   });
+  // 열림·첫 질문 사건도 서버의 202 응답 모양으로 대신 답한다. 사건 요율 제한(IP당 30회/분)은 스위트 전체가 한 창에서 나눠 쓰고, 이 시험은 사건을 단언하지 않는다
+  await page.route(EVENTS_URL, (route) => route.fulfill({ status: 202 }));
   const frame = await openWidget(page);
   const firstRetry = frame.locator('.msg.notice').first().locator('.notice-action');
 
