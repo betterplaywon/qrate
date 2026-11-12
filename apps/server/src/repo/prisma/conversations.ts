@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
-import { decodeCursor, encodeCursor, previewOf } from '../listing.js';
+import { parsePageRequest, previewOf, toPage } from '../listing.js';
 import type { Conversation, ConversationOutcome, ConversationPage, ConversationRepository, NewTurn, TimeWindow } from '../types.js';
 import { appendCredit } from './credits.js';
 import { NEWEST_FIRST, afterCursor } from './cursor.js';
@@ -31,9 +31,8 @@ export class PrismaConversationRepository implements ConversationRepository {
   }
 
   async listByTenant(tenantId: string, { limit, cursor = null }: { limit: number; cursor?: string | null }): Promise<ConversationPage> {
-    if (limit < 1) throw new RangeError('limit must be >= 1');
-    const after = cursor ? decodeCursor(cursor) : null;
-    // 키셋 페이지네이션(cursor.ts). (tenantId, createdAt) 인덱스를 탄다. 한 줄 더 가져와 다음 페이지가 있는지 본다.
+    const after = parsePageRequest(limit, cursor);
+    // 키셋 페이지네이션(cursor.ts). (tenantId, createdAt) 인덱스를 탄다.
     const rows = await this.prisma.conversation.findMany({
       where: { tenantId, ...afterCursor(after) },
       orderBy: [...NEWEST_FIRST],
@@ -46,19 +45,14 @@ export class PrismaConversationRepository implements ConversationRepository {
         messages: { where: { role: 'user' }, orderBy: { seq: 'asc' }, take: 1, select: { content: true } },
       },
     });
-    const page = rows.slice(0, limit);
-    const last = page[page.length - 1];
-    return {
-      items: page.map((r) => ({
-        id: r.id,
-        tenantId: r.tenantId,
-        createdAt: r.createdAt,
-        messageCount: r._count.messages,
-        handoffCount: r._count.handoffs,
-        preview: previewOf(r.messages[0]?.content),
-      })),
-      nextCursor: rows.length > limit && last ? encodeCursor(last) : null,
-    };
+    return toPage(rows, limit, (r) => ({
+      id: r.id,
+      tenantId: r.tenantId,
+      createdAt: r.createdAt,
+      messageCount: r._count.messages,
+      handoffCount: r._count.handoffs,
+      preview: previewOf(r.messages[0]?.content),
+    }));
   }
 
   async appendTurn(conversationId: string, tenantId: string, turn: NewTurn): Promise<void> {
