@@ -12,15 +12,6 @@ import type { Repositories } from './types.js';
 
 export { applySeed } from './prisma/seed.js';
 export { createPrismaClient } from './prisma/client.js';
-export {
-  PrismaConversationRepository,
-  PrismaCreditRepository,
-  PrismaEventRepository,
-  PrismaHandoffRepository,
-  PrismaKnowledgeRepository,
-  PrismaTenantRepository,
-  PrismaTopUpRepository,
-};
 
 export function createPrismaRepositories(prisma: PrismaClient): Repositories {
   return {
