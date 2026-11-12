@@ -129,6 +129,10 @@ test('틀린 키는 안내, 맞는 키는 시작하기(4단계 중 2단계) → 
     await page.locator('#origin-address').fill('haram');
     await page.getByRole('button', { name: '추가' }).click();
     await expect(page.getByText('주소를 읽을 수 없어요. 예: https://www.example.com')).toBeVisible();
+    // 한 칸에 둘을 넣으면(대화창 CSP를 깨뜨리는 값) 하나씩 넣으라고 안내하고 보내지 않는다
+    await page.locator('#origin-address').fill('a.example.com, b.example.com');
+    await page.getByRole('button', { name: '추가' }).click();
+    await expect(page.getByText('주소는 한 칸에 하나씩 넣어 주세요. 여러 개면 하나씩 추가해요.')).toBeVisible();
     await page.locator('#origin-address').fill(`${siteOrigin}/products?id=1`);
     await expect(page.getByText(`등록될 주소: ${siteOrigin}`)).toBeVisible();
     await page.getByRole('button', { name: '추가' }).click();

@@ -6,19 +6,25 @@ import type { InstallStatusResponse } from '@qrate/contracts';
 /** 시작하기의 FAQ 단계가 끝났다고 보는 개수. 방문객이 자주 묻는 것부터 이만큼은 있어야 위젯이 쓸모 있다. */
 export const MIN_FAQ_FOR_START = 5;
 
+/** 서버(origin.ts isOriginString)와 같은 CSP 호스트 문법. 퓨니코드로 바뀐 한글 도메인도 이 글자들이다. */
+const CSP_HOST = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/;
+
+/** 한 칸에 주소를 여럿 넣은 것으로 보이는 글자(쉼표·세미콜론·공백). 하나씩 넣으라고 따로 안내한다. */
+export const looksLikeSeveral = (input: string): boolean => /[,;\s]/.test(input.trim());
+
 /**
  * 사람이 적은 홈페이지 주소를 서버가 받는 정규형 오리진(scheme://host[:port])으로 바꾼다.
- * 앞에 https://가 없으면 붙이고 경로·쿼리·끝 슬래시는 버린다. http(s)가 아니거나 주소로 읽을 수 없으면 null.
+ * 앞에 https://가 없으면 붙이고 경로·쿼리·끝 슬래시는 버린다. http(s)가 아니거나, 호스트가 CSP 호스트 문법이 아니거나, 주소로 읽을 수 없으면 null.
  */
 export function toSiteOrigin(input: string): string | null {
   const text = input.trim();
-  if (!text || /\s/.test(text)) return null;
+  if (!text || looksLikeSeveral(text)) return null;
   try {
     const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
     const web = url.protocol === 'https:' || url.protocol === 'http:';
     // 점 없는 이름(https://haram)은 대개 오타다. 개발용 localhost만 받는다.
-    const host = url.hostname.includes('.') || url.hostname === 'localhost';
-    return web && host && !url.hostname.includes('*') ? url.origin : null;
+    const host = CSP_HOST.test(url.hostname) && (url.hostname.includes('.') || url.hostname === 'localhost');
+    return web && host && url.port !== '0' ? url.origin : null;
   } catch {
     return null;
   }
@@ -59,7 +65,10 @@ export const BUILDER_GUIDES: readonly BuilderGuide[] = [
       '"코드 직접입력"의 Body 영역 칸에 2번에서 복사한 줄을 붙여 넣고 저장해요.',
     ],
     notes: ['PC 쇼핑몰과 모바일 쇼핑몰을 따로 고르는 화면이 나오면 두 곳 모두에 넣어 주세요.'],
-    links: [{ label: '카페24 서비스 가이드', href: 'https://serviceguide.cafe24.com/IN/ko_KR/SG.SO.html' }],
+    links: [
+      { label: '카페24 도움말: 코드 직접입력', href: 'https://support.cafe24.com/hc/ko/articles/7671862495641' },
+      { label: '카페24 서비스 가이드: 검색엔진 최적화', href: 'https://serviceguide.cafe24.com/IN/ko_KR/SG.SO.html' },
+    ],
   },
   {
     id: 'imweb',
@@ -69,7 +78,7 @@ export const BUILDER_GUIDES: readonly BuilderGuide[] = [
       '왼쪽 메뉴의 설정 > SEO로 가서 "고급 설정"의 "공통 코드 삽입"을 열어요.',
       '"Footer Code" 칸에 2번에서 복사한 줄을 붙여 넣고 저장해요.',
     ],
-    notes: ['직접 넣은 코드는 아임웹 기술지원 대상이 아니에요. 위젯이 안 보이면 이 화면의 4번 설치 확인을 먼저 봐 주세요.'],
+    notes: ['저장한 뒤 위젯이 안 보이면 이 화면의 4번 설치 확인부터 봐 주세요.'],
     links: [{ label: '아임웹 도움말: 공통 코드 삽입', href: 'https://imweb.me/faq?mode=view&category=29&category2=38&idx=71387' }],
   },
   {

@@ -2,7 +2,7 @@ import { MAX_ALLOWED_ORIGINS, widgetSnippet, type InstallStatusResponse } from '
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { QueryBoundary } from '../components/QueryBoundary';
-import { BUILDER_GUIDES, OTHER_BUILDER_LINKS, developerNote, toSiteOrigin, type BuilderGuide } from '../install';
+import { BUILDER_GUIDES, OTHER_BUILDER_LINKS, developerNote, looksLikeSeveral, toSiteOrigin, type BuilderGuide } from '../install';
 import { formatTime } from '../labels';
 import { useInstall, useSaveOrigins } from '../queries';
 
@@ -36,6 +36,7 @@ function Origins({ status }: { status: InstallStatusResponse }) {
   const full = status.allowedOrigins.length >= MAX_ALLOWED_ORIGINS;
 
   const onSubmit = form.handleSubmit(({ address: typed }) => {
+    if (looksLikeSeveral(typed)) return form.setError('address', { message: '주소는 한 칸에 하나씩 넣어 주세요. 여러 개면 하나씩 추가해요.' });
     const origin = toSiteOrigin(typed);
     if (!origin) return form.setError('address', { message: '주소를 읽을 수 없어요. 예: https://www.example.com' });
     if (status.allowedOrigins.includes(origin)) return form.setError('address', { message: '이미 등록한 주소예요.' });
