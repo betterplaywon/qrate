@@ -103,8 +103,8 @@ export function useMetrics() {
 }
 
 /** 회사 FAQ 전부(상한 50개라 페이지를 나누지 않는다). 목록과 고치기 화면이 같은 쿼리를 본다. */
-export function useKnowledge() {
-  return useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge });
+export function useKnowledge({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge, enabled });
 }
 
 /** 만들기와 고치기가 같은 PUT이다. 목록을 다시 읽은 뒤에 끝나므로, 끝나고 목록으로 가면 바뀐 내용이 보인다. */
@@ -143,7 +143,7 @@ export function useSaveOrigins() {
  */
 export function useLanding(enabled: boolean): ScreenRoute | null {
   const install = useInstall({ enabled });
-  const knowledge = useQuery({ queryKey: keys.knowledge, queryFn: api.knowledge, enabled });
+  const knowledge = useKnowledge({ enabled });
   if (install.isError || knowledge.isError) return { name: 'queue', status: 'open' };
   if (!install.data || !knowledge.data) return null;
   return setupProgress(install.data, knowledge.data.items.length).done ? { name: 'queue', status: 'open' } : { name: 'start' };
