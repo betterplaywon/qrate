@@ -58,6 +58,7 @@ docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
 - [x] W4 크레딧 원장(턴당 1 차감 · 0이면 402 · 테넌트 범위 멱등 키) · 모의 결제 제공자(서명 웹훅 · 재배달·순서 뒤바뀜·위조·충전 재시도 재현 테스트) · 콘솔 크레딧·충전 · 이벤트 로그(대화 요청·위젯 열림 사건을 DB에 기록) · 콘솔 지표(최근 7일 TTFT p50·p95 · 자동 해결률 · 위젯 열림 수) · 대화 API 요율 제한 · 인사말 A/B(서버 배정 · 방문자 브라우저에 보존 · 변형별 노출 → 첫 질문 · 콘솔 표) · 토스페이먼츠 테스트 결제(결제창형 · 서버 승인 확정 · 웹훅은 결제 조회로 판정)
 - [x] W5 응답 품질 평가셋(30케이스 · Sonnet 5.5 대 Haiku 5.5 · 기계 검사 + Opus 5.5 심판 + 사람 채점 대조) · 답 기준(지원하지 않는 기능은 자료에 적힌 것만 단정 · 본문 도구 태그와 되풀이 문장 거르기) · 실패 사례 기록 → [결과](docs/eval/w5/README.md)
 - [x] W6 부하 측정(k6 · 목업 엔진으로 서버 몫만 잼 · 동시 방문자 10~1,200명 사다리 두 번 · 기기 CPU 몫 · CPU 프로파일 · 원장 크기 실험, 시뮬레이션 기준) · 문서화(다음 확장 · W5·W6 면접 질문) → [결과](docs/load/w6/README.md)
+- [x] 두 번째 데모 고객사: 방문객이 많이 오가는 사내 리셉션이 있는 회사(하람바이오, 가상). 같은 서버에서 위젯의 테넌트 키가 고른 회사의 FAQ로만 답한다 → [시드](apps/server/seed/reception-tenant.notes.md)
 
 성능·해결률 수치는 **실측만** 기재하며, 시뮬레이션 수치는 그렇게 표기한다.
 
@@ -69,7 +70,7 @@ docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
 
 - **리셉션 키오스크와 행동 도구.** 회사 리셉션 키오스크에서 방문객의 주차 등록 같은 문의를 받는 경우다. 대화 API는 그대로 쓸 수 있다. 다른 점은 답만 하지 않고 사내 시스템에 동작(주차 등록 등)을 해야 한다는 것이다. 그러려면 모델이 부르는 행동 도구, 동작 전 방문객 확인, 테넌트별 권한이 필요하다. 지금 모델이 부르는 도구는 상담원 연결 신호 하나다.
 - **FAQ 입력 화면.** 지금 FAQ는 시드 파일과 `db:seed`로만 넣는다. 운영자가 콘솔에서 FAQ를 쓰고 고치는 화면과 API가 필요하다.
-- **두 번째 데모 고객사.** 업종이 다른 가상 기업을 하나 더 두어 테넌트마다 자기 FAQ로만 답하는 것을 보여 준다. 지금 시드 형식은 테넌트 하나만 받고, 새 고객사마다 자기 평가 시험지가 있어야 한다.
+- **고객사별 평가 시험지.** 두 번째 데모 고객사(하람바이오)에는 아직 평가 시험지가 없다. 고객사마다 자료와 넘겨야 할 질문이 달라서, 응답 품질은 고객사별 시험지로 따로 잰다.
 - **검색 단계.** 지금은 FAQ 전부를 프롬프트에 넣는다([ADR-0004](docs/adr/0004-knowledge-grounding.md)). FAQ가 수십 개를 넘으면 질문과 관련된 항목만 고르는 검색 단계가 필요하다.
 
 **답 품질** ([W5 결과](docs/eval/w5/README.md))
@@ -95,6 +96,7 @@ pnpm --filter @qrate/server db:migrate   # 마이그레이션 적용(스키마�
 pnpm dev                              # API 서버 http://localhost:8787 (대화창 iframe 문서·자산도 여기서 나간다)
 pnpm --filter @qrate/widget build     # 런처 widget.js + 대화창 앱 dist/frame/app.js·app.css
 pnpm --filter @qrate/widget demo      # 데모 http://localhost:5173/demo.html — 허용 사이트 오리진에서 서빙 (file://는 막힌다)
+                                      # 두 번째 데모 고객사(하람바이오)는 http://localhost:5173/reception.html
 pnpm --filter @qrate/console dev      # 운영 콘솔 개발 서버 http://localhost:5175/console/ (API는 8787로 프록시)
                                       # 빌드된 콘솔은 서버가 http://localhost:8787/console/ 로 서빙. 로그인 = 테넌트 키 demo + .env의 QRATE_DEMO_CONSOLE_KEY
 
@@ -126,7 +128,7 @@ QRATE_TOSS_SECRET_KEY=test_gsk_…      # 서버만 쓴다. 로그·오류·응�
 - **공개 키 남용 상한.** 테넌트 키는 고객 사이트 소스에 보이는 공개값이다. Origin 검사는 브라우저 안의 다른 사이트만 막고, Origin 헤더 없는 호출(curl·스크립트)은 지나간다. 그런 호출을 막는 것은 아래 IP당 요율 제한과 테넌트 크레딧 잔액뿐이라, 테넌트별 사용 상한 없이 실제 키로 공개하면 누구나 한 테넌트의 잔액을 소진시킬 수 있다.
 - **비밀값 고정.** `QRATE_CONSOLE_SECRET`·`QRATE_MOCK_PAYMENT_SECRET`이 없으면 프로세스마다 무작위로 만들어, 재시작하거나 인스턴스가 둘 이상이면 콘솔 세션과 웹훅 서명이 깨진다.
 - **DB.** compose의 `qrate`/`qrate`는 로컬 전용이다. 운영 DB는 강한 비밀번호와 비공개 네트워크를 쓰고, 관리형 Postgres면 `DATABASE_URL`에 `sslmode=verify-full`을 붙인다.
-- **시드.** `db:seed`는 공개 데모 테넌트(키 `demo`, 100크레딧)를 넣는다. 운영 DB에 돌리지 않는다. compose의 migrate 서비스도 시드를 돌리므로 compose를 그대로 운영에 쓰지 않는다.
+- **시드.** `db:seed`는 공개 데모 테넌트 둘(키 `demo`와 `reception`, 각 100크레딧)을 넣는다. 운영 DB에 돌리지 않는다. compose의 migrate 서비스도 시드를 돌리므로 compose를 그대로 운영에 쓰지 않는다.
 - **결제.** `QRATE_PAYMENT_PROVIDER=mock`은 결제 없이 크레딧을 채우는 버튼을 연다. 운영에서 켜면 시작 로그에 경고만 남는다. `toss`는 테스트 키만 받는다. 확정·토스 웹훅 경로에는 아직 요율 제한이 없고, 결제창형 상점에는 웹훅 서명을 검증할 보안 키가 없어 서명 대신 결제 조회로 확인한다.
 - **Sentry.** `SENTRY_DSN`을 켜도 요청 본문·쿠키·요청 헤더·IP는 보내지 않는다(`apps/server/src/sentry.ts`). 경로와 쿼리 문자열은 보낸다(`token` 같은 이름은 SDK가 거른다). SDK를 올리면 `test/sentry-privacy.test.ts`가 방문자 메시지·콘솔 로그인 키·세션 쿠키가 실리지 않는지 다시 확인한다.
 - **trust proxy.** 리버스 프록시 뒤에 두면 Express `trust proxy`를 프록시 홉 수로 설정해야 IP당 요율 제한(대화 API 분당 20회 · 상담원 연결 20회 · 위젯 사건 30회 · 콘솔 로그인 10회)이 방문자별로 센다. 지금은 설정하지 않아서 프록시 뒤에서는 모든 요청이 프록시 IP 하나로 세지고, `X-Forwarded-For`가 처음 올 때 제한마다 express-rate-limit 경고(`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`)가 로그에 한 번 남는다. IPv6는 주소 하나가 아니라 /56 대역 하나로 센다(express-rate-limit 기본값, 주소를 바꿔 가며 우회하는 것을 막는다).

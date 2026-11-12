@@ -36,5 +36,5 @@ createServer((req, res) => {
   res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' });
   createReadStream(file).pipe(res);
 }).listen(port, () => {
-  console.log(`[demo] http://localhost:${port}/demo.html (서버 pnpm dev, 위젯 build 뒤)`);
+  console.log(`[demo] http://localhost:${port}/demo.html, 두 번째 데모 고객사 http://localhost:${port}/reception.html (서버 pnpm dev, 위젯 build 뒤)`);
 });

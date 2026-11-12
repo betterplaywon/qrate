@@ -15,7 +15,7 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
-    // prisma db seed. 시드 파일(seed/demo-tenant.json)은 메모리 저장소와 같은 것을 쓴다 — prisma/seed.ts
+    // prisma db seed. 데모 시드 파일(seed/demo-tenant.json, seed/reception-tenant.json)은 메모리 저장소와 같은 것을 쓴다 — prisma/seed.ts
     seed: 'tsx --conditions=source prisma/seed.ts',
   },
   datasource: {

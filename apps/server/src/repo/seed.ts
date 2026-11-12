@@ -14,8 +14,8 @@ import {
 import { appendCredit } from './memory/credits.js';
 import type { KnowledgeItem, Repositories, Tenant } from './types.js';
 
-// 시드 파일: W2의 데이터 원천. 테넌트 1개와 FAQ 목록을 JSON으로 두고 서버 시작 때 메모리 저장소에 올린다.
-// W3에서 Postgres로 옮길 때는 같은 파일을 prisma seed의 입력으로 쓴다.
+// 시드 파일: 데모 테넌트의 데이터 원천. 파일 하나가 테넌트 1개와 FAQ 목록이고, 서버 시작 때 메모리 저장소에 올린다.
+// Postgres에서는 같은 파일을 prisma seed의 입력으로 쓴다.
 
 export type SeedKnowledge = Omit<KnowledgeItem, 'tenantId'>;
 /** 시드 파일의 테넌트에는 비밀이 없다. 콘솔 키 해시는 환경변수(QRATE_DEMO_CONSOLE_KEY)에서 따로 붙인다. */
@@ -33,7 +33,13 @@ export const INITIAL_CREDIT_KEY = 'seed:initial';
 
 // src/repo/ 와 dist/repo/ 모두 apps/server 아래 두 단계라 같은 상대 경로로 seed/ 를 찾는다.
 // 컨테이너에는 pnpm deploy가 패키지 디렉터리의 seed/ 를 함께 담는다.
-export const DEFAULT_SEED_PATH = fileURLToPath(new URL('../../seed/demo-tenant.json', import.meta.url));
+const seedPath = (file: string): string => fileURLToPath(new URL(`../../seed/${file}`, import.meta.url));
+
+/** 첫 번째 데모 테넌트(마루인보이스). 평가·부하 측정·시험이 쓰고, 콘솔 키 환경변수(QRATE_DEMO_CONSOLE_KEY)도 이 테넌트의 것이다. */
+export const DEFAULT_SEED_PATH = seedPath('demo-tenant.json');
+
+/** 서버(메모리 저장소)와 prisma seed가 올리는 데모 테넌트 전부. 첫 번째가 DEFAULT_SEED_PATH다. */
+export const DEMO_SEED_PATHS: readonly string[] = [DEFAULT_SEED_PATH, seedPath('reception-tenant.json')];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -92,17 +98,41 @@ export function loadSeedFile(path: string = DEFAULT_SEED_PATH): SeedFile {
   return parseSeed(raw, path);
 }
 
-export function createRepositoriesFromSeed(
-  seed: SeedFile,
-  { consoleKeyHash = null }: { consoleKeyHash?: string | null } = {},
-): Repositories {
-  const knowledge: KnowledgeItem[] = seed.knowledge.map((k) => ({ ...k, tenantId: seed.tenant.id }));
-  const store = new MemoryStore();
-  if (seed.initialCredits > 0) {
-    appendCredit(store, seed.tenant.id, { delta: seed.initialCredits, reason: 'seed', idempotencyKey: INITIAL_CREDIT_KEY });
+/**
+ * 여러 시드의 테넌트 id와 키가 겹치지 않는지 본다. id가 겹치면 뒤 시드가 앞 테넌트의 FAQ를 덮고,
+ * 키가 겹치면 위젯의 data-tenant 하나가 어느 테넌트를 고를지 정해지지 않는다.
+ */
+export function assertDistinctTenants(seeds: readonly SeedFile[]): void {
+  for (const field of ['id', 'apiKey'] as const) {
+    const seen = new Set<string>();
+    for (const { tenant } of seeds) {
+      if (seen.has(tenant[field])) throw new Error(`시드 테넌트 ${field} 중복: ${tenant[field]}`);
+      seen.add(tenant[field]);
+    }
   }
+}
+
+export function loadSeedFiles(paths: readonly string[] = DEMO_SEED_PATHS): SeedFile[] {
+  const seeds = paths.map((path) => loadSeedFile(path));
+  assertDistinctTenants(seeds);
+  return seeds;
+}
+
+/** 시드들을 메모리 저장소 하나에 올린다. 콘솔 키 해시는 시드 밖(환경변수)에서 테넌트 id별로 받고, 없는 테넌트는 콘솔 로그인이 안 된다. */
+export function createRepositoriesFromSeeds(
+  seeds: readonly SeedFile[],
+  { consoleKeyHashes = {} }: { consoleKeyHashes?: Readonly<Record<string, string>> } = {},
+): Repositories {
+  assertDistinctTenants(seeds);
+  const store = new MemoryStore();
+  for (const seed of seeds) {
+    if (seed.initialCredits > 0) {
+      appendCredit(store, seed.tenant.id, { delta: seed.initialCredits, reason: 'seed', idempotencyKey: INITIAL_CREDIT_KEY });
+    }
+  }
+  const knowledge: KnowledgeItem[] = seeds.flatMap((seed) => seed.knowledge.map((k) => ({ ...k, tenantId: seed.tenant.id })));
   return {
-    tenants: new MemoryTenantRepository([{ ...seed.tenant, consoleKeyHash }]),
+    tenants: new MemoryTenantRepository(seeds.map((seed) => ({ ...seed.tenant, consoleKeyHash: consoleKeyHashes[seed.tenant.id] ?? null }))),
     knowledge: new MemoryKnowledgeRepository(knowledge),
     conversations: new MemoryConversationRepository(store),
     handoffs: new MemoryHandoffRepository(store),
@@ -110,4 +140,11 @@ export function createRepositoriesFromSeed(
     topUps: new MemoryTopUpRepository(store),
     events: new MemoryEventRepository(),
   };
+}
+
+export function createRepositoriesFromSeed(
+  seed: SeedFile,
+  { consoleKeyHash = null }: { consoleKeyHash?: string | null } = {},
+): Repositories {
+  return createRepositoriesFromSeeds([seed], consoleKeyHash ? { consoleKeyHashes: { [seed.tenant.id]: consoleKeyHash } } : {});
 }

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>하람바이오 방문 안내 (두 번째 데모 고객사)</title>
+    <style>
+      body { max-width: 640px; margin: 40px auto; padding: 0 16px; font-family: system-ui, sans-serif; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <h1>하람바이오 방문 안내</h1>
+    <p>
+      가상의 두 번째 데모 고객사다. 방문객이 많이 오가는 사내 리셉션이 있는 회사 본사를 가정했다.
+      같은 위젯 서버에 붙지만 <code>data-tenant="reception"</code>이라서, 대화창은 이 회사의 FAQ로만 답한다
+      (<code>apps/server/seed/reception-tenant.json</code>).
+    </p>
+    <p>
+      첫 번째 데모(<a href="./demo.html">마루인보이스</a>)와 같은 순서로 띄운다.
+      <code>pnpm dev</code>(서버) → <code>pnpm --filter @qrate/widget build</code> →
+      <code>pnpm --filter @qrate/widget demo</code> → <code>http://localhost:5173/reception.html</code>.
+    </p>
+    <p>물어볼 만한 것: 주차는 몇 시간 무료인가요? / 리셉션은 몇 시까지 하나요? / 휴대폰으로 출입할 수 있나요?</p>
+
+    <script
+      src="./dist/widget.js"
+      data-endpoint="http://localhost:8787"
+      data-tenant="reception"
+      defer
+    ></script>
+  </body>
+</html>

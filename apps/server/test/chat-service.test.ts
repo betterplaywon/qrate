@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createChatService } from '../src/chat/service.js';
 import { MockEngine } from '../src/engine/mock.js';
 import type { AnswerEngine, EngineEvent } from '../src/engine/types.js';
-import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
+import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, createRepositoriesFromSeeds, loadSeedFile, loadSeedFiles } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
 import { CapturingEngine } from './helpers/capturing-engine.js';
 
@@ -282,5 +282,31 @@ describe('대화 유스케이스 — createChatService', () => {
     });
     if (turn.status !== 'accepted') throw new Error('expected accepted');
     expect(turn.moderation).toEqual({ level: 'warn', reasons: ['warn:prompt_injection'] });
+  });
+});
+
+describe('여러 테넌트 — 데모 시드 둘을 한 서버에 올렸을 때', () => {
+  it('위젯의 테넌트 키가 고른 테넌트의 이름과 FAQ만 엔진에 간다', async () => {
+    const seeds = loadSeedFiles();
+    const engine = new CapturingEngine(new MockEngine(0));
+    const chat = createChatService({ engine, repos: createRepositoriesFromSeeds(seeds) });
+    const ask = async (tenantKey: string) => {
+      const turn = await chat.start({ tenantKey, message: '주차는 몇 시간 무료인가요?', conversationId: null, signal });
+      if (turn.status !== 'accepted') throw new Error(`expected accepted: ${turn.status}`);
+      return answerOf(await drain(turn.events));
+    };
+
+    const receptionAnswer = await ask('reception');
+    const demoAnswer = await ask('demo');
+
+    const [toReception, toDemo] = engine.requests;
+    const idsOf = (tenantId: string) => (seeds.find((s) => s.tenant.id === tenantId)?.knowledge ?? []).map((k) => k.id).sort();
+    expect(toReception?.tenantName).toBe('하람바이오');
+    expect(toReception?.knowledge.map((k) => k.id).sort()).toEqual(idsOf('reception'));
+    expect(toDemo?.tenantName).toBe('마루인보이스');
+    expect(toDemo?.knowledge.map((k) => k.id).sort()).toEqual(idsOf('demo'));
+    // 목업은 그 테넌트의 첫 지식 항목(id 순)을 인용해 답한다
+    expect(receptionAnswer).toContain('자료 "장애인 편의 시설"');
+    expect(demoAnswer).toContain('자료 "연간 결제 할인"');
   });
 });
