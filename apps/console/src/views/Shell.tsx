@@ -1,6 +1,6 @@
 import type { ConsoleTenant } from '@qrate/contracts';
 import { useLanding, useLogout } from '../queries';
-import { href, useRoute } from '../route';
+import { href, useRoute, type ScreenRoute } from '../route';
 import { Billing } from './Billing';
 import { ConversationDetail } from './ConversationDetail';
 import { ConversationList } from './ConversationList';
@@ -12,6 +12,33 @@ import { Queue } from './Queue';
 import { Start } from './Start';
 
 // 로그인 뒤의 틀 — 머리글(테넌트·메뉴·로그아웃)과 해시 라우팅에 따른 화면 하나.
+
+function Screen({ route, tenant }: { route: ScreenRoute; tenant: ConsoleTenant }) {
+  switch (route.name) {
+    case 'start':
+      return <Start tenant={tenant} />;
+    case 'install':
+      return <Install />;
+    case 'queue':
+      return <Queue status={route.status} />;
+    case 'conversations':
+      return <ConversationList />;
+    case 'conversation':
+      return <ConversationDetail id={route.id} />;
+    case 'faq':
+      return <FaqList notice={route.notice} />;
+    case 'faqItem':
+      return <FaqEdit key={route.id ?? 'new'} id={route.id} tenantName={tenant.name} />;
+    case 'metrics':
+      return <Metrics />;
+    case 'billing':
+      return <Billing />;
+    default: {
+      const _exhaustive: never = route;
+      return _exhaustive;
+    }
+  }
+}
 
 export function Shell({ tenant }: { tenant: ConsoleTenant }) {
   const hashRoute = useRoute();
@@ -54,18 +81,7 @@ export function Shell({ tenant }: { tenant: ConsoleTenant }) {
           로그아웃
         </button>
       </header>
-      <main className="main">
-        {route === null && <p className="status">불러오는 중…</p>}
-        {route?.name === 'start' && <Start tenant={tenant} />}
-        {route?.name === 'install' && <Install />}
-        {route?.name === 'queue' && <Queue status={route.status} />}
-        {route?.name === 'conversations' && <ConversationList />}
-        {route?.name === 'conversation' && <ConversationDetail id={route.id} />}
-        {route?.name === 'faq' && <FaqList notice={route.notice} />}
-        {route?.name === 'faqItem' && <FaqEdit key={route.id ?? 'new'} id={route.id} tenantName={tenant.name} />}
-        {route?.name === 'metrics' && <Metrics />}
-        {route?.name === 'billing' && <Billing />}
-      </main>
+      <main className="main">{route === null ? <p className="status">불러오는 중…</p> : <Screen route={route} tenant={tenant} />}</main>
     </div>
   );
 }
