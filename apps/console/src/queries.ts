@@ -8,7 +8,7 @@ import type {
   KnowledgeInput,
   PaymentResult,
 } from '@qrate/contracts';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ApiError, api } from './api';
 import { setupProgress } from './install';
 import { ME_KEY, signOut } from './queryClient';
@@ -184,12 +184,12 @@ export function settledConfirmError(error: unknown): string | null {
 
 /**
  * 화면이 뜨자마자 한 번 보내는 일을 데이터용 useEffect 없이 하는 방법이 쿼리다(같은 키라 두 번 마운트돼도 요청은 하나).
- * 실패한 확정은 다시 마운트될 때(세션이 끊겨 다시 로그인한 뒤 등) 한 번 더 묻는다.
+ * 실패한 확정은 다시 마운트될 때(세션이 끊겨 다시 로그인한 뒤 등) 한 번 더 묻는다. 창 포커스·재연결로는 다시 묻지 않는다 —
+ * 실패는 데이터가 없어 늘 stale이라, 그대로 두면 결과가 정해진 실패(400·404·422)도 포커스마다 확정 POST를 다시 보낸다.
  * v5 useQuery에는 onSuccess가 없어 뒤처리를 queryFn 안에서 한다.
  */
-export function useConfirmTopUp(ret: TossSuccess) {
-  const client = useQueryClient();
-  return useQuery({
+export function confirmTopUpOptions(client: QueryClient, ret: TossSuccess) {
+  return queryOptions({
     queryKey: keys.topUpConfirm(ret.paymentKey),
     queryFn: async () => {
       try {
@@ -206,7 +206,14 @@ export function useConfirmTopUp(ret: TossSuccess) {
     },
     staleTime: Infinity,
     gcTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
+}
+
+export function useConfirmTopUp(ret: TossSuccess) {
+  const client = useQueryClient();
+  return useQuery(confirmTopUpOptions(client, ret));
 }
 
 export function useTossPaymentWindow() {
