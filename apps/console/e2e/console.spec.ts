@@ -83,6 +83,7 @@ test('틀린 키는 안내, 맞는 키는 시작하기(4단계 중 2단계) → 
   await expect(items.first()).toContainText('연결 요청 1');
   await items.first().click();
   await expect(page.getByTestId('messages').locator('li')).toHaveCount(2);
+  await expect(page.getByRole('navigation', { name: '주 메뉴' }).locator('[aria-current="page"]')).toHaveText(['대화 로그']);
   await expect(page.getByTestId('detail-handoffs')).toContainText('모델 신호');
 
   await page.goto('/console/#/queue/open');
@@ -95,6 +96,7 @@ test('틀린 키는 안내, 맞는 키는 시작하기(4단계 중 2단계) → 
   await expect(page.getByTestId('queue-empty')).toBeVisible();
   await page.getByTestId('tab-in_progress').click();
   await expect(page.getByTestId('queue-item')).toHaveCount(1);
+  await expect(page.getByRole('navigation', { name: '상태' }).locator('[aria-current="page"]')).toHaveText(['처리 중']);
   await expect(page.getByTestId('status')).toHaveText('처리 중');
   await expect(page.getByTestId('queue-item').getByRole('group', { name: '상태 바꾸기' }).getByRole('button')).toHaveText(['열림으로', '완료로']);
 
