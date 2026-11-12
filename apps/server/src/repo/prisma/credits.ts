@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
-import { decodeCursor, encodeCursor } from '../listing.js';
+import { parsePageRequest, toPage } from '../listing.js';
 import type { CreditEntry, CreditPage, CreditRepository, NewCreditEntry } from '../types.js';
 import { NEWEST_FIRST, afterCursor } from './cursor.js';
 
@@ -34,15 +34,12 @@ export class PrismaCreditRepository implements CreditRepository {
   }
 
   async list(tenantId: string, { limit, cursor = null }: { limit: number; cursor?: string | null }): Promise<CreditPage> {
-    if (limit < 1) throw new RangeError('limit must be >= 1');
-    const after = cursor ? decodeCursor(cursor) : null;
+    const after = parsePageRequest(limit, cursor);
     const rows = await this.prisma.creditLedger.findMany({
       where: { tenantId, ...afterCursor(after) },
       orderBy: [...NEWEST_FIRST],
       take: limit + 1,
     });
-    const page = rows.slice(0, limit);
-    const last = page[page.length - 1];
-    return { items: page.map(toEntry), nextCursor: rows.length > limit && last ? encodeCursor(last) : null };
+    return toPage(rows, limit, toEntry);
   }
 }

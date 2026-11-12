@@ -1,4 +1,4 @@
-import { compareNewestFirst, decodeCursor, encodeCursor, isAfterCursor } from '../listing.js';
+import { newestFirstAfter, parsePageRequest, toPage } from '../listing.js';
 import type { Conversation, HandoffPage, HandoffQueueItem, HandoffRepository, HandoffStatus, NewVisitorHandoff } from '../types.js';
 import { newHandoff, toQueueItem } from './records.js';
 import type { MemoryStore } from './store.js';
@@ -14,8 +14,7 @@ export class MemoryHandoffRepository implements HandoffRepository {
     tenantId: string,
     { status, limit, cursor = null }: { status?: HandoffStatus; limit: number; cursor?: string | null },
   ): Promise<HandoffPage> {
-    if (limit < 1) throw new RangeError('limit must be >= 1');
-    const after = cursor ? decodeCursor(cursor) : null;
+    const after = parsePageRequest(limit, cursor);
     const all: HandoffQueueItem[] = [];
     for (const c of this.conversations.values()) {
       if (c.tenantId !== tenantId) continue;
@@ -24,11 +23,8 @@ export class MemoryHandoffRepository implements HandoffRepository {
         all.push(toQueueItem(c, h));
       }
     }
-    all.sort(compareNewestFirst);
-    const rest = after ? all.filter((h) => isAfterCursor(h, after)) : all;
-    const page = rest.slice(0, limit);
-    const last = page[page.length - 1];
-    return { items: page, nextCursor: rest.length > limit && last ? encodeCursor(last) : null };
+    const rows = newestFirstAfter(all, after);
+    return toPage(rows, limit, (h) => h);
   }
 
   async updateStatus(id: string, tenantId: string, status: HandoffStatus): Promise<HandoffQueueItem | null> {

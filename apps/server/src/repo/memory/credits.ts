@@ -1,4 +1,4 @@
-import { compareNewestFirst, decodeCursor, encodeCursor, isAfterCursor } from '../listing.js';
+import { newestFirstAfter, parsePageRequest, toPage } from '../listing.js';
 import type { CreditEntry, CreditPage, CreditRepository, NewCreditEntry } from '../types.js';
 import type { MemoryStore } from './store.js';
 
@@ -25,12 +25,8 @@ export class MemoryCreditRepository implements CreditRepository {
   }
 
   async list(tenantId: string, { limit, cursor = null }: { limit: number; cursor?: string | null }): Promise<CreditPage> {
-    if (limit < 1) throw new RangeError('limit must be >= 1');
-    const after = cursor ? decodeCursor(cursor) : null;
-    const all = [...(this.store.credits.get(tenantId) ?? [])].sort(compareNewestFirst);
-    const rest = after ? all.filter((e) => isAfterCursor(e, after)) : all;
-    const page = rest.slice(0, limit);
-    const last = page[page.length - 1];
-    return { items: page.map((e) => ({ ...e })), nextCursor: rest.length > limit && last ? encodeCursor(last) : null };
+    const after = parsePageRequest(limit, cursor);
+    const rows = newestFirstAfter(this.store.credits.get(tenantId) ?? [], after);
+    return toPage(rows, limit, (e) => ({ ...e }));
   }
 }

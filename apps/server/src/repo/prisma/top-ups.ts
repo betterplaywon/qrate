@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
-import { decodeCursor, encodeCursor } from '../listing.js';
+import { parsePageRequest, toPage } from '../listing.js';
 import type { NewTopUp, Settlement, SettleResult, TopUp, TopUpPage, TopUpRepository } from '../types.js';
 import { appendCredit } from './credits.js';
 import { NEWEST_FIRST, afterCursor } from './cursor.js';
@@ -47,16 +47,13 @@ export class PrismaTopUpRepository implements TopUpRepository {
   }
 
   async list(tenantId: string, { limit, cursor = null }: { limit: number; cursor?: string | null }): Promise<TopUpPage> {
-    if (limit < 1) throw new RangeError('limit must be >= 1');
-    const after = cursor ? decodeCursor(cursor) : null;
+    const after = parsePageRequest(limit, cursor);
     const rows = await this.prisma.creditTopUp.findMany({
       where: { tenantId, ...afterCursor(after) },
       orderBy: [...NEWEST_FIRST],
       take: limit + 1,
     });
-    const page = rows.slice(0, limit);
-    const last = page[page.length - 1];
-    return { items: page.map(toTopUp), nextCursor: rows.length > limit && last ? encodeCursor(last) : null };
+    return toPage(rows, limit, toTopUp);
   }
 
   async settle(s: Settlement): Promise<SettleResult> {

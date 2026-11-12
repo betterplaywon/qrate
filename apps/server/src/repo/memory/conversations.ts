@@ -1,4 +1,4 @@
-import { compareNewestFirst, decodeCursor, encodeCursor, isAfterCursor } from '../listing.js';
+import { newestFirstAfter, parsePageRequest, toPage } from '../listing.js';
 import type { Conversation, ConversationOutcome, ConversationPage, ConversationRepository, NewTurn, TimeWindow } from '../types.js';
 import { appendCredit } from './credits.js';
 import { inWindow, newHandoff, toMessage, toSummary } from './records.js';
@@ -31,16 +31,9 @@ export class MemoryConversationRepository implements ConversationRepository {
   }
 
   async listByTenant(tenantId: string, { limit, cursor = null }: { limit: number; cursor?: string | null }): Promise<ConversationPage> {
-    if (limit < 1) throw new RangeError('limit must be >= 1');
-    const after = cursor ? decodeCursor(cursor) : null;
-    const all = [...this.byId.values()].filter((c) => c.tenantId === tenantId).sort(compareNewestFirst);
-    const rest = after ? all.filter((c) => isAfterCursor(c, after)) : all;
-    const page = rest.slice(0, limit);
-    const last = page[page.length - 1];
-    return {
-      items: page.map(toSummary),
-      nextCursor: rest.length > limit && last ? encodeCursor(last) : null,
-    };
+    const after = parsePageRequest(limit, cursor);
+    const rows = newestFirstAfter([...this.byId.values()].filter((c) => c.tenantId === tenantId), after);
+    return toPage(rows, limit, toSummary);
   }
 
   async appendTurn(conversationId: string, tenantId: string, turn: NewTurn): Promise<void> {
