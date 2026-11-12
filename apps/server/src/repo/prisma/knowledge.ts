@@ -22,7 +22,7 @@ export class PrismaKnowledgeRepository implements KnowledgeRepository {
     });
   }
 
-  async remove(tenantId: string, id: string): Promise<boolean> {
+  async remove(id: string, tenantId: string): Promise<boolean> {
     const { count } = await this.prisma.knowledgeItem.deleteMany({ where: { tenantId, id } });
     return count > 0;
   }
