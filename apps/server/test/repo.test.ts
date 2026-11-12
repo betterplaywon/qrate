@@ -61,6 +61,7 @@ describe('시드 로더', () => {
       /knowledge\[0\]\.blocks\[0\]: 문단 하나는 1,000자/,
     );
     expect(() => parseSeed({ tenant, knowledge: [item('faq:a', Array<string>(11).fill('x'))] })).toThrow(/knowledge\[0\]\.blocks: 문단은 10개/);
+    expect(() => parseSeed({ tenant, knowledge: [item('faq:a', ['x\u0000'])] })).toThrow(/knowledge\[0\]\.blocks\[0\]: 보이지 않는 특수 문자/);
     const many = Array.from({ length: 51 }, (_, i) => item(`faq:q${i}`));
     expect(() => parseSeed({ tenant, knowledge: many })).toThrow(/51개, 상한은 50개/);
     expect(() => parseSeed({ tenant, knowledge: many.slice(0, 50) })).not.toThrow();

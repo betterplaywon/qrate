@@ -139,7 +139,7 @@ describe('FAQ 저장·지우기', () => {
     expect((await remove('reception', 'faq:c0ffee12')).status).toBe(204);
   });
 
-  it('모양이 틀리면 400 invalid_knowledge — id, 빈 질문·분류·문단, 문단 개수와 길이, 질문·분류 길이. 깨진 JSON은 400 invalid_json', async () => {
+  it('모양이 틀리면 400 invalid_knowledge — id, 빈 질문·분류·문단, 문단 개수와 길이, 질문·분류 길이, 제어 문자. 깨진 JSON은 400 invalid_json', async () => {
     for (const id of ['plans', 'faq:Plans', 'faq:', 'faq:a b', 'faq:-a']) {
       const res = await put('demo', id, input(['x']));
       expect(res.status, id).toBe(400);
@@ -159,6 +159,11 @@ describe('FAQ 저장·지우기', () => {
       { title: '질문', category: '시험' },
       { title: '질문', category: '시험', blocks: 'x' },
       ['질문', '시험', ['x']],
+      // 보이지 않는 제어 문자와 짝 없는 서로게이트. NUL은 Postgres text가 받지 못해 500이 됐었다
+      input(['x'], '질문\u0000'),
+      input(['x'], '질문', '시험\u001b'),
+      input(['종\u0007소리']),
+      input(['\ud800 짝 없는 서로게이트']),
     ];
     for (const body of bodies) {
       const res = await put('demo', 'faq:shape', body);
@@ -168,6 +173,13 @@ describe('FAQ 저장·지우기', () => {
     // 상한 바로 아래는 받는다
     const edge = input(Array<string>(KNOWLEDGE_LIMITS.blocks).fill('가'.repeat(KNOWLEDGE_LIMITS.blockChars)), '가'.repeat(KNOWLEDGE_LIMITS.titleChars));
     expect((await put('demo', 'faq:shape', edge)).status).toBe(201);
+    expect((await remove('demo', 'faq:shape')).status).toBe(204);
+    // 글자는 코드 포인트로 센다. 이모지 1,000개(UTF-16로 2,000)는 받고 1,001개는 400. 문단 안의 줄바꿈·탭·세로 탭(붙여 넣은 줄바꿈)은 받는다
+    expect((await put('demo', 'faq:shape', input(['😀'.repeat(KNOWLEDGE_LIMITS.blockChars)]))).status).toBe(201);
+    expect((await put('demo', 'faq:shape', input(['😀'.repeat(KNOWLEDGE_LIMITS.blockChars + 1)]))).status).toBe(400);
+    const lines = await put('demo', 'faq:shape', input(['첫 줄\n둘째 줄\t끝\v붙여 넣은 줄']));
+    expect(lines.status).toBe(200);
+    expect(((await lines.json()) as KnowledgeItemDto).blocks).toEqual(['첫 줄\n둘째 줄\t끝\v붙여 넣은 줄']);
     expect((await remove('demo', 'faq:shape')).status).toBe(204);
 
     expect((await remove('demo', 'BAD')).status).toBe(400);

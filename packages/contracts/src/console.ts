@@ -305,7 +305,11 @@ export interface KnowledgeListResponse {
   items: KnowledgeItemDto[];
 }
 
-/** 전체 글자 상한(totalChars)이 세는 양. 분류는 위젯이 읽는 자료에 들어가지 않아 세지 않는다. 길이는 UTF-16 코드 단위다(MAX_MESSAGE_CHARS와 같다). */
+/**
+ * 전체 글자 상한(totalChars)이 세는 양. 분류는 위젯이 읽는 자료에 들어가지 않아 세지 않는다.
+ * 길이는 코드 포인트로 센다. 칸마다의 상한(zod의 .max())과 같은 단위라야 칸을 모두 지킨 저장이 합계에서 다르게 세지지 않는다.
+ */
 export function knowledgeChars(item: Pick<KnowledgeInput, 'title' | 'blocks'>): number {
-  return item.blocks.reduce((sum, block) => sum + block.length, item.title.length);
+  const length = (text: string): number => [...text].length;
+  return item.blocks.reduce((sum, block) => sum + length(block), length(item.title));
 }
