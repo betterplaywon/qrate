@@ -11,6 +11,7 @@ import { DEFAULT_SEED_PATH, loadSeedFile } from '../src/repo/seed.js';
 import { cpuSampleSchema, sampleCpu, type CpuSample } from './cpu.js';
 import {
   formatReport,
+  holdWindow,
   readK6Export,
   statsSampleSchema,
   summarizeDb,
@@ -109,17 +110,16 @@ interface K6Run {
   tenantKey: string;
 }
 
-async function runK6({ label, vus, ramp, hold, tenantKey }: K6Run): Promise<{ exportPath: string; startedAt: number }> {
+async function runK6({ label, vus, ramp, hold, tenantKey }: K6Run): Promise<string> {
   const exportPath = path.join(runDir, `k6-${label}.json`);
   const log = openSync(path.join(runDir, `k6-${label}.log`), 'a');
   const env = [`VUS=${vus}`, `RAMP_S=${ramp}`, `HOLD_S=${hold}`, `THINK_S=${thinkS}`, `BASE_URL=${base}`, `TENANT=${tenantKey}`];
-  const startedAt = Date.now();
   const child = spawn('k6', ['run', '--quiet', '--summary-export', exportPath, ...env.flatMap((e) => ['-e', e]), path.join(here, 'visit.js')], {
     stdio: ['ignore', log, log],
   });
   const code = await waitForExit(child, 'k6');
   if (code !== 0) throw new Error(`k6 ${label} 종료 코드 ${code} — ${path.join(runDir, `k6-${label}.log`)}`);
-  return { exportPath, startedAt };
+  return exportPath;
 }
 
 function readJsonl<T>(file: string, schema: z.ZodType<T>): T[] {
@@ -219,11 +219,10 @@ try {
     const tenant = await stepTenant(label);
     const run: K6Run = { label, vus, ramp: rampS, hold: holdS, tenantKey: tenant.apiKey };
     console.log(`[load] 동시 방문자 ${run.vus}명: 램프 ${run.ramp}초 + 유지 ${run.hold}초, 테넌트 ${tenant.id}(원장 ${tenant.ledgerRowsBefore}행)`);
-    const { exportPath, startedAt } = await runK6(run);
-    const window = { from: startedAt + run.ramp * 1000, to: startedAt + (run.ramp + run.hold) * 1000 };
+    const k6Step = readK6Export(JSON.parse(readFileSync(await runK6(run), 'utf8')));
+    const window = holdWindow(k6Step.startedAt, run);
     const ttft = await settledTtft(tenant.id, window);
     writeFileSync(path.join(runDir, `ttft-${label}.json`), `${JSON.stringify(ttft)}\n`);
-    const k6Step = readK6Export(JSON.parse(readFileSync(exportPath, 'utf8')));
     steps.push({
       label: run.label,
       vus: run.vus,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePsTime, type CpuSample } from '../load/cpu.js';
 import { groupOf, groupProfile } from '../load/profile.js';
-import { formatReport, readK6Export, summarizeDb, summarizeMachine, summarizeServer, type StatsSample } from '../load/summary.js';
+import { formatReport, holdWindow, readK6Export, summarizeDb, summarizeMachine, summarizeServer, type StatsSample } from '../load/summary.js';
 
 const trend = (med: number, p95: number, count: number) => ({ avg: med, min: 1, med, 'p(95)': p95, 'p(99)': p95 + 1, max: p95 + 2, count });
 
@@ -25,6 +25,7 @@ function stats(t: number, over: Partial<StatsSample> = {}): StatsSample {
 describe('readK6Export', () => {
   it('k6 요약에서 대화 턴·성공률·첫 바이트 분포와 그 밖의 실패를 꺼낸다', () => {
     const step = readK6Export({
+      setup_data: { startedAt: 1_000 },
       metrics: {
         chat_ttfb: trend(4, 9, 98),
         chat_duration: trend(2300, 2400, 98),
@@ -38,18 +39,28 @@ describe('readK6Export', () => {
         http_reqs: { count: 300, rate: 5 },
       },
     });
-    expect(step).toMatchObject({ turns: 100, chatOkRate: 0.98, chatFailed: 2, stepFailed: 1 });
+    expect(step).toMatchObject({ startedAt: 1_000, turns: 100, chatOkRate: 0.98, chatFailed: 2, stepFailed: 1 });
     expect(step.ttfb).toEqual({ p50: 4, p95: 9, p99: 10, max: 11, count: 98 });
     expect(step.assets?.count).toBe(100);
   });
 
   it('대화가 모두 실패해 표본이 없는 지표는 null로 둔다', () => {
-    const step = readK6Export({ metrics: { chat_ok: { passes: 0, fails: 5, value: 0 } } });
+    const step = readK6Export({ setup_data: { startedAt: 0 }, metrics: { chat_ok: { passes: 0, fails: 5, value: 0 } } });
     expect(step).toMatchObject({ turns: 5, chatOkRate: 0, chatFailed: 5, ttfb: null, stream: null });
   });
 
   it('모양이 다른 요약은 읽지 않는다', () => {
-    expect(() => readK6Export({ metrics: { chat_ttfb: { med: '4' } } })).toThrow();
+    expect(() => readK6Export({ setup_data: { startedAt: 0 }, metrics: { chat_ttfb: { med: '4' } } })).toThrow();
+  });
+
+  it('시험 시작 시각(setup_data)이 없는 요약은 읽지 않는다(구간을 k6를 띄운 시각으로 어림하지 않는다)', () => {
+    expect(() => readK6Export({ metrics: {} })).toThrow();
+  });
+});
+
+describe('holdWindow', () => {
+  it('시험 시작에서 램프만큼 뒤부터 유지 시간만큼이 구간이다', () => {
+    expect(holdWindow(10_000, { ramp: 15, hold: 60 })).toEqual({ from: 25_000, to: 85_000 });
   });
 });
 
@@ -90,7 +101,7 @@ describe('summarizeDb', () => {
 
 describe('formatReport', () => {
   it('단계마다 방문자·서버·기기 표에 한 줄씩 쓴다', () => {
-    const k6 = readK6Export({ metrics: { chat_ttfb: trend(4, 9, 10), chat_ok: { passes: 10, fails: 0, value: 1 } } });
+    const k6 = readK6Export({ setup_data: { startedAt: 0 }, metrics: { chat_ttfb: trend(4, 9, 10), chat_ok: { passes: 10, fails: 0, value: 1 } } });
     const report = formatReport({ title: 't', lines: ['기기'] }, [
       {
         label: '100',

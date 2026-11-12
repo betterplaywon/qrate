@@ -31,6 +31,8 @@ export interface Spread {
 }
 
 export interface K6Step {
+  /** k6 setup()이 남긴 시험 시작 시각(epoch ms). 유지 구간은 여기서 램프만큼 뒤에 시작한다. */
+  startedAt: number;
   turns: number;
   chatOkRate: number;
   chatFailed: number;
@@ -95,6 +97,7 @@ const rateSchema = z.object({ passes: z.number(), fails: z.number() });
 const counterSchema = z.object({ count: z.number() });
 // 표본이 하나도 없던 지표(예: 대화가 모두 실패)는 k6가 내보내지 않는다.
 const k6ExportSchema = z.object({
+  setup_data: z.object({ startedAt: z.number() }),
   metrics: z.object({
     chat_ttfb: trendSchema.optional(),
     chat_duration: trendSchema.optional(),
@@ -116,10 +119,11 @@ function spread(trend: z.infer<typeof trendSchema> | undefined): Spread | null {
 }
 
 export function readK6Export(raw: unknown): K6Step {
-  const { metrics } = k6ExportSchema.parse(raw);
+  const { setup_data: setupData, metrics } = k6ExportSchema.parse(raw);
   const ok = metrics.chat_ok ?? { passes: 0, fails: 0 };
   const turns = ok.passes + ok.fails;
   return {
+    startedAt: setupData.startedAt,
     turns,
     chatOkRate: turns === 0 ? 0 : ok.passes / turns,
     chatFailed: ok.fails,
@@ -131,6 +135,11 @@ export function readK6Export(raw: unknown): K6Step {
     event: spread(metrics.step_event),
     stepFailed: metrics.step_ok?.fails ?? 0,
   };
+}
+
+/** k6 시험 시작 시각에서 램프 뒤의 유지 구간. visit.js의 inHold()와 같은 구간이다. */
+export function holdWindow(startedAt: number, { ramp, hold }: { ramp: number; hold: number }): Window {
+  return { from: startedAt + ramp * 1000, to: startedAt + (ramp + hold) * 1000 };
 }
 
 function inWindow<T extends { t: number }>(samples: readonly T[], { from, to }: Window): T[] {
