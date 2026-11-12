@@ -10,9 +10,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Anthropic from '@anthropic-ai/sdk';
+import { loadConfig } from '../src/config.js';
+import { ClaudeEngine } from '../src/engine/claude.js';
 import { EngineError, type AnswerEngine, type KnowledgeSource, type Usage } from '../src/engine/types.js';
 import { loadSeedFiles } from '../src/repo/seed.js';
-import { answerConfig, engineFactory } from './clients.js';
+import { SyntheticUsageEngine } from './fakes.js';
 import { nextCallAllowed, padFaqSet, repeatCallCeilingUsd, sentencePool, type Caps, type FaqSet } from './faq-size-plan.js';
 import { VARIANT_MODELS, billingPrice, callCeilingUsd, costUsd, inputTokenBound, priceOf } from './models.js';
 
@@ -60,9 +63,13 @@ async function ask(engine: AnswerEngine, knowledge: KnowledgeSource[]): Promise<
 const paid = process.argv.includes('--paid');
 const apiKey = process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_API_KEY : null;
 if (paid && !apiKey) throw new Error('--paid에는 ANTHROPIC_API_KEY가 필요하다(eval:faq-size:paid가 .env에서 읽는다)');
-const engine = engineFactory(paid ? 'claude' : 'mock', apiKey)('sonnet');
 const model = VARIANT_MODELS.sonnet;
-const maxTokens = answerConfig('sonnet', undefined).maxTokens;
+// 운영 설정 그대로이되 서버 측 폴백만 끈다. 폴백이 더 비싼 모델로 답하면 호출 전 상한(Sonnet 단가)이 상한이 아니게 된다.
+// 2026-11-12의 기록은 폴백을 켠 채 쟀고, 9건 모두 Sonnet이 답했다.
+const config = loadConfig({ ANTHROPIC_API_KEY: apiKey ?? undefined, QRATE_ENGINE: 'claude', QRATE_MODEL: model, QRATE_THINKING: 'off', QRATE_FALLBACK: 'off' });
+// SDK의 자동 재시도는 끈다. 재시도는 여기서 세지 않으므로 예산 밖의 호출이 된다.
+const engine: AnswerEngine = paid && apiKey ? new ClaudeEngine(config, new Anthropic({ apiKey, maxRetries: 0 })) : new SyntheticUsageEngine();
+const { maxTokens } = config;
 const price = priceOf(model);
 if (!price) throw new Error(`가격표에 없는 모델: ${model}`);
 
