@@ -153,9 +153,13 @@ pnpm --filter @qrate/server admin console-key:revoke <회사 키>  # 회수. 그
 - **비밀값 고정.** `QRATE_CONSOLE_SECRET`·`QRATE_MOCK_PAYMENT_SECRET`이 없으면 프로세스마다 무작위로 만들어, 재시작하거나 인스턴스가 둘 이상이면 콘솔 세션과 웹훅 서명이 깨진다.
 - **DB.** compose의 `qrate`/`qrate`는 로컬 전용이다. 운영 DB는 강한 비밀번호와 비공개 네트워크를 쓰고, 관리형 Postgres면 `DATABASE_URL`에 `sslmode=verify-full`을 붙인다.
 - **시드.** `db:seed`는 공개 데모 테넌트 둘(키 `demo`와 `reception`, 각 100크레딧)을 넣는다. 운영 DB에 돌리지 않는다. compose의 migrate 서비스도 시드를 돌리므로 compose를 그대로 운영에 쓰지 않는다.
+- **엔진 키.** `QRATE_ENGINE`이 기본값(`auto`)일 때 `ANTHROPIC_API_KEY`가 없으면 운영(`NODE_ENV=production`)에서도 목업 엔진으로 떠서, 방문자가 모델 대신 목업 답을 받는다. 막지 않고 시작 로그에 경고만 남긴다. `QRATE_ENGINE=claude`로 두면 키가 없을 때 서버가 시작하지 않는다.
 - **결제.** `QRATE_PAYMENT_PROVIDER=mock`은 결제 없이 크레딧을 채우는 버튼을 연다. 운영에서 켜면 시작 로그에 경고만 남는다. `toss`는 테스트 키만 받는다. 확정·토스 웹훅 경로에는 아직 요율 제한이 없고, 결제창형 상점에는 웹훅 서명을 검증할 보안 키가 없어 서명 대신 결제 조회로 확인한다.
 - **Sentry.** `SENTRY_DSN`을 켜도 요청 본문·쿠키·요청 헤더·IP는 보내지 않는다(`apps/server/src/sentry.ts`). 경로와 쿼리 문자열은 보낸다(`token` 같은 이름은 SDK가 거른다). SDK를 올리면 `test/sentry-privacy.test.ts`가 방문자 메시지·콘솔 로그인 키·세션 쿠키가 실리지 않는지 다시 확인한다.
+- **Sentry 계측.** 실행 줄(`start` 스크립트, `apps/server/Dockerfile`의 `CMD`)에 `--import`가 없다. 이 서버는 ESM이라, 그 상태에서는 Sentry가 express 같은 라이브러리를 계측하지 못한다. 트랜잭션은 들어오는 HTTP 요청 단위로만 생기고 미들웨어·라우트 span이 없다. 처리 중 오류는 `index.ts`의 `reportError`가 `captureException`으로 직접 보낸다. 라이브러리 계측이 필요하면 `node --import ./dist/sentry.js dist/index.js`로 띄운다(@sentry/node README의 ESM 절).
 - **trust proxy.** 리버스 프록시 뒤에 두면 Express `trust proxy`를 프록시 홉 수로 설정해야 IP당 요율 제한(대화 API 분당 20회 · 상담원 연결 20회 · 위젯 사건 30회 · 콘솔 로그인 10회)이 방문자별로 센다. 지금은 설정하지 않아서 프록시 뒤에서는 모든 요청이 프록시 IP 하나로 세지고, `X-Forwarded-For`가 처음 올 때 제한마다 express-rate-limit 경고(`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`)가 로그에 한 번 남는다. IPv6는 주소 하나가 아니라 /56 대역 하나로 센다(express-rate-limit 기본값, 주소를 바꿔 가며 우회하는 것을 막는다).
+- **종료 처리.** 서버에 SIGTERM 처리가 없다. 새 요청을 멈추고 진행 중인 답을 마저 보내는 `server.close`도, Prisma 연결을 닫는 `$disconnect`도 하지 않는다. 그래서 재시작·배포로 프로세스가 내려가면 진행 중인 답 스트림이 `[DONE]` 없이 끊긴다.
+- **대화 턴 시간 제한.** 서버가 모델 호출을 끊는 것은 방문자 연결이 닫힐 때뿐이고(`apps/server/src/http/chat.ts`), 대화창도 대화 요청에 시간 제한을 두지 않는다. Anthropic SDK(1.3.0)의 시간 제한(기본 10분)은 응답 헤더가 올 때까지만 걸리고 재시도(기본 2회)마다 새로 걸린다. 답 스트림이 시작된 뒤에는 SDK도 시간 제한을 두지 않는다.
 
 ## AI 워크플로우 (작업 방식)
 

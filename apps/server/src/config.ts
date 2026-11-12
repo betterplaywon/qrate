@@ -1,5 +1,6 @@
-// 런타임 설정은 전부 환경변수에서 읽고, 이 파일 한 곳에서만 해석한다.
-// .env 파일은 dev 스크립트의 `--env-file-if-exists=.env`(Node 22.9+)로 로드되고,
+// 서버 런타임 설정은 환경변수에서 읽고 이 파일(loadConfig)이 해석한다. 예외는 둘이다. SENTRY_DSN은 이 해석보다 먼저 init하는
+// sentry.ts가 읽고, NODE_ENV는 index.ts·repo/create.ts·sentry.ts도 직접 읽는다(운영 경고, 사건 미러, Sentry 환경 이름).
+// .env 파일은 dev·start 스크립트의 `--env-file-if-exists=.env`(Node 22.9+)로 로드되고,
 // 컨테이너에서는 compose가 환경변수로 직접 넘긴다. 코드 어디에도 .env 파서는 없다.
 
 import { parseTossKeys, type TossClientKey, type TossSecretKey } from './billing/toss.js';
