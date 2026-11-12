@@ -164,6 +164,23 @@ test('처음 열면 대화창 문서가 widget_open 사건을 한 번 보내고,
   expect(consoleErrors).toEqual([]);
 });
 
+test('두 번째 데모 고객사 페이지(reception.html)는 같은 서버에서 자기 테넌트의 FAQ로만 답한다', async ({ page, consoleErrors }) => {
+  const tenants: string[] = [];
+  page.on('request', (r) => {
+    if (r.url() === CHAT_URL) tenants.push((JSON.parse(r.postData() ?? '{}') as { tenant?: string }).tenant ?? '');
+  });
+  await page.goto('/reception.html');
+  await page.locator(LAUNCHER).click();
+  await expect(page.locator(`${HOST} .loading`)).toHaveCount(0);
+  const frame = page.frameLocator(FRAME);
+  await send(frame, '주차는 몇 시간 무료인가요?');
+  await expect(finishedAnswers(frame)).toHaveCount(1);
+  // 목업은 그 테넌트의 첫 지식 항목(id 순)을 인용한다. 데모 테넌트(demo.html)였다면 "연간 결제 할인"이다.
+  await expect(frame.locator('.msg.bot .text').first()).toContainText('자료 "장애인 편의 시설"');
+  expect(tenants).toEqual(['reception']);
+  expect(consoleErrors).toEqual([]);
+});
+
 test('대화 API는 iframe 문서에서만 부르고, 답변 스트리밍·출처·대화 이어 가기가 동작한다', async ({ page, consoleErrors }) => {
   const requests: { frameUrl: string; conversationId: string | null }[] = [];
   const responseIds: string[] = [];
