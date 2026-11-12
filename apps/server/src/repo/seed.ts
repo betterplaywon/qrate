@@ -1,9 +1,8 @@
-import { KNOWLEDGE_ID_PATTERN, KNOWLEDGE_LIMITS, knowledgeChars } from '@qrate/contracts';
+import { KNOWLEDGE_ID_PATTERN, KNOWLEDGE_LIMITS, isOriginString, knowledgeChars } from '@qrate/contracts';
 import { knowledgeInputSchema } from '@qrate/contracts/schemas';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { isOriginString } from '../origin.js';
 import {
   MemoryConversationRepository,
   MemoryCreditRepository,

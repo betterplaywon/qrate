@@ -1,4 +1,4 @@
-import type { InstallStatusResponse } from '@qrate/contracts';
+import { isOriginString, type InstallStatusResponse } from '@qrate/contracts';
 
 // 설치 안내와 시작하기 화면의 규칙과 글. 빌더별 단계는 각 빌더의 공식 도움말에서 확인한 메뉴 이름만 쓴다(2026-11-12 확인).
 // 메뉴 이름은 빌더가 바꿀 수 있어서 단계마다 공식 도움말 링크를 함께 둔다.
@@ -6,25 +6,21 @@ import type { InstallStatusResponse } from '@qrate/contracts';
 /** 시작하기의 FAQ 단계가 끝났다고 보는 개수. 방문객이 자주 묻는 것부터 이만큼은 있어야 위젯이 쓸모 있다. */
 export const MIN_FAQ_FOR_START = 5;
 
-/** 서버(origin.ts isOriginString)와 같은 CSP 호스트 문법. 퓨니코드로 바뀐 한글 도메인도 이 글자들이다. */
-const CSP_HOST = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/;
-
 /** 한 칸에 주소를 여럿 넣은 것으로 보이는 글자(쉼표·세미콜론·공백). 하나씩 넣으라고 따로 안내한다. */
 export const looksLikeSeveral = (input: string): boolean => /[,;\s]/.test(input.trim());
 
 /**
  * 사람이 적은 홈페이지 주소를 서버가 받는 정규형 오리진(scheme://host[:port])으로 바꾼다.
- * 앞에 https://가 없으면 붙이고 경로·쿼리·끝 슬래시는 버린다. http(s)가 아니거나, 호스트가 CSP 호스트 문법이 아니거나, 주소로 읽을 수 없으면 null.
+ * 앞에 https://가 없으면 붙이고 경로·쿼리·끝 슬래시는 버린다. 결과가 서버와 같은 규칙(isOriginString)을 지나지 못하거나 주소로 읽을 수 없으면 null.
  */
 export function toSiteOrigin(input: string): string | null {
   const text = input.trim();
   if (!text || looksLikeSeveral(text)) return null;
   try {
-    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
-    const web = url.protocol === 'https:' || url.protocol === 'http:';
-    // 점 없는 이름(https://haram)은 대개 오타다. 개발용 localhost만 받는다.
-    const host = CSP_HOST.test(url.hostname) && (url.hostname.includes('.') || url.hostname === 'localhost');
-    return web && host && url.port !== '0' ? url.origin : null;
+    const { origin, hostname } = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+    // 점 없는 이름(https://haram)은 서버 규칙으로는 맞지만 대개 오타다. 콘솔은 개발용 localhost만 받는다.
+    const named = hostname.includes('.') || hostname === 'localhost';
+    return named && isOriginString(origin) ? origin : null;
   } catch {
     return null;
   }
