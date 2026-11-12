@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
-import { decodeCursor, encodeCursor, previewOf } from '../listing.js';
+import { parsePageRequest, previewOf, toPage } from '../listing.js';
 import type { HandoffPage, HandoffQueueItem, HandoffRecord, HandoffRepository, HandoffStatus, NewVisitorHandoff } from '../types.js';
 import { NEWEST_FIRST, afterCursor } from './cursor.js';
 
@@ -52,18 +52,15 @@ export class PrismaHandoffRepository implements HandoffRepository {
     tenantId: string,
     { status, limit, cursor = null }: { status?: HandoffStatus; limit: number; cursor?: string | null },
   ): Promise<HandoffPage> {
-    if (limit < 1) throw new RangeError('limit must be >= 1');
-    const after = cursor ? decodeCursor(cursor) : null;
-    // (tenantId, status, createdAt) 인덱스. 한 줄 더 가져와 다음 페이지가 있는지 본다.
+    const after = parsePageRequest(limit, cursor);
+    // (tenantId, status, createdAt) 인덱스.
     const rows = await this.prisma.handoff.findMany({
       where: { tenantId, ...(status ? { status } : {}), ...afterCursor(after) },
       orderBy: [...NEWEST_FIRST],
       take: limit + 1,
       select: QUEUE_SELECT,
     });
-    const page = rows.slice(0, limit);
-    const last = page[page.length - 1];
-    return { items: page.map(toQueueItem), nextCursor: rows.length > limit && last ? encodeCursor(last) : null };
+    return toPage(rows, limit, toQueueItem);
   }
 
   async updateStatus(id: string, tenantId: string, status: HandoffStatus): Promise<HandoffQueueItem | null> {

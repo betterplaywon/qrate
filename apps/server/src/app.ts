@@ -10,6 +10,7 @@ import {
   WIDGET_SCRIPT_PATH,
 } from '@qrate/contracts';
 import express from 'express';
+import path from 'node:path';
 import type { PaymentProvider } from './billing/provider.js';
 import { createBillingService } from './billing/service.js';
 import { createChatService } from './chat/service.js';
@@ -31,21 +32,19 @@ import { requireOwnOrigin } from './origin.js';
 import { reportToStderr, type ErrorReporter } from './report.js';
 import type { Repositories } from './repo/types.js';
 
-// 서버 구조 — 의존 방향은 바깥에서 안으로만 간다.
-//   http/     Express 핸들러·미들웨어·SSE 전송. 본문 모양 검사, 상태 코드(엔진 실패 코드 → 상태 포함), 스트림 쓰기, chat_request 사건,
-//             오류 핸들러(errors.ts), 요율 제한(rate-limit.ts), 상담원 연결 접수(handoff.ts), 위젯 사건 수집(events.ts), 인사말 배정(greeting.ts),
-//             운영 콘솔(console/ — router 조립, auth 로그인, session 미들웨어, cookie, query, dto, top-ups 충전, static 페이지 서빙),
-//             결제 제공자 웹훅(payments.ts)
-//   console/  콘솔 인증 조각 — 키 해시(scrypt), 세션 토큰(HMAC), 로그인 시도 제한. Express를 모른다
-//   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장. Express를 모른다
-//   billing/  충전 유스케이스 — 결제 제공자 경계(provider)·모의 제공자(mock)·이벤트 판정(settlement, 순수)·충전 요청과 웹훅(service). Express를 모른다
+// 서버 구조. Express를 아는 것은 http/·origin.ts·이 파일뿐이고, http/를 import하는 것은 이 파일뿐이다.
+//   http/     Express 어댑터 — 공개 API(대화 SSE·상담원 연결·위젯 사건·인사말·대화창 문서·결제 웹훅), 요율 제한, 오류 응답, 운영 콘솔 API(console/, 로그인 시도 제한 포함)
+//   chat/     대화 유스케이스 — 테넌트 확인, 모더레이션, 대화 이어 가기, 지식 선택, 턴 저장
+//   billing/  충전 유스케이스 — 결제 제공자 경계와 구현(mock·toss), 이벤트 판정(settlement), 충전 요청과 웹훅(service)
+//   console/  콘솔 규칙 — 키 해시(scrypt), 세션 토큰(JWT), FAQ 저장 상한(knowledge.ts)
 //   engine/   답변 엔진 계약과 구현(Claude·목업), 시스템 지시. 실패는 코드·재시도 여부로만 말한다
-//   events/   이벤트 로그 — 사건 기록 통로(sink), 콘솔 지표 정의(metrics, 순수 계산). Express를 모른다
-//   greeting/ 인사말 A/B 실험의 정의(변형 목록·문구·비율)와 배정. Express를 모른다
-//   repo/     저장소 계약과 구현(메모리; W3에서 Postgres)
+//   events/   사건 기록 통로(sink)와 콘솔 지표 정의(metrics)
+//   greeting/ 인사말 A/B 실험의 정의(변형 목록·문구·비율)와 배정
+//   repo/     저장소 계약(types.ts)과 구현 둘(memory/·prisma/), 시작 때 고르기(create.ts), 시드 파일 읽기(seed.ts)
+//   admin/    플랫폼 운영자 명령(회사 등록, 콘솔 키 발급·회수, 목록). DB에 붙는 별도 진입점(cli.ts)
 //   origin.ts 오리진 규칙(설정 해석·시드 검증·Origin 검사가 함께 쓴다)
 //   report.ts 예외 보고 통로(reportError). index.ts가 Sentry를 꽂는다
-//   @qrate/contracts  위젯과 함께 쓰는 전송 계약(경로, SSE 이벤트, 오류 본문)
+//   @qrate/contracts  위젯·콘솔과 함께 쓰는 전송 계약(경로, SSE 이벤트, 요청 스키마, 오류 본문)
 // 이 파일은 조립만 한다. 프로세스 시작·Sentry·listen은 index.ts, 테스트는 이 함수로 앱을 만들어 임시 포트에 띄운다.
 
 export interface AppOptions {
@@ -64,16 +63,16 @@ export interface AppOptions {
   reportError?: ErrorReporter;
   /**
    * 운영 콘솔 API. secret은 세션 토큰의 서명 비밀(QRATE_CONSOLE_SECRET, 16자 이상). 없으면 콘솔 API를 올리지 않는다(/api/console/* → 404).
-   * loginAttempts는 IP당 로그인 시도 제한(기본 10회/분) — 테스트가 줄여서 쓴다.
+   * loginAttempts는 IP당 로그인 시도 제한(기본값은 http/console/router.ts) — 테스트가 줄여서 쓴다.
    */
   console?: { secret: string; loginAttempts?: { max: number; windowMs: number } };
   /** 콘솔 앱 정적 파일(index.html·assets/)의 디렉터리 — @qrate/console 빌드 산출물 dist. 없으면 콘솔 페이지는 서빙하지 않는다(API만). */
   consoleAssetsDir?: string;
-  /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
+  /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본값은 http/handoff.ts. 테스트가 줄여서 쓴다. */
   handoffRequests?: { max: number; windowMs: number };
-  /** 위젯 사건(POST /api/events)의 IP당 요율 제한. 기본 30회/분. 테스트가 줄여서 쓴다. */
+  /** 위젯 사건(POST /api/events)의 IP당 요율 제한. 기본값은 http/events.ts. 테스트가 줄여서 쓴다. */
   eventRequests?: { max: number; windowMs: number };
-  /** 대화 요청(POST /api/chat)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
+  /** 대화 요청(POST /api/chat)의 IP당 요율 제한. 기본값은 아래 createApp 매개변수. 테스트가 줄여서 쓴다. */
   chatRequests?: { max: number; windowMs: number };
   payments?: PaymentProvider | null;
   /** 인사말 실험. 없으면 GREETING_EXPERIMENT, null이면 실험 없음. 테스트는 가중치 0인 변형을 넣어 새 배정을 고정한다. */
@@ -130,7 +129,8 @@ export function createApp({
     // 캐시는 5분. 새로 배포한 런처가 그 안에 퍼지고, 방문마다 서버에 다시 묻지는 않는다.
     app.get(WIDGET_SCRIPT_PATH, (_req, res, next) => {
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      res.sendFile(widgetScript, { maxAge: 5 * 60_000 }, (err) => {
+      // root로 나눠 넘긴다. 절대 경로 하나로 넘기면 sendFile이 경로 전체에서 점 파일을 찾아, 배포 경로에 .local 같은 폴더가 있으면 404가 된다.
+      res.sendFile(path.basename(widgetScript), { root: path.dirname(widgetScript), maxAge: 5 * 60_000 }, (err) => {
         if (err && !res.headersSent) next();
       });
     });
@@ -156,14 +156,14 @@ export function createApp({
   app.post(
     HANDOFF_PATH,
     requireOwnOrigin(publicOrigin),
-    ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
+    ...createHandoffRoute({ repos, requestLimit: handoffRequests }),
   );
 
   // 위젯 사건(대화창의 widget_open·first_question). 상담원 연결과 같은 순서: Origin 검사 → 요율 제한(자기 카운터) → 본문 → 처리(http/events.ts).
   app.post(
     EVENTS_PATH,
     requireOwnOrigin(publicOrigin),
-    ...createEventRoute({ repos, recordEvent, greeting, ...(eventRequests ? { requestLimit: eventRequests } : {}) }),
+    ...createEventRoute({ repos, recordEvent, greeting, requestLimit: eventRequests }),
   );
 
   app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));
@@ -172,8 +172,7 @@ export function createApp({
   if (consoleAssetsDir) app.use(CONSOLE_PATH, consoleStatic(consoleAssetsDir, consoleCsp(payments?.name ?? null)));
   if (consoleOptions) {
     const sessions = createSessionCodec(consoleOptions.secret);
-    const loginAttempts = consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {};
-    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, ...loginAttempts, billing, payments, greeting }));
+    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, loginAttempts: consoleOptions.loginAttempts, billing, payments, greeting }));
   }
 
   // 계약 밖의 실패도 계약의 오류 본문(JSON)으로 답한다(http/errors.ts). 라우터들 뒤에 있어야 한다.
