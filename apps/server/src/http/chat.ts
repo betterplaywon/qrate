@@ -4,7 +4,7 @@ import type { Request, Response } from 'express';
 import type { ChatService } from '../chat/service.js';
 import { asEngineError, type EngineError, type EngineErrorCode, type EngineEvent, type HandoffReason } from '../engine/types.js';
 import type { EventSink } from '../events/sink.js';
-import { reportToStderr, type ErrorReporter } from '../report.js';
+import type { ErrorReporter } from '../report.js';
 import type { ChatRequestPayload, EngineRunFacts } from '../repo/types.js';
 import { sseForEngineEvent } from './sse.js';
 
@@ -22,7 +22,7 @@ export interface ChatHandlerDeps {
    */
   recordEvent: EventSink;
   /** 예상 밖의 엔진 실패(인증·잘못된 요청·미분류)의 보고 통로. 요율 제한·일시 장애는 chat_request 사건으로 충분해 보내지 않는다. */
-  reportError?: ErrorReporter;
+  reportError: ErrorReporter;
 }
 
 /** 엔진 실패 코드 → 첫 이벤트 전 실패의 HTTP 상태. 엔진은 코드와 재시도 여부만 말하고(engine/types.ts), 상태는 여기서만 정한다. */
@@ -51,7 +51,7 @@ function chatBodyError(issues: readonly { path: PropertyKey[]; code: string }[])
   return 'tenant is required';
 }
 
-export function createChatHandler({ chat, recordEvent, reportError = reportToStderr }: ChatHandlerDeps) {
+export function createChatHandler({ chat, recordEvent, reportError }: ChatHandlerDeps) {
   return async function handleChat(req: Request, res: Response): Promise<void> {
     const receivedAt = new Date();
     // 본문 모양은 계약의 zod 스키마(@qrate/contracts/schemas). 메시지 길이 상한은 본문 32kb 상한(app.ts)과 별개다 —

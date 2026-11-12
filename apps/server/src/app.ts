@@ -64,16 +64,16 @@ export interface AppOptions {
   reportError?: ErrorReporter;
   /**
    * 운영 콘솔 API. secret은 세션 토큰의 서명 비밀(QRATE_CONSOLE_SECRET, 16자 이상). 없으면 콘솔 API를 올리지 않는다(/api/console/* → 404).
-   * loginAttempts는 IP당 로그인 시도 제한(기본 10회/분) — 테스트가 줄여서 쓴다.
+   * loginAttempts는 IP당 로그인 시도 제한(기본값은 http/console/router.ts) — 테스트가 줄여서 쓴다.
    */
   console?: { secret: string; loginAttempts?: { max: number; windowMs: number } };
   /** 콘솔 앱 정적 파일(index.html·assets/)의 디렉터리 — @qrate/console 빌드 산출물 dist. 없으면 콘솔 페이지는 서빙하지 않는다(API만). */
   consoleAssetsDir?: string;
-  /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
+  /** 상담원 연결 요청(POST /api/handoff)의 IP당 요율 제한. 기본값은 http/handoff.ts. 테스트가 줄여서 쓴다. */
   handoffRequests?: { max: number; windowMs: number };
-  /** 위젯 사건(POST /api/events)의 IP당 요율 제한. 기본 30회/분. 테스트가 줄여서 쓴다. */
+  /** 위젯 사건(POST /api/events)의 IP당 요율 제한. 기본값은 http/events.ts. 테스트가 줄여서 쓴다. */
   eventRequests?: { max: number; windowMs: number };
-  /** 대화 요청(POST /api/chat)의 IP당 요율 제한. 기본 20회/분. 테스트가 줄여서 쓴다. */
+  /** 대화 요청(POST /api/chat)의 IP당 요율 제한. 기본값은 아래 createApp 매개변수. 테스트가 줄여서 쓴다. */
   chatRequests?: { max: number; windowMs: number };
   payments?: PaymentProvider | null;
   /** 인사말 실험. 없으면 GREETING_EXPERIMENT, null이면 실험 없음. 테스트는 가중치 0인 변형을 넣어 새 배정을 고정한다. */
@@ -156,14 +156,14 @@ export function createApp({
   app.post(
     HANDOFF_PATH,
     requireOwnOrigin(publicOrigin),
-    ...createHandoffRoute({ repos, ...(handoffRequests ? { requestLimit: handoffRequests } : {}) }),
+    ...createHandoffRoute({ repos, requestLimit: handoffRequests }),
   );
 
   // 위젯 사건(대화창의 widget_open·first_question). 상담원 연결과 같은 순서: Origin 검사 → 요율 제한(자기 카운터) → 본문 → 처리(http/events.ts).
   app.post(
     EVENTS_PATH,
     requireOwnOrigin(publicOrigin),
-    ...createEventRoute({ repos, recordEvent, greeting, ...(eventRequests ? { requestLimit: eventRequests } : {}) }),
+    ...createEventRoute({ repos, recordEvent, greeting, requestLimit: eventRequests }),
   );
 
   app.post(PAYMENT_WEBHOOK_ROUTE, ...createWebhookRoute(billing));
@@ -172,8 +172,7 @@ export function createApp({
   if (consoleAssetsDir) app.use(CONSOLE_PATH, consoleStatic(consoleAssetsDir, consoleCsp(payments?.name ?? null)));
   if (consoleOptions) {
     const sessions = createSessionCodec(consoleOptions.secret);
-    const loginAttempts = consoleOptions.loginAttempts ? { loginAttempts: consoleOptions.loginAttempts } : {};
-    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, ...loginAttempts, billing, payments, greeting }));
+    app.use(CONSOLE_API_PATH, createConsoleRouter({ repos, publicOrigin, sessions, loginAttempts: consoleOptions.loginAttempts, billing, payments, greeting }));
   }
 
   // 계약 밖의 실패도 계약의 오류 본문(JSON)으로 답한다(http/errors.ts). 라우터들 뒤에 있어야 한다.
