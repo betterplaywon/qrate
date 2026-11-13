@@ -16,9 +16,9 @@
 
 | 대안 | 장점 | 단점 |
 | --- | --- | --- |
-| 레포 3개 분리 | (채워 넣기) | (채워 넣기) |
-| pnpm workspace 모노레포 | (채워 넣기) | (채워 넣기) |
-| npm/yarn workspaces | (채워 넣기) | (채워 넣기) |
+| 레포 3개 분리 | 저장소마다 CI·릴리스·접근 권한을 따로 둠, 한 패키지만 바꾸면 그 저장소 CI만 돎 | `@qrate/contracts`(SSE 이벤트 계약)를 레지스트리에 배포하고 세 저장소가 버전을 맞춰야 함, 계약을 바꾸면 PR이 저장소마다 나뉨, 서버가 위젯·콘솔 빌드 결과를 서빙해 E2E가 저장소를 넘나듦 |
+| pnpm workspace 모노레포 | 계약과 세 패키지를 한 PR·한 CI 잡(`pnpm -r`)에서 검증, 직접 의존성만 심볼릭 링크로 두어 선언하지 않은 패키지를 import하지 못함(유령 의존성 차단), `--filter @qrate/server...`·`pnpm deploy`로 서버 이미지에 필요한 패키지만 담음 | 한 패키지만 바꿔도 CI가 전체 lint·test·build·E2E를 돎, pnpm을 따로 설치(Docker는 corepack, CI는 `pnpm/action-setup`), pnpm 전용 설정이 생김(`.pnpmfile.cjs`의 peer 제거 훅, 빌드 스크립트 허용 목록 `onlyBuiltDependencies`) |
+| npm/yarn workspaces | npm은 Node.js와 함께 설치돼 따로 깔 도구가 없음, 평탄한 `node_modules`라 의존성 선언을 빠뜨린 패키지도 그대로 동작(pnpm FAQ가 드는 비호환이 없음) | npm·Yarn Classic은 의존성을 루트 `node_modules`로 끌어올려 선언하지 않은 패키지도 import됨(유령 의존성), Yarn Classic은 끌어올리기 방식이 표준화되지 않았고 버전이 어긋나면 로컬 패키지 대신 레지스트리에서 받음 |
 
 ## 결정
 
