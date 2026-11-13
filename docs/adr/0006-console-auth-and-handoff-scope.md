@@ -34,7 +34,7 @@ CSRF를 왜 Origin 검사(대화 API와 같은 미들웨어)로 막는지를 적
 | 대안 | 장점 | 단점 |
 | --- | --- | --- |
 | A. 같은 서버가 `/console/`(정적)과 `/api/console/*`를 서빙 (선택) | 같은 오리진이라 CORS 헤더 없이 `SameSite=Strict` 쿠키가 그대로 실림, 서버 이미지 하나로 배포(Dockerfile이 콘솔 빌드를 함께 담음), 대화창 자산(`/frame/app.js`)과 같은 `express.static` 서빙 | 서버 이미지에 콘솔이 들어 있어 콘솔 화면만 고쳐도 서버를 다시 빌드·배포 |
-| B. 별도 오리진(정적 호스팅·CDN) + CORS | 콘솔을 서버와 따로 빌드·배포, 정적 호스팅·CDN 캐시를 그대로 씀 | CORS 허용 목록과 credentials 설정이 필요(`Access-Control-Allow-Origin`에 `*` 불가, `Allow-Credentials: true`), 사이트가 다르면 쿠키에 `SameSite=None; Secure`가 필요하고 3자 쿠키 차단(Safari 기본)에 막힘, 상태를 바꾸는 요청의 Origin 검사가 콘솔 오리진도 받아야 함 |
+| B. 별도 오리진(정적 호스팅·CDN) + CORS | 콘솔을 서버와 따로 빌드·배포, 정적 호스팅·CDN 캐시를 그대로 씀 | CORS 허용 목록과 credentials 설정이 필요(`Access-Control-Allow-Origin`에 `*` 불가, `Access-Control-Allow-Credentials: true` 필요), 사이트가 다르면 쿠키에 `SameSite=None; Secure`가 필요하고 3자 쿠키 차단(Safari 기본)에 막힘, 상태를 바꾸는 요청의 Origin 검사가 콘솔 오리진도 받아야 함 |
 
 개발 중에는 Vite dev 서버(5175)가 `/api`를 8787로 프록시하고 Origin 헤더를 서버 오리진으로 바꾼다 — 브라우저 입장에선 같은 오리진.
 
