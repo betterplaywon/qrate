@@ -127,8 +127,10 @@ describe('로그인·세션', () => {
     const me = await get('/me', cookie);
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({ tenant: { id: 'demo', name: seed.tenant.name } });
-    // 다른 비밀로 서명한 토큰은 통하지 않는다
-    expect((await get('/me', `${cookie.slice(0, -2)}zz`)).status).toBe(401);
+    // 서명을 바꾼 토큰은 통하지 않는다. 서명의 첫 글자를 바꾼다. 끝 글자는 일부가 채움 비트라 바꿔도 같은 바이트로 풀릴 수 있다(1/1024).
+    const signature = cookie.lastIndexOf('.') + 1;
+    const tampered = `${cookie.slice(0, signature)}${cookie[signature] === 'A' ? 'B' : 'A'}${cookie.slice(signature + 1)}`;
+    expect((await get('/me', tampered)).status).toBe(401);
 
     const out = await fetch(api('/logout'), { method: 'POST', headers: { origin: OWN_ORIGIN, cookie } });
     expect(out.status).toBe(204);
