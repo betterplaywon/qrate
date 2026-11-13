@@ -1,39 +1,23 @@
 import { CHAT_PATH } from '@qrate/contracts';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
+import { describe, expect, it } from 'vitest';
 import { MockEngine } from '../src/engine/mock.js';
-import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { AppEvent } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 import { CapturingEngine } from './helpers/capturing-engine.js';
 
 // POST /api/chat의 IP당 요율 제한. 앱마다 카운터가 따로라 테스트마다 작은 한도로 새로 띄운다.
 
 const OWN_ORIGIN = 'http://widget.test';
-const seed = loadSeedFile(DEFAULT_SEED_PATH);
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-chat-limit-'));
-
-afterAll(() => rmSync(frameAssetsDir, { recursive: true, force: true }));
 
 async function serveWithLimit(max: number) {
   const engine = new CapturingEngine(new MockEngine(0));
   const recorded: AppEvent[] = [];
-  const app = createApp({
+  const { url, close } = await startApp({
     engine,
-    repos: createRepositoriesFromSeed(seed),
     publicOrigin: OWN_ORIGIN,
-    frameAssetsDir,
     recordEvent: (event) => recorded.push(event),
     chatRequests: { max, windowMs: 60_000 },
   });
-  const server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, () => resolve(s));
-  });
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const send = async (message: string, headers: Record<string, string> = {}) => {
     const res = await fetch(`${url}${CHAT_PATH}`, {
       method: 'POST',
@@ -42,7 +26,6 @@ async function serveWithLimit(max: number) {
     });
     return { status: res.status, retryAfter: res.headers.get('retry-after'), body: await res.text() };
   };
-  const close = () => new Promise<void>((resolve) => server.close(() => resolve()));
   return { engine, recorded, send, close };
 }
 

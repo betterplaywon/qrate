@@ -1,20 +1,13 @@
 import { EVENTS_PATH, HANDOFF_PATH } from '@qrate/contracts';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { defineGreetingExperiment } from '../src/greeting/experiment.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { AppEvent } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 
 const OWN_ORIGIN = 'http://widget.test';
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const tenantSeed = { ...seed, tenant: { ...seed.tenant, id: 'tenant-demo-id' } };
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-events-'));
 const recorded: AppEvent[] = [];
 const EXPERIMENT = defineGreetingExperiment({
   id: 'exp',
@@ -24,39 +17,23 @@ const EXPERIMENT = defineGreetingExperiment({
   ],
 });
 
-let server: Server;
 let baseUrl: string;
-
-function serve(app: ReturnType<typeof createApp>): Promise<{ server: Server; url: string }> {
-  return new Promise((resolve) => {
-    const s = app.listen(0, () => resolve({ server: s, url: `http://127.0.0.1:${(s.address() as AddressInfo).port}` }));
-  });
-}
-
-function close(s: Server): Promise<void> {
-  return new Promise((resolve) => s.close(() => resolve()));
-}
+let closeApp: () => Promise<void>;
 
 beforeAll(async () => {
-  const app = createApp({
-    engine: new MockEngine(0),
+  ({ url: baseUrl, close: closeApp } = await startApp({
     repos: createRepositoriesFromSeed(tenantSeed),
     publicOrigin: OWN_ORIGIN,
-    frameAssetsDir,
     recordEvent: (event) => recorded.push(event),
     greeting: EXPERIMENT,
-  });
-  ({ server, url: baseUrl } = await serve(app));
+  }));
 });
 
 beforeEach(() => {
   recorded.length = 0;
 });
 
-afterAll(async () => {
-  rmSync(frameAssetsDir, { recursive: true, force: true });
-  await close(server);
-});
+afterAll(() => closeApp());
 
 function post(body: unknown, { origin = OWN_ORIGIN, url = baseUrl, path: route = EVENTS_PATH } = {}) {
   return fetch(`${url}${route}`, {
@@ -100,20 +77,17 @@ describe('POST /api/events', () => {
   });
 
   it('실험이 꺼져 있으면 지금 실험의 변형 모양이어도 null로 남긴다', async () => {
-    const app = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos: createRepositoriesFromSeed(tenantSeed),
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       recordEvent: (event) => recorded.push(event),
       greeting: null,
     });
-    const { server: s, url } = await serve(app);
     try {
       expect((await post({ tenant: 'demo', type: 'widget_open', variant: 'exp.a' }, { url })).status).toBe(202);
       expect(recorded).toMatchObject([{ type: 'widget_open', variant: null }]);
     } finally {
-      await close(s);
+      await close();
     }
   });
 
@@ -158,16 +132,13 @@ describe('POST /api/events', () => {
   });
 
   it('IP당 요율 제한 — 넘으면 429 too_many_requests, 카운터는 상담원 연결과 따로다', async () => {
-    const app = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos: createRepositoriesFromSeed(tenantSeed),
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       recordEvent: () => undefined,
       eventRequests: { max: 2, windowMs: 60_000 },
       handoffRequests: { max: 2, windowMs: 60_000 },
     });
-    const { server: s, url } = await serve(app);
     try {
       expect((await post({ tenant: 'demo', type: 'widget_open' }, { url })).status).toBe(202);
       expect((await post({ tenant: 'demo', type: 'widget_open' }, { url })).status).toBe(202);
@@ -178,14 +149,13 @@ describe('POST /api/events', () => {
 
       expect((await post({ tenant: 'demo', contact: 'a@b.co' }, { url, path: HANDOFF_PATH })).status).toBe(201);
     } finally {
-      await close(s);
+      await close();
     }
   });
 
   it('기본 통로는 저장소에 쓴다 — 202 뒤 사건 로그에서 셀 수 있다', async () => {
     const repos = createRepositoriesFromSeed(tenantSeed);
-    const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir });
-    const { server: s, url } = await serve(app);
+    const { url, close } = await startApp({ repos, publicOrigin: OWN_ORIGIN });
     try {
       expect((await post({ tenant: 'demo', type: 'widget_open' }, { url })).status).toBe(202);
       const window = { from: new Date(Date.now() - 60_000), to: new Date(Date.now() + 60_000) };
@@ -193,7 +163,7 @@ describe('POST /api/events', () => {
         .poll(() => repos.events.counts('tenant-demo-id', window), { timeout: 2_000 })
         .toEqual([{ type: 'widget_open', variant: null, count: 1 }]);
     } finally {
-      await close(s);
+      await close();
     }
   });
 });

@@ -1,24 +1,17 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { hashConsoleKey } from '../src/console/key.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import { Sentry, sentryOptions } from '../src/sentry.js';
+import { startApp } from './helpers/app.js';
 
 const OWN_ORIGIN = 'http://sentry.test';
 const VISITOR_MARKER = 'VISITOR-MESSAGE-MARKER';
 const COOKIE_MARKER = 'COOKIE-MARKER';
 const CONSOLE_KEY = 'CONSOLE-KEY-MARKER-0001';
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-sentry-'));
 const envelopes: string[] = [];
 
-let server: Server;
 let baseUrl: string;
+let closeApp: () => Promise<void>;
 
 beforeAll(async () => {
   Sentry.init({
@@ -30,25 +23,17 @@ beforeAll(async () => {
         return { statusCode: 200 };
       }),
   });
-  const repos = createRepositoriesFromSeed(loadSeedFile(DEFAULT_SEED_PATH), { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) });
-  const app = createApp({
-    engine: new MockEngine(0),
-    repos,
+  ({ url: baseUrl, close: closeApp } = await startApp({
+    repos: createRepositoriesFromSeed(loadSeedFile(DEFAULT_SEED_PATH), { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) }),
     publicOrigin: OWN_ORIGIN,
-    frameAssetsDir,
     reportError: (err, context) => void Sentry.captureException(err, { extra: context }),
     console: { secret: 'test-secret-0123456789abcdef' },
-  });
-  await new Promise<void>((resolve) => {
-    server = app.listen(0, () => resolve());
-  });
-  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  }));
 });
 
 afterAll(async () => {
   await Sentry.close(2000);
-  rmSync(frameAssetsDir, { recursive: true, force: true });
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await closeApp();
 });
 
 function itemsOf(type: string): string[] {

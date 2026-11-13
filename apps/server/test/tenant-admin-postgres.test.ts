@@ -1,16 +1,10 @@
 import type { ConsoleSessionResponse } from '@qrate/contracts';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AdminError, addTenant, issueConsoleKey, listTenants } from '../src/admin/tenants.js';
-import { createApp } from '../src/app.js';
-import { MockEngine } from '../src/engine/mock.js';
 import type { PrismaClient } from '../src/generated/prisma/client.js';
 import { createPrismaClient, createPrismaRepositories } from '../src/repo/prisma.js';
 import type { SeedFile } from '../src/repo/seed.js';
+import { startApp } from './helpers/app.js';
 
 // 회사가 늘어나는 장면: 플랫폼 운영자가 세 번째 회사를 파일 하나로 등록하고, 콘솔 키를 발급하고, 그 회사 담당자가 로그인한다.
 // Postgres 전용(회사 등록과 키 발급은 DB를 쓰는 서버의 일이다). QRATE_TEST_DATABASE_URL이 없으면 건너뛴다(repo-postgres.test.ts 머리말).
@@ -34,7 +28,6 @@ async function removeAcme(prisma: PrismaClient): Promise<void> {
 
 describe.skipIf(!url)('회사 등록과 콘솔 키 발급 — Postgres', () => {
   let prisma: PrismaClient;
-  const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-admin-pg-'));
 
   beforeAll(async () => {
     prisma = createPrismaClient(url as string);
@@ -44,7 +37,6 @@ describe.skipIf(!url)('회사 등록과 콘솔 키 발급 — Postgres', () => {
   afterAll(async () => {
     await removeAcme(prisma);
     await prisma.$disconnect();
-    rmSync(frameAssetsDir, { recursive: true, force: true });
   });
 
   it('파일 하나로 세 번째 회사를 등록하면 목록에 FAQ·크레딧과 함께 나오고, 콘솔 키는 아직 없다', async () => {
@@ -79,11 +71,8 @@ describe.skipIf(!url)('회사 등록과 콘솔 키 발급 — Postgres', () => {
 
   it('발급한 키로 그 회사 담당자가 로그인하고, 다시 발급하면 이전 세션이 끝난다', async () => {
     const repos = createPrismaRepositories(prisma);
-    const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, console: { secret: SECRET } });
-    const server: Server = await new Promise((resolve) => {
-      const s = app.listen(0, () => resolve(s));
-    });
-    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/console`;
+    const app = await startApp({ repos, publicOrigin: OWN_ORIGIN, console: { secret: SECRET } });
+    const base = `${app.url}/api/console`;
     const login = (key: string) =>
       fetch(`${base}/login`, {
         method: 'POST',
@@ -103,7 +92,7 @@ describe.skipIf(!url)('회사 등록과 콘솔 키 발급 — Postgres', () => {
       expect((await fetch(`${base}/me`, { headers: { cookie } })).status).toBe(401);
       expect((await login(first.key)).status).toBe(401);
     } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await app.close();
     }
   });
 });

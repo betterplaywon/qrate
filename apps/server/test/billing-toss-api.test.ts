@@ -7,18 +7,12 @@ import {
   type TopUpDto,
 } from '@qrate/contracts';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { createTossProvider, parseTossKeys } from '../src/billing/toss.js';
 import { hashConsoleKey } from '../src/console/key.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 import { createFakeToss, type FakeConfirmAnswer, type FakeLookupAnswer } from './helpers/fake-toss.js';
 
 const OWN_ORIGIN = 'http://console.test';
@@ -28,30 +22,23 @@ const CLIENT_KEY = 'test_gck_fake0001';
 const SECRET_KEY = 'test_gsk_fake0001';
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
 const TENANT = seed.tenant.id;
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-toss-'));
 const toss = createFakeToss();
 
 let url: string;
 let cookie: string;
 let repos: Repositories;
-let server: Server;
+let closeApp: () => Promise<void>;
 
 beforeAll(async () => {
   repos = createRepositoriesFromSeed(seed, { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) });
   const keys = parseTossKeys({ clientKey: CLIENT_KEY, secretKey: SECRET_KEY });
-  const app = createApp({
-    engine: new MockEngine(0),
+  ({ url, close: closeApp } = await startApp({
     repos,
     publicOrigin: OWN_ORIGIN,
-    frameAssetsDir,
     reportError: () => undefined,
     console: { secret: SESSION_SECRET },
     payments: createTossProvider({ ...keys, fetch: toss.fetch, timeouts: { confirmMs: 300, lookupMs: 150 } }),
-  });
-  server = await new Promise((resolve) => {
-    const s = app.listen(0, () => resolve(s));
-  });
-  url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  }));
   const login = await fetch(`${url}/api/console/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: OWN_ORIGIN },
@@ -60,10 +47,7 @@ beforeAll(async () => {
   cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
 });
 
-afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  rmSync(frameAssetsDir, { recursive: true, force: true });
-});
+afterAll(() => closeApp());
 
 function consolePost(p: string, body: unknown, headers: Record<string, string> = {}) {
   return fetch(`${url}/api/console${p}`, {

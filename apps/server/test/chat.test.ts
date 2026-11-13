@@ -1,21 +1,19 @@
 import { MAX_MESSAGE_CHARS, drainSSEBuffer, type SSEEvent } from '@qrate/contracts';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { MockEngine } from '../src/engine/mock.js';
 import type { AnswerEngine, EngineEvent } from '../src/engine/types.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { AppEvent } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 import { CapturingEngine } from './helpers/capturing-engine.js';
 
 // 실제 HTTP로 핸들러를 통과시키는 계약 테스트. 엔진은 목업(지연 0)이고, 실패 상황은 목업의 테스트 훅으로 재현한다.
 
-let server: Server;
 let baseUrl: string;
+let closeApp: () => Promise<void>;
 const recorded: AppEvent[] = [];
 const reports: { err: unknown; context?: Record<string, unknown> }[] = [];
 const engine = new CapturingEngine(new MockEngine(0));
@@ -29,7 +27,7 @@ writeFileSync(path.join(frameAssetsDir, 'app.js'), '/* test bundle */');
 const ROOMY_CHAT_LIMIT = { max: 1_000, windowMs: 60_000 };
 
 beforeAll(async () => {
-  const app = createApp({
+  ({ url: baseUrl, close: closeApp } = await startApp({
     engine,
     repos: createRepositoriesFromSeed(seed),
     publicOrigin: OWN_ORIGIN,
@@ -37,11 +35,7 @@ beforeAll(async () => {
     recordEvent: (event) => recorded.push(event),
     reportError: (err, context) => void reports.push({ err, context }),
     chatRequests: ROOMY_CHAT_LIMIT,
-  });
-  await new Promise<void>((resolve) => {
-    server = app.listen(0, () => resolve());
-  });
-  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  }));
 });
 
 beforeEach(() => {
@@ -49,13 +43,10 @@ beforeEach(() => {
   reports.length = 0;
 });
 
-afterAll(
-  () =>
-    new Promise<void>((resolve) => {
-      rmSync(frameAssetsDir, { recursive: true, force: true });
-      server.close(() => resolve());
-    }),
-);
+afterAll(async () => {
+  await closeApp();
+  rmSync(frameAssetsDir, { recursive: true, force: true });
+});
 
 function post(body: unknown, headers: Record<string, string> = {}): Promise<globalThis.Response> {
   return fetch(`${baseUrl}/api/chat`, {
@@ -314,26 +305,14 @@ describe('POST /api/chat — SSE 계약', () => {
 });
 
 describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운다', () => {
-  async function serve(app: ReturnType<typeof createApp>): Promise<{ url: string; close: () => Promise<void> }> {
-    const srv = await new Promise<Server>((resolve) => {
-      const s = app.listen(0, () => resolve(s));
-    });
-    return {
-      url: `http://127.0.0.1:${(srv.address() as AddressInfo).port}`,
-      close: () => new Promise<void>((resolve) => srv.close(() => resolve())),
-    };
-  }
-
   it('크레딧이 없는 테넌트는 402 insufficient_credits(재시도 불가·Retry-After 없음)이고 엔진을 부르지 않는다 — 사건도 없다', async () => {
     const captured = new CapturingEngine(new MockEngine(0));
-    const app = createApp({
+    const { url, close } = await startApp({
       engine: captured,
       repos: createRepositoriesFromSeed({ ...seed, initialCredits: 0 }),
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       recordEvent: (event) => recorded.push(event),
     });
-    const { url, close } = await serve(app);
     try {
       const res = await fetch(`${url}/api/chat`, {
         method: 'POST',
@@ -352,15 +331,12 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
 
   it('공개 키로 422·402를 20건씩 반복해도 사건 저장소는 그대로다 — 충전 뒤 답한 요청 1건만 남는다', async () => {
     const repos = createRepositoriesFromSeed({ ...seed, initialCredits: 0 });
-    const app = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos,
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       reportError: () => undefined,
       chatRequests: ROOMY_CHAT_LIMIT,
     });
-    const { url, close } = await serve(app);
     const everything = { from: new Date(0), to: new Date(Date.now() + 3_600_000) };
     const send = async (message: string): Promise<number> => {
       const res = await fetch(`${url}/api/chat`, {
@@ -390,8 +366,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
   it('라우트에서 던진 예외는 500 internal_error(JSON)로 답하고 보고 통로로 보낸다 — 사건은 남기지 않는다', async () => {
     const reported: { err: unknown; context?: Record<string, unknown> }[] = [];
     const repos = createRepositoriesFromSeed(seed);
-    const app = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos: {
         ...repos,
         tenants: {
@@ -404,11 +379,9 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
         },
       },
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       recordEvent: (event) => recorded.push(event),
       reportError: (err, context) => void reported.push({ err, context }),
     });
-    const { url, close } = await serve(app);
     try {
       const res = await fetch(`${url}/api/chat`, {
         method: 'POST',
@@ -429,8 +402,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
   it('4xx status를 단 서버 쪽 예외(외부 SDK 오류 등)도 500으로 답하고 보고한다 — 클라이언트 오류로 숨기지 않는다', async () => {
     const reported: unknown[] = [];
     const repos = createRepositoriesFromSeed(seed);
-    const app = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos: {
         ...repos,
         tenants: {
@@ -443,11 +415,9 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
         },
       },
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       recordEvent: (event) => recorded.push(event),
       reportError: (err) => void reported.push(err),
     });
-    const { url, close } = await serve(app);
     try {
       const res = await fetch(`${url}/api/chat`, {
         method: 'POST',
@@ -466,15 +436,13 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
     const entries: AppEvent[] = [];
     const engine = new CapturingEngine(new MockEngine(30)); // 한 글자 30ms — 끊을 시간을 준다
     const repos = createRepositoriesFromSeed(seed);
-    const app = createApp({
+    const { url, close } = await startApp({
       engine,
       repos,
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       recordEvent: (event) => entries.push(event),
       reportError: () => undefined,
     });
-    const { url, close } = await serve(app);
     try {
       const controller = new AbortController();
       const res = await fetch(`${url}/api/chat`, {
@@ -526,15 +494,13 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
       },
     };
     const repos = createRepositoriesFromSeed(seed);
-    const app = createApp({
+    const { url, close } = await startApp({
       engine: scripted,
       repos,
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       recordEvent: (event) => entries.push(event),
       reportError: () => undefined,
     });
-    const { url, close } = await serve(app);
     const send = async (message: string): Promise<void> => {
       const res = await fetch(`${url}/api/chat`, {
         method: 'POST',
@@ -562,8 +528,7 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
   it('사건 저장이 실패해도 응답은 정상으로 끝나고, 실패는 보고 통로로 한 번 간다', async () => {
     const reported: { err: unknown; context?: Record<string, unknown> }[] = [];
     const repos = createRepositoriesFromSeed(seed);
-    const app = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos: {
         ...repos,
         events: {
@@ -574,10 +539,8 @@ describe('처리 중 예외와 클라이언트 끊김 — 앱을 따로 띄운�
         },
       },
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       reportError: (err, context) => void reported.push({ err, context }),
     });
-    const { url, close } = await serve(app);
     try {
       const res = await fetch(`${url}/api/chat`, {
         method: 'POST',

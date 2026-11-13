@@ -1,19 +1,11 @@
 import { GREETING_PATH, VARIANT_ID_PATTERN, type GreetingResponse } from '@qrate/contracts';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp, type AppOptions } from '../src/app.js';
-import { MockEngine } from '../src/engine/mock.js';
+import type { AppOptions } from '../src/app.js';
 import { GREETING_EXPERIMENT, assignGreeting, defineGreetingExperiment, type GreetingExperimentInput } from '../src/greeting/experiment.js';
-import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { AppEvent } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 
 const OWN_ORIGIN = 'http://widget.test';
-const seed = loadSeedFile(DEFAULT_SEED_PATH);
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-greeting-'));
 
 const A = { key: 'a', label: 'A', weight: 1, text: '가' };
 const B = { key: 'b', label: 'B', weight: 1, text: '나' };
@@ -65,22 +57,12 @@ describe('assignGreeting', () => {
 
 describe('GET /api/greeting', () => {
   const recorded: AppEvent[] = [];
-  const servers: Server[] = [];
+  const closers: (() => Promise<void>)[] = [];
 
   async function serve(options: Partial<AppOptions>): Promise<string> {
-    const app = createApp({
-      engine: new MockEngine(0),
-      repos: createRepositoriesFromSeed(seed),
-      publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
-      recordEvent: (event) => recorded.push(event),
-      ...options,
-    });
-    const server = await new Promise<Server>((resolve) => {
-      const s = app.listen(0, () => resolve(s));
-    });
-    servers.push(server);
-    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const { url, close } = await startApp({ publicOrigin: OWN_ORIGIN, recordEvent: (event) => recorded.push(event), ...options });
+    closers.push(close);
+    return url;
   }
 
   let url: string;
@@ -91,10 +73,7 @@ describe('GET /api/greeting', () => {
     url = await serve({ greeting: PAUSED_B });
   });
 
-  afterAll(async () => {
-    rmSync(frameAssetsDir, { recursive: true, force: true });
-    await Promise.all(servers.map((s) => new Promise<void>((resolve) => s.close(() => resolve()))));
-  });
+  afterAll(() => Promise.all(closers.map((close) => close())));
 
   it('보존값이 없으면 새로 배정한다(가중치 0인 b는 받지 않는다). 캐시 금지, 사건은 남기지 않는다', async () => {
     const res = await get('tenant=demo', { origin: OWN_ORIGIN });

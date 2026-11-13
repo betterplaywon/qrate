@@ -9,18 +9,12 @@ import {
   type HandoffQueueItemDto,
 } from '@qrate/contracts';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { hashConsoleKey } from '../src/console/key.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { defineGreetingExperiment } from '../src/greeting/experiment.js';
 import { DEFAULT_SEED_PATH, createRepositoriesFromSeed, loadSeedFile } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 
 // 콘솔 API를 실제 HTTP로 통과시키는 계약 테스트. 저장소는 메모리(시드 + 콘솔 키 해시), 인증 경로는 전부 여기서 고정한다.
 
@@ -28,39 +22,23 @@ const OWN_ORIGIN = 'http://console.test';
 const CONSOLE_KEY = 'demo-console-key';
 const SECRET = 'test-secret-0123456789abcdef';
 const seed = loadSeedFile(DEFAULT_SEED_PATH);
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-console-'));
 
-let server: Server;
 let baseUrl: string;
 let repos: Repositories;
+let closeApp: () => Promise<void>;
 const reports: { err: unknown; context?: Record<string, unknown> }[] = [];
-
-function serve(app: ReturnType<typeof createApp>): Promise<{ server: Server; url: string }> {
-  return new Promise((resolve) => {
-    const s = app.listen(0, () => resolve({ server: s, url: `http://127.0.0.1:${(s.address() as AddressInfo).port}` }));
-  });
-}
 
 beforeAll(async () => {
   repos = createRepositoriesFromSeed(seed, { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) });
-  const app = createApp({
-    engine: new MockEngine(0),
+  ({ url: baseUrl, close: closeApp } = await startApp({
     repos,
     publicOrigin: OWN_ORIGIN,
-    frameAssetsDir,
     reportError: (err, context) => void reports.push({ err, context }),
     console: { secret: SECRET },
-  });
-  ({ server, url: baseUrl } = await serve(app));
+  }));
 });
 
-afterAll(
-  () =>
-    new Promise<void>((resolve) => {
-      rmSync(frameAssetsDir, { recursive: true, force: true });
-      server.close(() => resolve());
-    }),
-);
+afterAll(() => closeApp());
 
 const api = (p: string) => `${baseUrl}/api/console${p}`;
 
@@ -122,8 +100,7 @@ describe('로그인·세션', () => {
 
   it('콘솔 키가 없는 테넌트(해시 null)는 어떤 키로도 로그인할 수 없다', async () => {
     const noKey = createRepositoriesFromSeed(seed);
-    const app = createApp({ engine: new MockEngine(0), repos: noKey, publicOrigin: OWN_ORIGIN, frameAssetsDir, console: { secret: SECRET } });
-    const { server: s, url } = await serve(app);
+    const { url, close } = await startApp({ repos: noKey, publicOrigin: OWN_ORIGIN, console: { secret: SECRET } });
     try {
       const res = await fetch(`${url}/api/console/login`, {
         method: 'POST',
@@ -132,7 +109,7 @@ describe('로그인·세션', () => {
       });
       expect(res.status).toBe(401);
     } finally {
-      await new Promise<void>((resolve) => s.close(() => resolve()));
+      await close();
     }
   });
 
@@ -150,8 +127,10 @@ describe('로그인·세션', () => {
     const me = await get('/me', cookie);
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({ tenant: { id: 'demo', name: seed.tenant.name } });
-    // 다른 비밀로 서명한 토큰은 통하지 않는다
-    expect((await get('/me', `${cookie.slice(0, -2)}zz`)).status).toBe(401);
+    // 서명을 바꾼 토큰은 통하지 않는다. 서명의 첫 글자를 바꾼다. 끝 글자는 일부가 채움 비트라 바꿔도 같은 바이트로 풀릴 수 있다(1/1024).
+    const signature = cookie.lastIndexOf('.') + 1;
+    const tampered = `${cookie.slice(0, signature)}${cookie[signature] === 'A' ? 'B' : 'A'}${cookie.slice(signature + 1)}`;
+    expect((await get('/me', tampered)).status).toBe(401);
 
     const out = await fetch(api('/logout'), { method: 'POST', headers: { origin: OWN_ORIGIN, cookie } });
     expect(out.status).toBe(204);
@@ -161,14 +140,7 @@ describe('로그인·세션', () => {
   });
 
   it('https 공개 오리진이면 쿠키에 Secure가 붙는다', async () => {
-    const app = createApp({
-      engine: new MockEngine(0),
-      repos,
-      publicOrigin: 'https://widget.example.com',
-      frameAssetsDir,
-      console: { secret: SECRET },
-    });
-    const { server: s, url } = await serve(app);
+    const { url, close } = await startApp({ repos, publicOrigin: 'https://widget.example.com', console: { secret: SECRET } });
     try {
       const res = await fetch(`${url}/api/console/login`, {
         method: 'POST',
@@ -178,19 +150,16 @@ describe('로그인·세션', () => {
       expect(res.status).toBe(200);
       expect((res.headers.get('set-cookie') ?? '').split('; ')).toContain('Secure');
     } finally {
-      await new Promise<void>((resolve) => s.close(() => resolve()));
+      await close();
     }
   });
 
   it('로그인 시도는 IP당 창 안에서 제한된다 — 넘으면 429 + Retry-After, 키가 맞아도 막힌다', async () => {
-    const app = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos,
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       console: { secret: SECRET, loginAttempts: { max: 2, windowMs: 60_000 } },
     });
-    const { server: s, url } = await serve(app);
     try {
       const attempt = (key: string) =>
         fetch(`${url}/api/console/login`, {
@@ -205,17 +174,16 @@ describe('로그인·세션', () => {
       expect(await blocked.json()).toEqual({ error: 'too_many_attempts' });
       expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0);
     } finally {
-      await new Promise<void>((resolve) => s.close(() => resolve()));
+      await close();
     }
   });
 
   it('콘솔 옵션이 없으면 콘솔 API가 없다(404)', async () => {
-    const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir });
-    const { server: s, url } = await serve(app);
+    const { url, close } = await startApp({ repos, publicOrigin: OWN_ORIGIN });
     try {
       expect((await fetch(`${url}/api/console/me`)).status).toBe(404);
     } finally {
-      await new Promise<void>((resolve) => s.close(() => resolve()));
+      await close();
     }
   });
 });
@@ -328,22 +296,19 @@ describe('대화 로그·미응답 큐', () => {
   });
 
   it('처리 중 예외는 500 JSON과 보고 통로로 — 본문은 넘기지 않는다', async () => {
-    const broken = createApp({
-      engine: new MockEngine(0),
+    const { url, close } = await startApp({
       repos: { ...repos, conversations: { ...repos.conversations, listByTenant: async () => { throw new Error('db down'); } } },
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       reportError: (err, context) => void reports.push({ err, context }),
       console: { secret: SECRET },
     });
-    const { server: s, url } = await serve(broken);
     try {
       const res = await fetch(`${url}/api/console/conversations`, { headers: { cookie } });
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({ error: 'internal_error' });
       expect(reports.at(-1)?.context).toMatchObject({ where: 'express', path: '/api/console/conversations' });
     } finally {
-      await new Promise<void>((resolve) => s.close(() => resolve()));
+      await close();
     }
   });
 });
@@ -356,10 +321,11 @@ describe('지표 — GET /api/console/metrics', () => {
       { key: 'b', label: 'B', weight: 1, text: '나' },
     ],
   });
-  let metricsServer: Server;
   let url: string;
+  let closeMetrics: () => Promise<void>;
   let cookie: string;
 
+  // 창은 [now − 7일, now)라 응답과 같은 밀리초에 기록된 사건은 그 응답에서 빠진다. 사건을 보낸 시험은 마지막에 보낸 사건이 보일 때까지 기다린다.
   const metrics = async () => {
     const res = await fetch(`${url}/api/console/metrics`, { headers: { cookie } });
     expect(res.status).toBe(200);
@@ -369,21 +335,18 @@ describe('지표 — GET /api/console/metrics', () => {
     fetch(`${url}${route}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: OWN_ORIGIN }, body: JSON.stringify(body) });
 
   beforeAll(async () => {
-    const app = createApp({
-      engine: new MockEngine(0),
+    ({ url, close: closeMetrics } = await startApp({
       repos: createRepositoriesFromSeed(seed, { consoleKeyHash: hashConsoleKey(CONSOLE_KEY) }),
       publicOrigin: OWN_ORIGIN,
-      frameAssetsDir,
       console: { secret: SECRET },
       greeting: EXPERIMENT,
-    });
-    ({ server: metricsServer, url } = await serve(app));
+    }));
     const res = await post('/api/console/login', { tenant: 'demo', key: CONSOLE_KEY });
     expect(res.status).toBe(200);
     cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
   });
 
-  afterAll(() => new Promise<void>((resolve) => metricsServer.close(() => resolve())));
+  afterAll(() => closeMetrics());
 
   it('세션이 없으면 401, 빈 저장소면 표본 0·백분위 null·해결률 null·열림 0, 창은 7일이고 캐시 금지', async () => {
     expect((await fetch(`${url}/api/console/metrics`)).status).toBe(401);
@@ -413,7 +376,7 @@ describe('지표 — GET /api/console/metrics', () => {
     expect((await post('/api/handoff', { tenant: 'demo', contact: 'v@example.com' })).status).toBe(201);
     expect((await post('/api/events', { tenant: 'demo', type: 'widget_open' })).status).toBe(202);
 
-    await expect.poll(async () => (await metrics()).ttft.samples, { timeout: 2_000 }).toBe(2);
+    await expect.poll(metrics, { timeout: 2_000 }).toMatchObject({ ttft: { samples: 2 }, widget: { opens: 1 } });
     const body = await metrics();
     expect(body.ttft).toEqual({ samples: 2, p50Ms: expect.any(Number), p95Ms: expect.any(Number) });
     expect(body.autoResolution).toEqual({ conversations: 2, resolved: 1, rate: 0.5, handoffOnly: 1 });
@@ -432,7 +395,9 @@ describe('지표 — GET /api/console/metrics', () => {
     ]) {
       expect((await post('/api/events', { tenant: 'demo', ...body })).status).toBe(202);
     }
-    await expect.poll(async () => (await metrics()).widget.opens, { timeout: 2_000 }).toBe(before.widget.opens + 3);
+    await expect
+      .poll(metrics, { timeout: 2_000 })
+      .toMatchObject({ widget: { opens: before.widget.opens + 3 }, greeting: { outside: { questions: (before.greeting?.outside.questions ?? 0) + 1 } } });
     const { greeting } = await metrics();
     expect(greeting?.variants.map((v) => [v.id, v.exposures, v.firstQuestions, v.rate])).toEqual([
       ['exp.a', 2, 1, 0.5],

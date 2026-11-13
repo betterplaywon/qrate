@@ -1,14 +1,11 @@
 import { MAX_ALLOWED_ORIGINS, type ApiErrorBody, type InstallStatusResponse } from '@qrate/contracts';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { hashConsoleKey } from '../src/console/key.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { createRepositoriesFromSeeds, loadSeedFiles } from '../src/repo/seed.js';
+import { startApp } from './helpers/app.js';
 
 // 콘솔 설치 안내(/api/console/install)와 서버가 주는 위젯 런처(/widget.js)를 실제 HTTP로 본다.
 // 허용 사이트는 대화창(/frame)의 CSP frame-ancestors와 부모 오리진 검사에 그대로 쓰이므로, 바꾼 뒤 /frame의 답까지 확인한다.
@@ -18,28 +15,19 @@ const SECRET = 'test-secret-0123456789abcdef';
 const KEYS = { demo: 'demo-console-key', reception: 'reception-console-key' } as const;
 type Company = keyof typeof KEYS;
 const dir = mkdtempSync(path.join(tmpdir(), 'qrate-install-'));
-const frameAssetsDir = path.join(dir, 'frame');
 const widgetScript = path.join(dir, 'widget.js');
 const WIDGET_SOURCE = '(()=>{/* launcher */})();\n';
 
-let server: Server;
 let baseUrl: string;
+let closeApp: () => Promise<void>;
 const cookies = {} as Record<Company, string>;
-
-function serve(app: ReturnType<typeof createApp>): Promise<{ server: Server; url: string }> {
-  return new Promise((resolve) => {
-    const s = app.listen(0, () => resolve({ server: s, url: `http://127.0.0.1:${(s.address() as AddressInfo).port}` }));
-  });
-}
 
 beforeAll(async () => {
   writeFileSync(widgetScript, WIDGET_SOURCE);
   const repos = createRepositoriesFromSeeds(loadSeedFiles(), {
     consoleKeyHashes: { demo: hashConsoleKey(KEYS.demo), reception: hashConsoleKey(KEYS.reception) },
   });
-  ({ server, url: baseUrl } = await serve(
-    createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, widgetScript, console: { secret: SECRET } }),
-  ));
+  ({ url: baseUrl, close: closeApp } = await startApp({ repos, publicOrigin: OWN_ORIGIN, widgetScript, console: { secret: SECRET } }));
   for (const company of Object.keys(KEYS) as Company[]) {
     const res = await fetch(`${baseUrl}/api/console/login`, {
       method: 'POST',
@@ -51,13 +39,10 @@ beforeAll(async () => {
   }
 });
 
-afterAll(
-  () =>
-    new Promise<void>((resolve) => {
-      rmSync(dir, { recursive: true, force: true });
-      server.close(() => resolve());
-    }),
-);
+afterAll(async () => {
+  await closeApp();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 const installUrl = `/api/console/install`;
 
@@ -194,29 +179,25 @@ describe('위젯 런처 — GET /widget.js', () => {
     const hidden = path.join(dir, '.deploy', 'widget');
     mkdirSync(hidden, { recursive: true });
     writeFileSync(path.join(hidden, 'widget.js'), WIDGET_SOURCE);
-    const repos = createRepositoriesFromSeeds(loadSeedFiles());
-    const other = await serve(
-      createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, widgetScript: path.join(hidden, 'widget.js') }),
-    );
+    const other = await startApp({ publicOrigin: OWN_ORIGIN, widgetScript: path.join(hidden, 'widget.js') });
     try {
       const res = await fetch(`${other.url}/widget.js`);
       expect(res.status).toBe(200);
       expect(await res.text()).toBe(WIDGET_SOURCE);
     } finally {
-      await new Promise<void>((resolve) => other.server.close(() => resolve()));
+      await other.close();
     }
   });
 
   it('런처 파일을 넘기지 않았거나 파일이 없으면 404 JSON이다', async () => {
-    const repos = createRepositoriesFromSeeds(loadSeedFiles());
     for (const options of [{}, { widgetScript: path.join(dir, 'missing.js') }]) {
-      const other = await serve(createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, ...options }));
+      const other = await startApp({ publicOrigin: OWN_ORIGIN, ...options });
       try {
         const res = await fetch(`${other.url}/widget.js`);
         expect(res.status).toBe(404);
         expect(await errorOf(res)).toBe('not_found');
       } finally {
-        await new Promise<void>((resolve) => other.server.close(() => resolve()));
+        await other.close();
       }
     }
   });

@@ -1,15 +1,9 @@
 import { KNOWLEDGE_LIMITS, knowledgeChars, type ApiErrorBody, type KnowledgeInput, type KnowledgeItemDto, type KnowledgeListResponse } from '@qrate/contracts';
-import { mkdtempSync, rmSync } from 'node:fs';
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { hashConsoleKey } from '../src/console/key.js';
-import { MockEngine } from '../src/engine/mock.js';
 import { createRepositoriesFromSeeds, loadSeedFiles } from '../src/repo/seed.js';
 import type { Repositories } from '../src/repo/types.js';
+import { startApp } from './helpers/app.js';
 
 // 콘솔의 FAQ 편집(/api/console/knowledge)을 실제 HTTP로 본다. 저장소는 데모 시드 둘(demo, reception)을 올린 메모리이고,
 // 두 회사 모두 콘솔 키가 있어 회사 경계를 양쪽에서 확인한다.
@@ -18,24 +12,17 @@ const OWN_ORIGIN = 'http://console.test';
 const SECRET = 'test-secret-0123456789abcdef';
 const KEYS = { demo: 'demo-console-key', reception: 'reception-console-key' } as const;
 type Company = keyof typeof KEYS;
-const frameAssetsDir = mkdtempSync(path.join(tmpdir(), 'qrate-knowledge-'));
 
-let server: Server;
 let baseUrl: string;
 let repos: Repositories;
+let closeApp: () => Promise<void>;
 const cookies = {} as Record<Company, string>;
 
 beforeAll(async () => {
   repos = createRepositoriesFromSeeds(loadSeedFiles(), {
     consoleKeyHashes: { demo: hashConsoleKey(KEYS.demo), reception: hashConsoleKey(KEYS.reception) },
   });
-  const app = createApp({ engine: new MockEngine(0), repos, publicOrigin: OWN_ORIGIN, frameAssetsDir, console: { secret: SECRET } });
-  await new Promise<void>((resolve) => {
-    server = app.listen(0, () => {
-      baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      resolve();
-    });
-  });
+  ({ url: baseUrl, close: closeApp } = await startApp({ repos, publicOrigin: OWN_ORIGIN, console: { secret: SECRET } }));
   for (const company of Object.keys(KEYS) as Company[]) {
     const res = await fetch(`${baseUrl}/api/console/login`, {
       method: 'POST',
@@ -47,13 +34,7 @@ beforeAll(async () => {
   }
 });
 
-afterAll(
-  () =>
-    new Promise<void>((resolve) => {
-      rmSync(frameAssetsDir, { recursive: true, force: true });
-      server.close(() => resolve());
-    }),
-);
+afterAll(() => closeApp());
 
 const url = (id?: string) => `${baseUrl}/api/console/knowledge${id === undefined ? '' : `/${encodeURIComponent(id)}`}`;
 
@@ -235,18 +216,14 @@ describe('FAQ 상한', () => {
   // 상한 시험은 따로 연 저장소에서 한다. 앞의 시험이 쓰는 회사 FAQ를 건드리지 않게.
   let local: Repositories;
   let localUrl: string;
-  let localServer: Server;
+  let closeLocal: () => Promise<void>;
   let cookie: string;
 
   beforeAll(async () => {
     local = createRepositoriesFromSeeds(loadSeedFiles(), { consoleKeyHashes: { reception: hashConsoleKey(KEYS.reception) } });
-    const app = createApp({ engine: new MockEngine(0), repos: local, publicOrigin: OWN_ORIGIN, frameAssetsDir, console: { secret: SECRET } });
-    await new Promise<void>((resolve) => {
-      localServer = app.listen(0, () => {
-        localUrl = `http://127.0.0.1:${(localServer.address() as AddressInfo).port}/api/console`;
-        resolve();
-      });
-    });
+    const app = await startApp({ repos: local, publicOrigin: OWN_ORIGIN, console: { secret: SECRET } });
+    localUrl = `${app.url}/api/console`;
+    closeLocal = app.close;
     const login = await fetch(`${localUrl}/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: OWN_ORIGIN },
@@ -255,7 +232,7 @@ describe('FAQ 상한', () => {
     cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
   });
 
-  afterAll(() => new Promise<void>((resolve) => localServer.close(() => resolve())));
+  afterAll(() => closeLocal());
 
   const save = (id: string, body: KnowledgeInput) =>
     fetch(`${localUrl}/knowledge/${encodeURIComponent(id)}`, {
