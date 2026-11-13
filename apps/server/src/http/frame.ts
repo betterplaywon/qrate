@@ -1,6 +1,5 @@
-import type { ApiErrorBody } from '@qrate/contracts';
+import { isOriginString, type ApiErrorBody } from '@qrate/contracts';
 import type { RequestHandler } from 'express';
-import { isOriginString } from '../origin.js';
 import type { Repositories } from '../repo/types.js';
 
 // GET /frame?t=<테넌트 키>&o=<고객 사이트 오리진> — 고객 사이트의 런처가 iframe으로 여는 대화창 문서.

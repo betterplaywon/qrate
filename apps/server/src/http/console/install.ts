@@ -1,7 +1,6 @@
-import { WIDGET_SCRIPT_PATH, type ApiErrorBody, type InstallStatusResponse } from '@qrate/contracts';
+import { WIDGET_SCRIPT_PATH, isOriginString, type ApiErrorBody, type InstallStatusResponse } from '@qrate/contracts';
 import { updateAllowedOriginsSchema } from '@qrate/contracts/schemas';
 import { Router, type RequestHandler } from 'express';
-import { isOriginString } from '../../origin.js';
 import type { Repositories, Tenant } from '../../repo/types.js';
 import { tenantOf } from './session.js';
 

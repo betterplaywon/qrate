@@ -25,7 +25,7 @@ model Tenant {
   id             String          @id @default(cuid())
   name           String
   // 위젯 설치 스니펫의 data-tenant 키. 노출되는 식별자이므로 비밀키가 아니다.
-  // 어느 사이트에서 쓸 수 있는지는 테넌트 검증(Origin 검사 + GET /frame의 frame-ancestors, src/origin.ts)이 막는다.
+  // 어느 사이트에서 쓸 수 있는지는 테넌트 검증(Origin 검사 src/origin.ts + GET /frame의 frame-ancestors src/http/frame.ts)이 막는다.
   apiKey         String          @unique
   // 위젯을 넣을 수 있는 사이트의 정규형 오리진(scheme://host[:port]). CSP 헤더에 그대로 들어가므로 쓰기 전에 isOriginString으로 검증한다.
   allowedOrigins String[]
