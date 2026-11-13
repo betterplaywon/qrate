@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | A. Shadow DOM 단일 (현재) | 번들 하나·스크립트 요청 하나로 동작(W1 `widget.js`), 호스트 문서 안이라 열림·크기를 맞출 메시지가 없음 | 호스트와 같은 `window`·오리진이라 JS·오리진 격리가 없음(호스트 XSS가 곧 위젯 XSS), `mode: 'open'`이면 호스트 스크립트가 `host.shadowRoot`로 대화 DOM을 읽음, 대화 API를 호스트 오리진에서 불러 CORS가 필요(W1은 `Access-Control-Allow-Origin: *`) |
 | B. iframe(위젯 오리진) + 런처만 호스트에 + postMessage 브리지 | 다른 오리진 iframe이라 호스트 스크립트가 대화 DOM에 닿지 못하고 `postMessage`로만 주고받음, 대화 API가 같은 오리진이라 CORS가 없음(상대 경로 `/api/chat`), 대화창 문서는 `no-store`·앱 번들은 매번 재검증이라 배포가 다음 열림에 반영 | 로더 뒤 iframe 문서·앱 번들을 한 번 더 받음(열 때 `/frame`·`app.js`·`app.css`), 열림·닫힘·안 읽은 수를 `postMessage`로 맞추고 받는 쪽마다 오리진·창·형식을 검사, iframe 저장소는 최상위 사이트별로 분할(Chrome 115+, Firefox 103+) |
-| C. 하이브리드 — 런처·패널 셸은 Shadow DOM, 대화 영역만 iframe | 패널 틀(크기·위치·열림)을 호스트 CSS가 정해 크기를 맞출 메시지가 없음, 대화 내용·API 호출은 서버 오리진 iframe 안이라 호스트 스크립트가 못 읽음, 대화창 iframe은 처음 열 때 만들어 열지 않은 방문자는 대화창 문서를 받지 않음 | 번들 둘(런처 IIFE·대화창 앱)에 열 때 iframe 문서·자산을 받는 2단 로딩, 패널 틀과 대화 영역이 다른 문서라 닫기·Esc·안 읽은 수를 `postMessage`로 주고받음, iframe 저장소는 최상위 사이트별로 분할 |
+| C. 하이브리드 — 런처·패널 셸은 Shadow DOM, 대화 영역만 iframe | 패널 틀(크기·위치·열림)을 런처가 호스트 문서 안에서 그려 크기를 맞출 메시지가 없음, 대화 내용·API 호출은 서버 오리진 iframe 안이라 호스트 스크립트가 못 읽음, 대화창 iframe은 처음 열 때 만들어 열지 않은 방문자는 대화창 문서를 받지 않음 | 번들 둘(런처 IIFE·대화창 앱)에 열 때 iframe 문서·자산을 받는 2단 로딩, 패널 틀과 대화 영역이 다른 문서라 닫기·Esc·안 읽은 수를 `postMessage`로 주고받음, iframe 저장소는 최상위 사이트별로 분할 |
 
 ## 결정
 
