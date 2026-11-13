@@ -24,8 +24,10 @@ export interface RunningApp {
 export async function startApp(options: Partial<AppOptions> & Pick<AppOptions, 'publicOrigin'>): Promise<RunningApp> {
   const repos = options.repos ?? createRepositoriesFromSeed(loadSeedFile());
   const app = createApp({ engine: new MockEngine(0), frameAssetsDir: NO_FRAME_ASSETS, ...options, repos });
+  // 시험이 부르는 주소(127.0.0.1)에만 연다. 모든 주소로 열면 macOS에서 다른 프로세스가 127.0.0.1로 잡은 같은 포트와 겹쳐도 열리고,
+  // 그러면 시험 요청이 그 프로세스로 갈 수 있다(가끔 뜻밖의 404가 난 원인으로 보는 가설, 실측은 못 함).
   const server = await new Promise<Server>((resolve, reject) => {
-    const s = app.listen(0, (err) => (err ? reject(err) : resolve(s)));
+    const s = app.listen(0, '127.0.0.1', (err) => (err ? reject(err) : resolve(s)));
   });
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
