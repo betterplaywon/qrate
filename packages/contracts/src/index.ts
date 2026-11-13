@@ -1,6 +1,6 @@
 // @qrate/contracts — 서버(apps/server)·위젯(packages/widget)·콘솔(apps/console)이 함께 쓰는 API 계약.
 //
-// 이 패키지는 브라우저·Node 어디서나 도는 순수 TypeScript다(DOM·Node API 없음, 의존성 없음).
+// 이 패키지는 브라우저·Node 어디서나 도는 순수 TypeScript다(DOM·Node API 없음, 의존성 없음. 전역은 양쪽에 다 있는 URL만 쓴다).
 // 소비하는 쪽은 package.json exports의 `source` 조건으로 소스를 바로 읽고(typecheck·테스트·vite 번들),
 // Node 런타임(빌드된 서버)만 dist를 읽는다. 그래서 `pnpm -r build`가 contracts를 먼저 빌드한다.
 
@@ -89,6 +89,7 @@ export {
   type HandoffRequestBody,
   type HandoffRequestResponse,
 } from './handoff.js';
+export { isOriginString } from './origin.js';
 export {
   MOCK_SIGNATURE_HEADER,
   PAYMENT_WEBHOOK_ROUTE,

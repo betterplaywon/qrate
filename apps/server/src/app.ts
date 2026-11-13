@@ -42,7 +42,7 @@ import type { Repositories } from './repo/types.js';
 //   greeting/ 인사말 A/B 실험의 정의(변형 목록·문구·비율)와 배정
 //   repo/     저장소 계약(types.ts)과 구현 둘(memory/·prisma/), 시작 때 고르기(create.ts), 시드 파일 읽기(seed.ts)
 //   admin/    플랫폼 운영자 명령(회사 등록, 콘솔 키 발급·회수, 목록). DB에 붙는 별도 진입점(cli.ts)
-//   origin.ts 오리진 규칙(설정 해석·시드 검증·Origin 검사가 함께 쓴다)
+//   origin.ts 오리진 규칙(설정 해석과 Origin 검사). 허용 사이트 주소의 문법(isOriginString)은 @qrate/contracts에 있다
 //   report.ts 예외 보고 통로(reportError). index.ts가 Sentry를 꽂는다
 //   @qrate/contracts  위젯·콘솔과 함께 쓰는 전송 계약(경로, SSE 이벤트, 요청 스키마, 오류 본문)
 // 이 파일은 조립만 한다. 프로세스 시작·Sentry·listen은 index.ts, 테스트는 이 함수로 앱을 만들어 임시 포트에 띄운다.
