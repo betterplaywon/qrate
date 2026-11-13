@@ -145,5 +145,5 @@ export const knowledgeInputSchema = z.object({
 
 export const knowledgeIdSchema = z.string().regex(KNOWLEDGE_ID_PATTERN);
 
-/** PUT /api/console/install/origins 본문. 각 값이 정규형 오리진인지는 서버가 isOriginString으로 본다(CSP 헤더에 그대로 들어가므로 서버 한 곳에서). */
+/** PUT /api/console/install/origins 본문. 각 값이 정규형 오리진인지는 서버가 이 패키지의 isOriginString으로 최종 판정한다(CSP 헤더에 그대로 들어가므로). 콘솔 미리보기도 같은 함수를 쓴다. */
 export const updateAllowedOriginsSchema = z.object({ origins: z.array(z.string().max(2048)).max(MAX_ALLOWED_ORIGINS) });
