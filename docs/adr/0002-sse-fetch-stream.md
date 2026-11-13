@@ -13,10 +13,10 @@ AI 응답은 수 초가 걸리므로 "다 되면 한 번에"가 아니라 토큰
 
 | 대안 | 장점 | 단점 |
 | --- | --- | --- |
-| WebSocket (Socket.io) | (채워 넣기 — Beyond Meet에서 직접 써봤다) | (채워 넣기) |
-| SSE + EventSource | (채워 넣기) | (채워 넣기 — 힌트: GET 전용, 커스텀 헤더/본문 불가) |
-| SSE + fetch 스트림 (선택) | (채워 넣기) | (채워 넣기) |
-| HTTP 폴링 | (채워 넣기) | (채워 넣기) |
+| WebSocket (Socket.io) | 한 연결로 양방향(클라이언트발 이벤트도 같은 연결로), 자동 재연결·끊긴 동안 패킷 버퍼링·응답 확인(ack), Beyond Meet에서 직접 써 봄 | Socket.IO는 WebSocket 구현이 아니라 위젯에 Socket.IO 클라이언트가 따로 필요, 서버가 여럿이면 sticky session(롱 폴링 폴백을 쓸 때)과 브로드캐스트용 어댑터(Redis 등)가 필요 |
+| SSE + EventSource | 브라우저 내장이라 파서 없이 이벤트를 받음, 끊기면 자동으로 다시 연결하고 `Last-Event-ID`로 이어 받음 | GET만 되고 요청 헤더·본문을 못 실음(생성자 옵션은 `withCredentials`뿐), 실패 응답의 상태 코드·헤더를 스크립트가 못 읽음(422·402·429와 `X-Conversation-Id`를 알 수 없음) |
+| SSE + fetch 스트림 (선택) | POST 본문(`message`·`tenant`·`conversationId`)을 실음, 첫 조각 전 실패를 상태 코드·`Retry-After`로 받고 `X-Conversation-Id` 헤더를 읽음, 보통 HTTP 요청이라 Origin 검사·IP 요율 제한·32kb 본문 상한이 그대로 걸림 | SSE 파싱과 청크 경계 버퍼링을 직접 구현(`drainSSEBuffer`), 자동 재연결·`Last-Event-ID`가 없어 재시도를 위젯이 정함(서버가 retryable이라 한 실패에만 다시 보내기 버튼) |
+| HTTP 폴링 | 평범한 요청·응답이라 연결을 붙잡지 않음, 스트림 파서가 필요 없음 | 새 조각이 다음 요청까지 서버에 쌓여 폴링 간격만큼 늦게 보임, 새 데이터가 없어도 요청·응답 왕복이 생김, 요청 사이에 생성 중인 답을 서버가 보관해야 함 |
 
 ## 결정
 
