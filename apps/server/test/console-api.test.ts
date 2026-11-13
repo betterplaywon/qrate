@@ -323,6 +323,7 @@ describe('지표 — GET /api/console/metrics', () => {
   let closeMetrics: () => Promise<void>;
   let cookie: string;
 
+  // 창은 [now − 7일, now)라 응답과 같은 밀리초에 기록된 사건은 그 응답에서 빠진다. 사건을 보낸 시험은 마지막에 보낸 사건이 보일 때까지 기다린다.
   const metrics = async () => {
     const res = await fetch(`${url}/api/console/metrics`, { headers: { cookie } });
     expect(res.status).toBe(200);
@@ -373,7 +374,7 @@ describe('지표 — GET /api/console/metrics', () => {
     expect((await post('/api/handoff', { tenant: 'demo', contact: 'v@example.com' })).status).toBe(201);
     expect((await post('/api/events', { tenant: 'demo', type: 'widget_open' })).status).toBe(202);
 
-    await expect.poll(async () => (await metrics()).ttft.samples, { timeout: 2_000 }).toBe(2);
+    await expect.poll(metrics, { timeout: 2_000 }).toMatchObject({ ttft: { samples: 2 }, widget: { opens: 1 } });
     const body = await metrics();
     expect(body.ttft).toEqual({ samples: 2, p50Ms: expect.any(Number), p95Ms: expect.any(Number) });
     expect(body.autoResolution).toEqual({ conversations: 2, resolved: 1, rate: 0.5, handoffOnly: 1 });
@@ -392,7 +393,9 @@ describe('지표 — GET /api/console/metrics', () => {
     ]) {
       expect((await post('/api/events', { tenant: 'demo', ...body })).status).toBe(202);
     }
-    await expect.poll(async () => (await metrics()).widget.opens, { timeout: 2_000 }).toBe(before.widget.opens + 3);
+    await expect
+      .poll(metrics, { timeout: 2_000 })
+      .toMatchObject({ widget: { opens: before.widget.opens + 3 }, greeting: { outside: { questions: (before.greeting?.outside.questions ?? 0) + 1 } } });
     const { greeting } = await metrics();
     expect(greeting?.variants.map((v) => [v.id, v.exposures, v.firstQuestions, v.rate])).toEqual([
       ['exp.a', 2, 1, 0.5],
