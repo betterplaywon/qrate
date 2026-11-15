@@ -42,7 +42,6 @@ apps/server         Express 5 + TS 서버. 대화 API(SSE 스트리밍), 입력 
 apps/console        React + Vite 운영 콘솔(로그인, 대화 로그, 미응답 큐, FAQ, 지표, 크레딧·충전). 빌드 산출물은 서버가 /console/로 서빙한다
 packages/widget     사이트에 넣는 위젯 SDK. 런처(IIFE, Shadow DOM), 대화창 앱(서버 오리진 iframe, postMessage), 브라우저 E2E(e2e/)
 packages/contracts  서버·위젯·콘솔이 함께 쓰는 계약. SSE 이벤트 encode/parse, API 요청·응답·오류 본문, 허용 사이트 주소 문법
-scripts/blog        티스토리 발행 파이프라인(Playwright)
 docs/adr            아키텍처 결정 기록(결정과 트레이드오프는 직접 작성)
 docs/eval           응답 품질 평가 결과와 근거 기록(실측)
 docs/load           부하 측정 결과와 근거 기록(목업 엔진 시뮬레이션)
