@@ -1,7 +1,7 @@
 # Qrate — 임베더블 AI 상담 위젯 SDK
 
 소규모 SaaS·커머스 사이트에 **스크립트 한 줄**로 설치하는 AI 상담 위젯과
-운영자용 웹 콘솔. 채널톡·인터콤이 검증한 문제를, 위젯 SDK(Shadow DOM 격리) +
+운영자용 웹 콘솔. 채널톡·인터콤이 검증한 문제를, 위젯 SDK(Shadow DOM 런처 + iframe 대화창) +
 SSE 스트리밍 + 크레딧 과금(멱등) + 품질 평가셋 관점에서 처음부터 다시 구현한다.
 
 ```html
@@ -41,13 +41,13 @@ SSE 스트리밍 + 크레딧 과금(멱등) + 품질 평가셋 관점에서 처�
 apps/server         Express 5 + TS — 대화 API(SSE 스트리밍)·입력 모더레이션·답변 엔진·저장소(메모리 | Prisma·PostgreSQL, 마이그레이션은 prisma/migrations)
 apps/console        React + Vite — 운영 콘솔(로그인 · 대화 로그 · 미응답 큐 · FAQ · 지표 · 크레딧·충전). 빌드 산출물은 서버가 /console/ 로 서빙
 packages/widget     임베더블 SDK — 런처(IIFE, Shadow DOM) + 대화창 앱(서버 오리진 iframe, postMessage) + 브라우저 E2E(e2e/)
-packages/contracts  서버·위젯이 함께 쓰는 대화 API 계약 — SSE 이벤트 encode/parse, 요청·오류 본문
+packages/contracts  서버·위젯·콘솔이 함께 쓰는 계약 — SSE 이벤트 encode/parse, API 요청·응답·오류 본문, 허용 사이트 주소 문법
 scripts/blog        티스토리 발행 파이프라인 (Playwright)
-docs/adr            아키텍처 결정 기록 (직접 작성)
+docs/adr            아키텍처 결정 기록 (결정·트레이드오프는 직접 작성)
 docs/eval           응답 품질 평가 결과와 근거 기록(실측)
 docs/load           부하 측정 결과와 근거 기록(목업 엔진 시뮬레이션)
 docs/interview      주차별 면접 질문 뱅크
-docs/reviews.md     AI 코드 리뷰에서 실제 발견한 문제 기록
+docs/reviews.md     AI가 만든 코드·문서에서 실제 발견한 문제 기록
 ```
 
 ## 진행 상황
@@ -107,14 +107,14 @@ pnpm --filter @qrate/console dev      # 운영 콘솔 개발 서버 http://local
 pnpm lint && pnpm typecheck && pnpm test && pnpm build   # CI 게이트와 동일 (아래 e2e까지). 저장소 계약 테스트는 메모리 구현에 돌고,
                                       # .env에 QRATE_TEST_DATABASE_URL(전용 DB qrate_test, 마이그레이션 적용 후)을 두면 Postgres 구현에도 돈다
 pnpm e2e                              # 브라우저 E2E(Playwright) — 빌드 산출물로 목업 서버·데모를 띄워 런처·대화창·postMessage·CSP, 콘솔 로그인·큐·충전·결제창 귀환 주소 확인
-                                      # 처음 한 번: pnpm --filter @qrate/widget exec playwright install chromium. 8787·5173이 비어 있어야 한다
+                                      # 처음 한 번: pnpm --filter @qrate/widget exec playwright install chromium. 8787·5173·5174·8788이 비어 있어야 한다
 pnpm --filter @qrate/server load --run load/runs/<이름>   # 부하 측정(k6, 목업 엔진, 전용 DB). 준비와 옵션은 apps/server/load/README.md
 docker compose up --build             # Postgres → 마이그레이션·시드(migrate) → 서버 (Docker)
 ```
 
 ### 토스페이먼츠 테스트 결제
 
-기본 충전은 모의 결제다(`QRATE_PAYMENT_PROVIDER=auto`면 개발에서 mock). 토스 테스트 환경에서 충전을 끝까지 돌리려면 개발자센터의 **결제창형** 테스트 키 두 개를 `apps/server/.env`에 넣는다.
+기본 충전은 모의 결제다(`QRATE_PAYMENT_PROVIDER=auto`면 개발에서 mock). 토스 테스트 환경에서 충전을 끝까지 돌리려면 개발자센터의 **결제창형** 테스트 키 두 개를 `apps/server/.env`에 넣는다. 결제창형 키는 개발자센터에 가입한 뒤 전자결제를 신청해야 보인다.
 
 ```bash
 QRATE_PAYMENT_PROVIDER=toss
@@ -165,10 +165,10 @@ pnpm --filter @qrate/server admin console-key:revoke <회사 키>  # 회수. 그
 
 구현은 AI 에이전트가, **설계·리뷰·설명 책임은 사람이** 맡는다.
 
-- 아키텍처 결정은 [docs/adr](docs/adr)에 직접 작성 — 결정·대안·트레이드오프
+- ADR의 결정·트레이드오프는 [docs/adr](docs/adr)에 직접 작성 — 뼈대·대안 표·유도 질문은 에이전트가 쓰고, 표의 사실은 그 칸을 쓰지 않은 다른 모델이 대조
 - PR 이름은 주차가 아니라 작업으로 — PR 제목 `<대단위> - <소규모>`, 브랜치는 `<type>/<짧은-설명>`(예: `feat/widget-iframe-split`). 어휘·예시는 [PR 템플릿](.github/pull_request_template.md) 머리말
 - 머지는 CI 게이트(typecheck·lint·test·build·브라우저 e2e) 통과 시에만 — [ci.yml](.github/workflows/ci.yml)
 - 결제·인증·SSE·모더레이션 코드는 줄 단위로 읽는다 — [PR 템플릿](.github/pull_request_template.md)
-- AI 생성 코드에서 실제 발견한 문제만 [docs/reviews.md](docs/reviews.md)에 기록
-- 주 1회: [면접 질문 뱅크](docs/interview)에 코드 안 보고 답하기 → 블로그로 발행(`pnpm blog:new`)
+- AI가 만든 코드·문서에서 실제 발견한 문제만 [docs/reviews.md](docs/reviews.md)에 기록
+- 주 1회: [면접 질문 뱅크](docs/interview)에 코드 안 보고 답하기
 - 에이전트 규칙은 [CLAUDE.md](CLAUDE.md) — [pstack](https://github.com/michael-denyer/pstack-claude)(Claude Code 포트, 원작은 [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack)) 플레이북으로 일하고, 커밋·push·PR·머지는 장치(가드 훅·CI·코드를 쓰지 않은 에이전트의 검증)를 지나면 자동. 결제·인증·모더레이션·마이그레이션·CI·장치 자체는 사람이 머지
